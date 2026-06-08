@@ -3,7 +3,7 @@
   import { 
     Bold, Italic, Strikethrough, Code, Highlighter, Heading1, Heading2, Heading3,
     List, ListOrdered, ListTodo, Quote, Table, Link2, Image as ImageIcon, Underline,
-    Indent, Outdent, Settings, Eye, HelpCircle, Columns, Sparkles, BookOpen, Pen, X
+    Indent, Outdent, Settings, Eye, HelpCircle, Columns, Sparkles, BookOpen
   } from 'lucide-svelte';
   import { marked } from 'marked';
 
@@ -12,72 +12,8 @@
 
   let autosaveTimer: number | null = null;
   let focusMode = $state(false);
-  let activeSidebarTab = $state<'outline' | 'comments'>('outline');
+  let activeSidebarTab = $state<'outline' | 'preview' | 'comments'>('outline');
   let showRightSidebar = $state(true);
-
-  // Pane layout states
-  let viewMode = $state<'edit' | 'split' | 'preview'>('split');
-  let editorWidthPercent = $state(50); // range: 20-80
-  let rightSidebarWidth = $state(320); // range: 200-600
-
-  let isResizingSplit = $state(false);
-  let isResizingSidebar = $state(false);
-
-  // Resize Split View
-  function startSplitResize(e: PointerEvent) {
-    e.preventDefault();
-    isResizingSplit = true;
-    document.body.style.cursor = 'col-resize';
-    document.body.style.userSelect = 'none';
-
-    const container = document.querySelector('.editor-panels-container');
-    if (!container) return;
-
-    function handlePointerMove(moveEvent: PointerEvent) {
-      const rect = container.getBoundingClientRect();
-      const percentage = ((moveEvent.clientX - rect.left) / rect.width) * 100;
-      editorWidthPercent = Math.max(20, Math.min(80, percentage));
-    }
-
-    function handlePointerUp() {
-      isResizingSplit = false;
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-      window.removeEventListener('pointermove', handlePointerMove);
-      window.removeEventListener('pointerup', handlePointerUp);
-    }
-
-    window.addEventListener('pointermove', handlePointerMove);
-    window.addEventListener('pointerup', handlePointerUp);
-  }
-
-  // Resize Right Sidebar
-  function startSidebarResize(e: PointerEvent) {
-    e.preventDefault();
-    isResizingSidebar = true;
-    document.body.style.cursor = 'col-resize';
-    document.body.style.userSelect = 'none';
-
-    const container = document.querySelector('.editor-workspace');
-    if (!container) return;
-
-    function handlePointerMove(moveEvent: PointerEvent) {
-      const rect = container.getBoundingClientRect();
-      const width = rect.right - moveEvent.clientX;
-      rightSidebarWidth = Math.max(200, Math.min(600, width));
-    }
-
-    function handlePointerUp() {
-      isResizingSidebar = false;
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-      window.removeEventListener('pointermove', handlePointerMove);
-      window.removeEventListener('pointerup', handlePointerUp);
-    }
-
-    window.addEventListener('pointermove', handlePointerMove);
-    window.addEventListener('pointerup', handlePointerUp);
-  }
 
   // Slash commands state
   let showSlashMenu = $state(false);
@@ -492,170 +428,76 @@
   }
 </script>
 
-<div 
-  class="editor-workspace flex-row" 
-  class:focus-mode={focusMode}
-  class:resizing={isResizingSplit || isResizingSidebar}
->
+<div class="editor-workspace flex-row" class:focus-mode={focusMode}>
   <!-- Main Editor Sheet Column -->
   <div class="editor-main-sheet flex-col flex-grow">
     <!-- Format Tool Panel (Google Docs / M3 Style) -->
     <div class="editor-toolbar flex-row">
-      <!-- Group 1: Typography -->
-      <div class="toolbar-group flex-row">
-        <button onclick={() => toggleLinePrefix('# ')} title="Heading 1" class="btn-tool"><Heading1 size={16} /></button>
-        <button onclick={() => toggleLinePrefix('## ')} title="Heading 2" class="btn-tool"><Heading2 size={16} /></button>
-        <button onclick={() => toggleLinePrefix('### ')} title="Heading 3" class="btn-tool"><Heading3 size={16} /></button>
-      </div>
+      <button onclick={() => toggleLinePrefix('# ')} title="Heading 1" class="btn-tool"><Heading1 size={16} /></button>
+      <button onclick={() => toggleLinePrefix('## ')} title="Heading 2" class="btn-tool"><Heading2 size={16} /></button>
+      <button onclick={() => toggleLinePrefix('### ')} title="Heading 3" class="btn-tool"><Heading3 size={16} /></button>
       <span class="toolbar-divider"></span>
-
-      <!-- Group 2: Inline Formatting -->
-      <div class="toolbar-group flex-row">
-        <button onclick={() => wrapSelection('**', '**')} title="Bold" class="btn-tool"><Bold size={16} /></button>
-        <button onclick={() => wrapSelection('*', '*')} title="Italic" class="btn-tool"><Italic size={16} /></button>
-        <button onclick={() => wrapSelection('~~', '~~')} title="Strikethrough" class="btn-tool"><Strikethrough size={16} /></button>
-        <button onclick={() => wrapSelection('`', '`')} title="Inline Code" class="btn-tool"><Code size={16} /></button>
-        <button onclick={() => wrapSelection('<mark>', '</mark>')} title="Highlight" class="btn-tool"><Highlighter size={16} /></button>
-      </div>
+      <button onclick={() => wrapSelection('**', '**')} title="Bold" class="btn-tool"><Bold size={16} /></button>
+      <button onclick={() => wrapSelection('*', '*')} title="Italic" class="btn-tool"><Italic size={16} /></button>
+      <button onclick={() => wrapSelection('~~', '~~')} title="Strikethrough" class="btn-tool"><Strikethrough size={16} /></button>
+      <button onclick={() => wrapSelection('`', '`')} title="Inline Code" class="btn-tool"><Code size={16} /></button>
+      <button onclick={() => wrapSelection('<mark>', '</mark>')} title="Highlight" class="btn-tool"><Highlighter size={16} /></button>
       <span class="toolbar-divider"></span>
-
-      <!-- Group 3: Lists & Indents -->
-      <div class="toolbar-group flex-row">
-        <button onclick={() => toggleLinePrefix('- ')} title="Bullet List" class="btn-tool"><List size={16} /></button>
-        <button onclick={() => toggleLinePrefix('1. ')} title="Numbered List" class="btn-tool"><ListOrdered size={16} /></button>
-        <button onclick={() => toggleLinePrefix('- [ ] ')} title="Task List" class="btn-tool"><ListTodo size={16} /></button>
-        <button onclick={() => indentSelection(false)} title="Increase Indent (Tab)" class="btn-tool"><Indent size={16} /></button>
-        <button onclick={() => indentSelection(true)} title="Decrease Indent (Shift+Tab)" class="btn-tool"><Outdent size={16} /></button>
-      </div>
+      <button onclick={() => toggleLinePrefix('- ')} title="Bullet List" class="btn-tool"><List size={16} /></button>
+      <button onclick={() => toggleLinePrefix('1. ')} title="Numbered List" class="btn-tool"><ListOrdered size={16} /></button>
+      <button onclick={() => toggleLinePrefix('- [ ] ')} title="Task List" class="btn-tool"><ListTodo size={16} /></button>
+      <button onclick={() => indentSelection(false)} title="Increase Indent (Tab)" class="btn-tool"><Indent size={16} /></button>
+      <button onclick={() => indentSelection(true)} title="Decrease Indent (Shift+Tab)" class="btn-tool"><Outdent size={16} /></button>
       <span class="toolbar-divider"></span>
-
-      <!-- Group 4: Insert elements -->
-      <div class="toolbar-group flex-row">
-        <button onclick={() => wrapSelection('\n> ', '')} title="Quote" class="btn-tool"><Quote size={16} /></button>
-        <button onclick={() => wrapSelection('\n| Header 1 | Header 2 |\n| --- | --- |\n| Cell 1 | Cell 2 |\n', '')} title="Table" class="btn-tool"><Table size={16} /></button>
-        <button onclick={() => wrapSelection('[', '](https://)')} title="Insert Link" class="btn-tool"><Link2 size={16} /></button>
-        <button onclick={() => wrapSelection('![alt](', ')')} title="Insert Image" class="btn-tool"><ImageIcon size={16} /></button>
-      </div>
+      <button onclick={() => wrapSelection('\n> ', '')} title="Quote" class="btn-tool"><Quote size={16} /></button>
+      <button onclick={() => wrapSelection('\n| Header 1 | Header 2 |\n| --- | --- |\n| Cell 1 | Cell 2 |\n', '')} title="Table" class="btn-tool"><Table size={16} /></button>
+      <button onclick={() => wrapSelection('[', '](https://)')} title="Insert Link" class="btn-tool"><Link2 size={16} /></button>
+      <button onclick={() => wrapSelection('![alt](', ')')} title="Insert Image" class="btn-tool"><ImageIcon size={16} /></button>
       
       <span class="toolbar-spacer flex-grow"></span>
 
-      <!-- Group 5: Segmented viewMode control (Edit / Split / Preview) -->
-      <div class="toolbar-group segmented-control flex-row">
-        <button 
-          class="btn-tool mode-btn" 
-          class:active={viewMode === 'edit'} 
-          onclick={() => viewMode = 'edit'} 
-          title="Edit Source"
-        >
-          <Pen size={14} />
-          <span class="btn-label">Edit</span>
-        </button>
-        <button 
-          class="btn-tool mode-btn" 
-          class:active={viewMode === 'split'} 
-          onclick={() => viewMode = 'split'} 
-          title="Split View"
-        >
-          <Columns size={14} />
-          <span class="btn-label">Split</span>
-        </button>
-        <button 
-          class="btn-tool mode-btn" 
-          class:active={viewMode === 'preview'} 
-          onclick={() => viewMode = 'preview'} 
-          title="Full Preview"
-        >
-          <Eye size={14} />
-          <span class="btn-label">Preview</span>
-        </button>
-      </div>
-
-      <span class="toolbar-divider"></span>
-
-      <!-- Group 6: Sidebar & Graph toggles -->
-      <div class="toolbar-group flex-row">
-        <button onclick={() => focusMode = !focusMode} class="btn-tool" class:active={focusMode} title="Toggle Focus Mode">
-          👓
-        </button>
-        <button onclick={() => showGraph = !showGraph} class="btn-tool" class:active={showGraph} title="Toggle Graph View">
-          🌐
-        </button>
-        <button onclick={() => showRightSidebar = !showRightSidebar} class="btn-tool" class:active={showRightSidebar} title="Toggle Outline Sidebar">
-          📋
-        </button>
-      </div>
+      <!-- Sidebar & Graph toggles -->
+      <button onclick={() => focusMode = !focusMode} class="btn-tool mode-indicator" class:active={focusMode} title="Toggle Focus Mode">
+        👓 Focus Mode
+      </button>
+      <button onclick={() => showGraph = !showGraph} class="btn-tool mode-indicator" class:active={showGraph} title="Toggle Graph View">
+        🌐 Graph
+      </button>
+      <button onclick={() => showRightSidebar = !showRightSidebar} class="btn-tool mode-indicator" class:active={showRightSidebar} title="Toggle Side Panel">
+        📋 Sidebar
+      </button>
     </div>
 
-    <!-- Draggable resizable panels workspace -->
-    <div class="editor-panels-container view-{viewMode}">
-      <!-- Editor Column (visible in 'edit' or 'split') -->
-      {#if viewMode === 'edit' || viewMode === 'split'}
-        <div class="editor-panel-wrapper" style="width: {viewMode === 'split' ? `${editorWidthPercent}%` : '100%'};">
-          <div class="panel-scroller">
-            <div class="paper-canvas">
-              <textarea 
-                class="editor-textarea" 
-                value={appState.activeNoteContent} 
-                oninput={handleContentInput}
-                onkeydown={handleKeyDown}
-                placeholder="Start writing... Type / for commands."
-              ></textarea>
+    <!-- Centered Paper Canvas -->
+    <div class="editor-scroller">
+      <div class="paper-canvas">
+        <textarea 
+          class="editor-textarea" 
+          value={appState.activeNoteContent} 
+          oninput={handleContentInput}
+          onkeydown={handleKeyDown}
+          placeholder="Start writing... Type / for commands."
+        ></textarea>
 
-              <!-- Floating Slash command autocomplete menu -->
-              {#if showSlashMenu && filteredCommands.length > 0}
-                <div class="slash-commands-dropdown md3-card-filled" style={`top: ${slashPosition.top}px; left: ${slashPosition.left}px;`}>
-                  {#each filteredCommands as cmd, idx}
-                    <button 
-                      class="slash-item" 
-                      class:active={idx === slashIndex}
-                      onclick={() => executeSlashCommand(cmd)}
-                    >
-                      <span class="slash-cmd">{cmd.cmd}</span>
-                      <div class="slash-meta">
-                        <span class="slash-label">{cmd.label}</span>
-                        <span class="slash-desc">{cmd.desc}</span>
-                      </div>
-                    </button>
-                  {/each}
+        <!-- Floating Slash command autocomplete menu -->
+        {#if showSlashMenu && filteredCommands.length > 0}
+          <div class="slash-commands-dropdown md3-card-filled" style={`top: ${slashPosition.top}px; left: ${slashPosition.left}px;`}>
+            {#each filteredCommands as cmd, idx}
+              <button 
+                class="slash-item" 
+                class:active={idx === slashIndex}
+                onclick={() => executeSlashCommand(cmd)}
+              >
+                <span class="slash-cmd">{cmd.cmd}</span>
+                <div class="slash-meta">
+                  <span class="slash-label">{cmd.label}</span>
+                  <span class="slash-desc">{cmd.desc}</span>
                 </div>
-              {/if}
-            </div>
-          </div>
-        </div>
-      {/if}
-
-      <!-- Resize handle between Editor and Preview (visible in 'split') -->
-      {#if viewMode === 'split'}
-        <div 
-          class="resize-handle split-handle" 
-          class:active={isResizingSplit}
-          onpointerdown={startSplitResize}
-          title="Drag to resize pane"
-        ></div>
-      {/if}
-
-      <!-- Preview Column (visible in 'preview' or 'split') -->
-      {#if viewMode === 'preview' || viewMode === 'split'}
-        <div class="preview-panel-wrapper" style="width: {viewMode === 'split' ? `${100 - editorWidthPercent}%` : '100%'};">
-          <div class="panel-header flex-row">
-            <span class="panel-title">{viewMode === 'split' ? 'Live Preview' : 'Document Preview'}</span>
-            {#if viewMode === 'split'}
-              <button class="btn-close-panel" onclick={() => viewMode = 'edit'} title="Close Preview Pane">
-                <X size={16} />
               </button>
-            {:else}
-              <button class="btn-close-panel" onclick={() => viewMode = 'edit'} title="Edit Document">
-                <Pen size={16} />
-              </button>
-            {/if}
+            {/each}
           </div>
-          <div class="panel-scroller">
-            <div class="paper-canvas markdown-body" onclick={handlePreviewClick}>
-              {@html previewHtml || '<p class="empty-text">Nothing to preview yet...</p>'}
-            </div>
-          </div>
-        </div>
-      {/if}
+        {/if}
+      </div>
     </div>
 
     <!-- Footer Stats Bar -->
@@ -671,38 +513,30 @@
     </div>
   </div>
 
-  <!-- Resize handle between Main Editor/Preview sheet and Right Sidebar -->
+  <!-- Right Collapsible Panel Drawer (Outline, Mock Comments & Realtime Preview) -->
   {#if showRightSidebar}
-    <div 
-      class="resize-handle sidebar-handle" 
-      class:active={isResizingSidebar}
-      onpointerdown={startSidebarResize}
-      title="Drag to resize sidebar"
-    ></div>
-  {/if}
-
-  <!-- Right Collapsible Panel Drawer (Outline, Mock Comments) -->
-  {#if showRightSidebar}
-    <div class="editor-right-sidebar flex-col" style="width: {rightSidebarWidth}px;">
-      <div class="sidebar-header-bar flex-row">
-        <div class="sidebar-tabs flex-row">
-          <button 
-            class="sidebar-tab" 
-            class:active={activeSidebarTab === 'outline'} 
-            onclick={() => activeSidebarTab = 'outline'}
-          >
-            Outline
-          </button>
-          <button 
-            class="sidebar-tab" 
-            class:active={activeSidebarTab === 'comments'} 
-            onclick={() => activeSidebarTab = 'comments'}
-          >
-            Activity
-          </button>
-        </div>
-        <button class="btn-close-panel" onclick={() => showRightSidebar = false} title="Close Side Panel">
-          <X size={16} />
+    <div class="editor-right-sidebar flex-col">
+      <div class="sidebar-tabs flex-row">
+        <button 
+          class="sidebar-tab" 
+          class:active={activeSidebarTab === 'outline'} 
+          onclick={() => activeSidebarTab = 'outline'}
+        >
+          Outline
+        </button>
+        <button 
+          class="sidebar-tab" 
+          class:active={activeSidebarTab === 'preview'} 
+          onclick={() => activeSidebarTab = 'preview'}
+        >
+          Preview
+        </button>
+        <button 
+          class="sidebar-tab" 
+          class:active={activeSidebarTab === 'comments'} 
+          onclick={() => activeSidebarTab = 'comments'}
+        >
+          Activity
         </button>
       </div>
 
@@ -726,6 +560,11 @@
                 {/each}
               </div>
             {/if}
+          </div>
+        {:else if activeSidebarTab === 'preview'}
+          <!-- Realtime HTML renderer -->
+          <div class="html-preview-pane markdown-body" onclick={handlePreviewClick}>
+            {@html previewHtml || '<p class="empty-text">Nothing to preview yet...</p>'}
           </div>
         {:else if activeSidebarTab === 'comments'}
           <!-- Activity & comment mocks -->
@@ -772,12 +611,6 @@
     transition: var(--transition-standard);
   }
 
-  /* When resizing, disable transitions for smooth real-time response */
-  .editor-workspace.resizing * {
-    transition: none !important;
-    user-select: none !important;
-  }
-
   .editor-main-sheet {
     height: 100%;
     display: flex;
@@ -796,46 +629,6 @@
     transition: var(--transition-standard);
   }
 
-  .toolbar-group {
-    display: flex;
-    align-items: center;
-    gap: 2px;
-  }
-
-  /* Segmented View Mode Control (Google M3 Tonal Style) */
-  .segmented-control {
-    background-color: var(--bg-surface-container-high);
-    border-radius: 20px;
-    padding: 2px;
-    border: 1px solid var(--border-color);
-  }
-
-  .segmented-control .mode-btn {
-    height: 28px;
-    border-radius: 16px;
-    padding: 0 12px;
-    font-size: 12px;
-    font-weight: 600;
-    gap: 6px;
-    display: flex;
-    align-items: center;
-    border: none;
-    color: var(--text-secondary);
-    background: transparent;
-    transition: var(--transition-fast);
-  }
-
-  .segmented-control .mode-btn:hover {
-    color: var(--text-primary);
-    background-color: rgba(120, 120, 120, 0.08);
-  }
-
-  .segmented-control .mode-btn.active {
-    background-color: var(--primary-container);
-    color: var(--on-primary-container);
-    box-shadow: var(--shadow-lvl1);
-  }
-
   .btn-tool {
     width: 32px;
     height: 32px;
@@ -844,9 +637,6 @@
     align-items: center;
     justify-content: center;
     color: var(--text-secondary);
-    background: transparent;
-    border: none;
-    cursor: pointer;
     transition: var(--transition-fast);
   }
 
@@ -865,129 +655,39 @@
     height: 20px;
     background-color: var(--border-color);
     margin: 0 8px;
-    flex-shrink: 0;
   }
 
-  /* Resizable Panels Container */
-  .editor-panels-container {
-    display: flex;
-    flex-direction: row;
-    flex-grow: 1;
-    overflow: hidden;
-    height: 100%;
-    position: relative;
-    background-color: var(--bg-base);
+  .mode-indicator {
+    width: auto;
+    padding: 0 12px;
+    font-size: 12px;
+    font-weight: 600;
   }
 
-  .editor-panel-wrapper,
-  .preview-panel-wrapper {
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    position: relative;
-    transition: width var(--transition-standard);
-  }
-
-  .panel-scroller {
+  /* Centered Paper Scroller Layout */
+  .editor-scroller {
     flex-grow: 1;
     overflow-y: auto;
-    padding: 30px 20px;
+    padding: 40px 20px;
     display: flex;
     justify-content: center;
-    align-items: flex-start;
+    background-color: var(--bg-base);
+    transition: var(--transition-standard);
   }
 
-  .panel-header {
-    height: 40px;
-    border-bottom: 1px solid var(--border-color);
-    background-color: var(--bg-surface-container);
-    padding: 0 16px;
-    justify-content: space-between;
-    align-items: center;
-    flex-shrink: 0;
-  }
-
-  .panel-title {
-    font-size: 11px;
-    font-weight: 700;
-    color: var(--text-secondary);
-    text-transform: uppercase;
-    letter-spacing: 0.8px;
-  }
-
-  .btn-close-panel {
-    background: transparent;
-    border: none;
-    cursor: pointer;
-    color: var(--text-tertiary);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: var(--radius-xs);
-    width: 24px;
-    height: 24px;
-    transition: var(--transition-fast);
-  }
-
-  .btn-close-panel:hover {
-    background-color: rgba(120, 120, 120, 0.1);
-    color: var(--text-primary);
-  }
-
-  /* Draggable Resize Handles */
-  .resize-handle {
-    width: 4px;
-    background-color: var(--border-color);
-    cursor: col-resize;
-    position: relative;
-    z-index: 10;
-    flex-shrink: 0;
-    transition: background-color var(--transition-fast);
-  }
-
-  .resize-handle:hover,
-  .resize-handle.active {
-    background-color: var(--primary);
-  }
-
-  /* Grab handles hit area */
-  .resize-handle::after {
-    content: '';
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    left: -6px;
-    right: -6px;
-    cursor: col-resize;
-  }
-
-  /* Paper Canvas Metaphor */
   .paper-canvas {
     width: 100%;
+    max-width: 800px;
+    min-height: 800px;
     background-color: var(--bg-surface);
     border: 1px solid var(--border-color);
     border-radius: var(--radius-m);
     box-shadow: var(--shadow-lvl2);
+    padding: 60px 50px;
     display: flex;
     position: relative;
     box-sizing: border-box;
     transition: var(--transition-standard);
-  }
-
-  /* View-specific configurations */
-  .view-edit .paper-canvas,
-  .view-preview .paper-canvas {
-    max-width: 800px;
-    min-height: 800px;
-    padding: 60px 50px;
-  }
-
-  .view-split .paper-canvas {
-    max-width: 100%;
-    min-height: 100%;
-    padding: 30px 24px;
-    border-radius: var(--radius-s);
   }
 
   .editor-textarea {
@@ -1028,9 +728,6 @@
     border-radius: var(--radius-s);
     text-align: left;
     gap: 12px;
-    background: transparent;
-    border: none;
-    cursor: pointer;
     transition: var(--transition-fast);
   }
 
@@ -1070,6 +767,10 @@
     color: var(--text-tertiary);
   }
 
+  .slash-item:hover .slash-desc, .slash-item.active .slash-desc {
+    color: rgba(var(--accent-base), 10%, 20%);
+  }
+
   /* Footer Stats */
   .editor-footer-stats {
     height: 32px;
@@ -1098,43 +799,31 @@
 
   /* Right Sidebar Drawer styling */
   .editor-right-sidebar {
+    width: 320px;
     background-color: var(--bg-surface);
     border-left: 1px solid var(--border-color);
     height: 100%;
     flex-shrink: 0;
     display: flex;
     flex-direction: column;
-    transition: width var(--transition-standard);
-  }
-
-  .sidebar-header-bar {
-    height: 48px;
-    border-bottom: 1px solid var(--border-color);
-    background-color: var(--bg-surface-container);
-    padding: 0 8px 0 16px;
-    justify-content: space-between;
-    align-items: center;
-    flex-shrink: 0;
   }
 
   .sidebar-tabs {
-    height: 100%;
-    display: flex;
-    flex-direction: row;
-    gap: 16px;
+    height: 48px;
+    border-bottom: 1px solid var(--border-color);
+    background-color: var(--bg-surface-container);
+    flex-shrink: 0;
   }
 
   .sidebar-tab {
+    flex: 1;
     height: 100%;
+    text-align: center;
     font-size: 12px;
     font-weight: 700;
     color: var(--text-secondary);
-    border: none;
     border-bottom: 2px solid transparent;
     cursor: pointer;
-    background: transparent;
-    padding: 0 4px;
-    transition: var(--transition-fast);
   }
 
   .sidebar-tab.active {
@@ -1174,8 +863,6 @@
     padding: 6px 8px;
     border-radius: var(--radius-xs);
     cursor: pointer;
-    background: transparent;
-    border: none;
     transition: var(--transition-fast);
     white-space: nowrap;
     overflow: hidden;
@@ -1247,26 +934,22 @@
     font-size: 14px;
     line-height: 1.6;
     color: var(--text-primary);
-    width: 100%;
   }
 
   /* Focus Mode animations / fades */
   .editor-workspace.focus-mode .editor-toolbar,
   .editor-workspace.focus-mode .editor-footer-stats,
-  .editor-workspace.focus-mode .resize-handle,
   .editor-workspace.focus-mode .editor-right-sidebar {
     opacity: 0.05;
   }
 
   .editor-workspace.focus-mode .editor-toolbar:hover,
   .editor-workspace.focus-mode .editor-footer-stats:hover,
-  .editor-workspace.focus-mode .resize-handle:hover,
   .editor-workspace.focus-mode .editor-right-sidebar:hover {
     opacity: 1;
   }
 
-  .editor-workspace.focus-mode .editor-scroller,
-  .editor-workspace.focus-mode .panel-scroller {
+  .editor-workspace.focus-mode .editor-scroller {
     background-color: var(--bg-surface);
   }
 
@@ -1275,40 +958,20 @@
     box-shadow: none;
   }
 
-  /* Responsive / Mobile Breakpoints */
   @media (max-width: 1000px) {
-    .editor-right-sidebar,
-    .sidebar-handle {
-      display: none !important;
-    }
-  }
-
-  @media (max-width: 900px) {
-    .resize-handle {
-      display: none !important;
-    }
-    .preview-panel-wrapper {
-      display: none !important;
-    }
-    .editor-panel-wrapper {
-      width: 100% !important;
-    }
-    .segmented-control {
-      display: none !important;
+    .editor-right-sidebar {
+      display: none;
     }
   }
 
   @media (max-width: 768px) {
-    .view-edit .paper-canvas,
-    .view-preview .paper-canvas,
-    .view-split .paper-canvas {
+    .paper-canvas {
       padding: 30px 20px;
       border-radius: 0;
       border: none;
       min-height: 100%;
-      box-shadow: none;
     }
-    .panel-scroller {
+    .editor-scroller {
       padding: 0;
     }
     .editor-toolbar {

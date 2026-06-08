@@ -3,7 +3,10 @@
   import { 
     Cloud, 
     RefreshCw, 
-    User, 
+    Folder, 
+    Trash2, 
+    Settings,
+    User,
     Info
   } from 'lucide-svelte';
 
@@ -17,13 +20,6 @@
     { name: 'Ruby', hue: 350 },
     { name: 'Amber', hue: 35 }
   ];
-
-  // Folder picker states
-  let driveFolders = $state<Array<{ id: string; name: string }>>([]);
-  let showFolderPicker = $state(false);
-  let isLoadingFolders = $state(false);
-  let newFolderNameInput = $state('');
-  let showCreateFolderInput = $state(false);
 
   function handleSaveClientId() {
     appState.setClientId(syncClientId);
@@ -45,50 +41,6 @@
 
   async function handleDisconnectDrive() {
     await appState.disconnectGoogleDrive();
-  }
-
-  async function loadDriveFolders() {
-    if (!appState.googleConnected) return;
-    isLoadingFolders = true;
-    try {
-      const mainFolderId = await appState.syncService.getOrCreateSyncFolder();
-      driveFolders = await appState.syncService.listSubfolders(mainFolderId);
-    } catch (e: any) {
-      console.error('Failed to load drive folders:', e);
-      alert('Error loading Drive folders: ' + e.message);
-    } finally {
-      isLoadingFolders = false;
-    }
-  }
-
-  function handleSelectFolder(id: string, name: string) {
-    appState.setCustomDriveFolder(id, name);
-    showFolderPicker = false;
-    alert(`Linked sync target to Google Drive folder: "${name}"`);
-  }
-
-  function handleResetFolder() {
-    appState.setCustomDriveFolder(null, null);
-    showFolderPicker = false;
-    alert('Reset to default vault folder sync.');
-  }
-
-  async function handleCreateDriveFolder() {
-    if (!newFolderNameInput.trim()) return;
-    isLoadingFolders = true;
-    try {
-      const mainFolderId = await appState.syncService.getOrCreateSyncFolder();
-      const newFolderId = await appState.syncService.getOrCreateSubfolders(newFolderNameInput.trim(), mainFolderId);
-      appState.setCustomDriveFolder(newFolderId, newFolderNameInput.trim());
-      newFolderNameInput = '';
-      showCreateFolderInput = false;
-      showFolderPicker = false;
-      alert(`Created and linked new Google Drive folder: "${appState.customDriveFolderName}"`);
-    } catch (e: any) {
-      alert('Failed to create folder: ' + e.message);
-    } finally {
-      isLoadingFolders = false;
-    }
   }
 </script>
 
@@ -245,84 +197,6 @@
             </span>
           </div>
 
-          <!-- Synced Folder Picker -->
-          <div class="details-row flex-col" style="align-items: flex-start; width: 100%; margin-top: 8px; border-top: 1px dashed var(--border-color); padding-top: 12px; gap: 8px;">
-            <div class="flex-row" style="justify-content: space-between; width: 100%;">
-              <span class="setting-label" style="font-size: 11px;">Drive Sync Folder:</span>
-              <strong style="color: var(--primary); font-size: 13px;">
-                {appState.customDriveFolderName || appState.vaultName || 'Local Sandbox'}
-              </strong>
-            </div>
-            
-            <div class="flex-row" style="gap: 8px; width: 100%; margin-top: 4px;">
-              <button 
-                class="md3-btn md3-btn-tonal" 
-                style="height: 32px; font-size: 12px; padding: 0 12px;"
-                onclick={() => { showFolderPicker = !showFolderPicker; if (showFolderPicker) loadDriveFolders(); }}
-              >
-                📁 Switch Drive Folder
-              </button>
-              {#if appState.customDriveFolderId}
-                <button 
-                  class="md3-btn md3-btn-outlined" 
-                  style="height: 32px; font-size: 12px; padding: 0 12px;"
-                  onclick={handleResetFolder}
-                >
-                  Reset Default
-                </button>
-              {/if}
-            </div>
-
-            <!-- Folder Picker Dropdown Panel -->
-            {#if showFolderPicker}
-              <div class="drive-folder-picker md3-card-filled flex-col" style="width: 100%; margin-top: 8px; padding: 12px; gap: 8px; border: 1px solid var(--border-color);">
-                <span style="font-size: 12px; font-weight: 700; color: var(--text-primary);">Select Folder on Google Drive</span>
-                
-                {#if isLoadingFolders}
-                  <span class="empty-text">Loading folders from Drive...</span>
-                {:else}
-                  <div class="folders-picker-list flex-col" style="max-height: 120px; overflow-y: auto; gap: 4px; border: 1px solid var(--border-color); padding: 4px; border-radius: var(--radius-s); background: var(--bg-surface); width: 100%;">
-                    {#each driveFolders as folder}
-                      <button 
-                        class="btn-option flex-row" 
-                        style="width: 100%; text-align: left; padding: 6px 10px; font-size: 12px; justify-content: flex-start; border-radius: var(--radius-xs);"
-                        onclick={() => handleSelectFolder(folder.id, folder.name)}
-                      >
-                        📂 {folder.name}
-                      </button>
-                    {:else}
-                      <span class="empty-text" style="font-size: 11px; padding: 6px;">No subfolders found in `myNotes` on Drive.</span>
-                    {/each}
-                  </div>
-
-                  <!-- Create Folder option -->
-                  <div class="flex-col" style="gap: 6px; width: 100%;">
-                    {#if showCreateFolderInput}
-                      <div class="flex-row" style="gap: 8px; width: 100%;">
-                        <input 
-                          type="text" 
-                          placeholder="New folder name..." 
-                          bind:value={newFolderNameInput}
-                          style="flex-grow: 1; padding: 6px 10px; font-size: 12px; border: 1px solid var(--border-color); border-radius: var(--radius-s); background: var(--bg-surface-container); color: var(--text-primary); outline: none;"
-                        />
-                        <button class="md3-btn" style="height: 32px; font-size: 11px; padding: 0 12px;" onclick={handleCreateDriveFolder}>Create</button>
-                        <button class="md3-btn md3-btn-outlined" style="height: 32px; font-size: 11px; padding: 0 12px;" onclick={() => showCreateFolderInput = false}>Cancel</button>
-                      </div>
-                    {:else}
-                      <button 
-                        class="md3-btn md3-btn-tonal" 
-                        style="font-size: 11px; text-align: left; padding: 6px 12px; color: var(--primary); width: 100%;"
-                        onclick={() => showCreateFolderInput = true}
-                      >
-                        ➕ Create New Folder on Drive
-                      </button>
-                    {/if}
-                  </div>
-                {/if}
-              </div>
-            {/if}
-          </div>
-
           <div class="action-row flex-row">
             <button class="md3-btn" onclick={handleSyncNow} disabled={appState.syncStatus === 'syncing'}>
               {#if appState.syncStatus === 'syncing'}
@@ -351,7 +225,7 @@
 
       <!-- Drive Synced Folders Rule Help -->
       <div class="sync-help-note md3-card-filled flex-row">
-        <Info size={20} class="info-icon" style="color: var(--primary); flex-shrink: 0;" />
+        <Info size={20} class="info-icon" />
         <div class="help-text-block">
           <strong>Vault Isolation Rule:</strong> Every vault creates a distinct subfolder in the Google Drive `myNotes` path. Switching vaults downloads files from the respective Drive folder automatically.
         </div>
@@ -590,11 +464,23 @@
     width: 100%;
   }
 
-  .empty-text {
+  /* Sync helper note */
+  .sync-help-note {
+    padding: 16px;
+    border-radius: var(--radius-m);
+    gap: 12px;
+    align-items: flex-start;
+  }
+
+  .info-icon {
+    color: var(--primary);
+    flex-shrink: 0;
+  }
+
+  .help-text-block {
     font-size: 12px;
-    color: var(--text-tertiary);
-    text-align: center;
-    padding: 8px 0;
+    color: var(--text-secondary);
+    line-height: 1.4;
   }
 
   @media (max-width: 900px) {

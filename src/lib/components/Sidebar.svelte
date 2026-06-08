@@ -3,6 +3,9 @@
   import { 
     Home, 
     FileText, 
+    Sparkles, 
+    Cpu, 
+    BarChart2, 
     Settings, 
     FolderOpen, 
     Moon, 
@@ -65,6 +68,36 @@
     >
       <FileText size={20} class="nav-icon" />
       <span class="nav-label">Documents</span>
+    </button>
+
+    <!-- Templates -->
+    <button 
+      class="nav-item flex-row" 
+      class:active={appState.activeTab === 'templates'} 
+      onclick={() => selectTab('templates')}
+    >
+      <Sparkles size={20} class="nav-icon" />
+      <span class="nav-label">Templates</span>
+    </button>
+
+    <!-- AI Workspace -->
+    <button 
+      class="nav-item flex-row" 
+      class:active={appState.activeTab === 'ai'} 
+      onclick={() => selectTab('ai')}
+    >
+      <Cpu size={20} class="nav-icon" />
+      <span class="nav-label">AI Workspace</span>
+    </button>
+
+    <!-- Analytics -->
+    <button 
+      class="nav-item flex-row" 
+      class:active={appState.activeTab === 'analytics'} 
+      onclick={() => selectTab('analytics')}
+    >
+      <BarChart2 size={20} class="nav-icon" />
+      <span class="nav-label">Analytics</span>
     </button>
 
     <!-- Settings -->
