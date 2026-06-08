@@ -8,7 +8,7 @@
   import { 
     Home, Search, Library, Calendar, ChevronLeft, Plus, 
     FileText, Tag, FolderPlus, Compass, ArrowRight, Settings,
-    X, Cloud, RefreshCw, LogOut
+    X, Cloud, RefreshCw, LogOut, Moon, Sun
   } from 'lucide-svelte';
 
   // Responsive state
@@ -74,34 +74,6 @@
     {#if appState.activeNotePath}
       <!-- Fullscreen Editor Overlay for Mobile -->
       <div class="mobile-editor-container flex-col">
-        <div class="mobile-editor-top flex-row">
-          <button 
-            class="back-btn flex-row" 
-            onclick={() => {
-              if (appState.editorDirty) appState.saveActiveNote();
-              appState.activeNotePath = null;
-            }}
-            aria-label="Back"
-          >
-            <ChevronLeft size={24} />
-            <span class="back-text">Tracks</span>
-          </button>
-          
-          <div class="editor-note-meta flex-col">
-            <span class="small-tag">EDITING</span>
-            <span class="note-name-header">{appState.activeNote?.name}</span>
-          </div>
-          
-          <!-- Save / Close Toolbar -->
-          <button 
-            class="save-icon-btn" 
-            class:dirty={appState.editorDirty}
-            onclick={() => appState.saveActiveNote()}
-            aria-label="Save note"
-          >
-            Save
-          </button>
-        </div>
         <div class="mobile-editor-wrapper">
           <Editor bind:showGraph={showGraph} />
         </div>
@@ -428,6 +400,59 @@
       </div>
 
       <div class="settings-content flex-col">
+        <!-- General Settings (Mobile friendly / accessible) -->
+        <span class="settings-section-title">General Settings</span>
+        
+        <div class="form-group flex-col" style="gap: 8px;">
+          <span class="form-label">Theme</span>
+          <button 
+            class="btn-pill btn-pill-outline flex-row" 
+            style="justify-content: center; width: 100%; gap: 8px;"
+            onclick={() => {
+              appState.theme = appState.theme === 'dark' ? 'black' : 'dark';
+              const root = document.documentElement;
+              if (appState.theme === 'black') {
+                root.style.setProperty('--bg-base', '#000000');
+                root.style.setProperty('--bg-surface', '#0a0a0a');
+                root.style.setProperty('--bg-mid-dark', '#121212');
+              } else {
+                root.style.setProperty('--bg-base', '#121212');
+                root.style.setProperty('--bg-surface', '#181818');
+                root.style.setProperty('--bg-mid-dark', '#1f1f1f');
+              }
+            }}
+          >
+            {#if appState.theme === 'dark'}
+              <Moon size={14} />
+              <span>Amoled Black Theme</span>
+            {:else}
+              <Sun size={14} />
+              <span>Standard Dark Theme</span>
+            {/if}
+          </button>
+        </div>
+
+        <div class="form-group flex-col" style="margin-bottom: 8px; gap: 8px;">
+          <span class="form-label">Active Directory</span>
+          <div class="flex-row" style="justify-content: space-between; gap: 8px; background-color: rgba(255,255,255,0.02); padding: 8px 12px; border-radius: var(--radius-standard); border: 1px solid var(--border-color);">
+            <span style="font-size: 11px; color: var(--text-secondary); text-overflow: ellipsis; overflow: hidden; white-space: nowrap; max-width: 60%;">
+              {appState.vaultName || 'None Loaded'}
+            </span>
+            <button 
+              class="btn-pill btn-pill-outline flex-row" 
+              onclick={() => {
+                appState.showSettings = false;
+                appState.openDirectory();
+              }}
+              style="padding: 6px 12px; font-size: 11px; font-weight: 700; text-transform: uppercase;"
+            >
+              Change Folder
+            </button>
+          </div>
+        </div>
+
+        <span class="settings-section-title" style="margin-top: 8px; border-top: 1px solid var(--border-color); padding-top: 16px;">Google Drive Sync</span>
+
         <!-- Client ID input section -->
         <div class="form-group flex-col">
           <label for="google-client-id" class="form-label">Google OAuth Client ID</label>
@@ -974,60 +999,7 @@
     left: 0;
   }
 
-  .mobile-editor-top {
-    height: 56px;
-    background-color: var(--bg-surface);
-    border-bottom: 1px solid var(--border-color);
-    padding: 0 16px;
-    justify-content: space-between;
-    flex-shrink: 0;
-  }
 
-  .back-btn {
-    color: var(--text-primary);
-    font-weight: 700;
-    gap: 4px;
-  }
-
-  .back-text {
-    font-size: 14px;
-  }
-
-  .editor-note-meta {
-    align-items: center;
-    max-width: 50%;
-  }
-
-  .small-tag {
-    font-size: 8px;
-    font-weight: 700;
-    color: var(--accent);
-    letter-spacing: 0.5px;
-  }
-
-  .note-name-header {
-    font-size: 13px;
-    font-weight: 600;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    color: var(--text-primary);
-    margin-top: 2px;
-  }
-
-  .save-icon-btn {
-    font-size: 13px;
-    font-weight: 700;
-    color: var(--text-secondary);
-    padding: 6px 12px;
-    border-radius: var(--radius-pill);
-    background-color: var(--bg-mid-dark);
-  }
-
-  .save-icon-btn.dirty {
-    background-color: var(--accent);
-    color: #000000;
-  }
 
   .mobile-editor-wrapper {
     flex-grow: 1;
@@ -1102,7 +1074,16 @@
 
   .settings-content {
     padding: 24px;
-    gap: 20px;
+    gap: 16px;
+  }
+
+  .settings-section-title {
+    font-size: 11px;
+    font-weight: 800;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    margin-bottom: 4px;
   }
 
   .form-group {
