@@ -234,6 +234,62 @@
     const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
     const isModifier = isMac ? e.metaKey : e.ctrlKey;
 
+    // Tab / Shift+Tab for Indent / Outdent
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      const textarea = e.currentTarget as HTMLTextAreaElement;
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const text = textarea.value;
+
+      // Find the start of the line containing selection start
+      const lastNewline = text.lastIndexOf('\n', start - 1);
+      const startOfSelectionLine = lastNewline === -1 ? 0 : lastNewline + 1;
+
+      // Find the end of the line containing selection end
+      const nextNewline = text.indexOf('\n', end);
+      const endOfSelectionLine = nextNewline === -1 ? text.length : nextNewline;
+
+      const linesText = text.slice(startOfSelectionLine, endOfSelectionLine);
+      const lines = linesText.split('\n');
+
+      let newLinesText = '';
+      if (!e.shiftKey) {
+        // Indent: Add 2 spaces to the start of each line
+        newLinesText = lines.map(line => '  ' + line).join('\n');
+      } else {
+        // Outdent: Remove 2 spaces (or 1 tab/space) from the start of each line
+        newLinesText = lines.map(line => {
+          if (line.startsWith('  ')) {
+            return line.slice(2);
+          } else if (line.startsWith('\t')) {
+            return line.slice(1);
+          } else if (line.startsWith(' ')) {
+            return line.slice(1);
+          }
+          return line;
+        }).join('\n');
+      }
+
+      const beforeText = text.slice(0, startOfSelectionLine);
+      const afterText = text.slice(endOfSelectionLine);
+      appState.activeNoteContent = beforeText + newLinesText + afterText;
+      appState.editorDirty = true;
+
+      // Restore selection/caret position
+      setTimeout(() => {
+        textarea.focus();
+        const diff = newLinesText.length - linesText.length;
+        if (start === end) {
+          const newPos = Math.max(startOfSelectionLine, start + (e.shiftKey ? Math.max(-2, diff) : 2));
+          textarea.setSelectionRange(newPos, newPos);
+        } else {
+          textarea.setSelectionRange(startOfSelectionLine, endOfSelectionLine + diff);
+        }
+      }, 0);
+      return;
+    }
+
     // List continuation helper on Enter keypress
     if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
       const textarea = e.currentTarget as HTMLTextAreaElement;
