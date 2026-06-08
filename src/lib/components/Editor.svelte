@@ -4,7 +4,7 @@
     Save, HelpCircle, Network, ArrowLeft, BookOpen, AlertTriangle, Eye, Edit3, Columns,
     Bold, Italic, Strikethrough, Code, Highlighter, Heading1, Heading2, Heading3, Heading4,
     List, ListOrdered, ListTodo, Quote, Terminal, Minus, Table, Link2, Image as ImageIcon, Underline,
-    Indent, Outdent, ChevronLeft
+    Indent, Outdent 
   } from 'lucide-svelte';
   import { marked } from 'marked';
 
@@ -428,51 +428,26 @@
       showFloatingToolbar = false;
     }
   }
+
   function handleTextareaBlur() {
     setTimeout(() => {
       showFloatingToolbar = false;
     }, 200);
   }
-
-  // If screen is resized to mobile, force viewMode out of split view
-  $effect(() => {
-    const handleResize = () => {
-      if (window.innerWidth < 768 && viewMode === 'split') {
-        setViewMode('edit');
-      }
-    };
-    window.addEventListener('resize', handleResize);
-    handleResize();
-    return () => window.removeEventListener('resize', handleResize);
-  });
 </script>
 
 <div class="editor-container flex-col">
   {#if appState.activeNote}
     <!-- Editor Header Player Controls -->
     <div class="editor-header flex-row">
-      <div class="header-left flex-row">
-        <!-- Back button (mobile only) -->
-        <button 
-          class="btn-back mobile-only" 
-          onclick={() => {
-            if (appState.editorDirty) appState.saveActiveNote();
-            appState.activeNotePath = null;
-          }}
-          aria-label="Go back to list"
-        >
-          <ChevronLeft size={24} />
-        </button>
-
-        <div class="track-meta flex-col">
-          <span class="now-playing-lbl">NOW EDITING</span>
-          <input 
-            type="text" 
-            value={appState.activeNoteTitle} 
-            class="note-title-input" 
-            readonly
-          />
-        </div>
+      <div class="track-meta flex-col">
+        <span class="now-playing-lbl">NOW EDITING</span>
+        <input 
+          type="text" 
+          value={appState.activeNoteTitle} 
+          class="note-title-input" 
+          readonly
+        />
       </div>
 
       <!-- Controls Toolbar -->
@@ -509,7 +484,7 @@
             <Edit3 size={15} />
           </button>
           <button 
-            class="btn-segment split-view-btn" 
+            class="btn-segment" 
             class:active={viewMode === 'split'} 
             onclick={() => setViewMode('split')}
             title="Split View"
@@ -1221,113 +1196,5 @@
   .btn-float-tool:hover {
     color: var(--text-primary);
     background-color: rgba(255, 255, 255, 0.08);
-  }
-
-  /* Mobile Responsive revamps */
-  .btn-back {
-    background: transparent;
-    border: none;
-    outline: none;
-    color: var(--text-primary);
-    display: none;
-    align-items: center;
-    justify-content: center;
-    width: 36px;
-    height: 36px;
-    border-radius: 50%;
-    cursor: pointer;
-    margin-right: 4px;
-    flex-shrink: 0;
-  }
-
-  .btn-back:hover {
-    background-color: rgba(255, 255, 255, 0.08);
-  }
-
-  .btn-back:active {
-    background-color: rgba(255, 255, 255, 0.15);
-  }
-
-  .header-left {
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    overflow: hidden;
-    flex-grow: 1;
-    max-width: 50%;
-    gap: 8px;
-  }
-
-  @media (max-width: 767px) {
-    .mobile-only {
-      display: flex !important;
-    }
-
-    .editor-header {
-      height: 56px;
-      padding: 0 12px;
-    }
-
-    .track-meta {
-      max-width: 100%;
-    }
-
-    .now-playing-lbl {
-      font-size: 8px;
-      letter-spacing: 0.5px;
-    }
-
-    .note-title-input {
-      font-size: 14px;
-    }
-
-    .controls-toolbar {
-      gap: 8px;
-    }
-
-    .btn-control {
-      padding: 6px;
-      gap: 0;
-    }
-
-    .btn-control .btn-label {
-      display: none !important;
-    }
-
-    .split-view-btn {
-      display: none !important;
-    }
-
-    .editor-body {
-      padding: 12px;
-    }
-
-    .editor-textarea {
-      font-size: 14px;
-    }
-
-    .formatting-toolbar {
-      height: 36px;
-      padding: 0 8px;
-      gap: 2px;
-    }
-
-    .btn-tool {
-      width: 26px;
-      height: 26px;
-    }
-
-    .tool-divider {
-      height: 12px;
-      margin: 0 4px;
-    }
-
-    .editor-footer {
-      display: none !important;
-    }
-
-    .floating-selection-toolbar {
-      display: none !important;
-    }
   }
 </style>
