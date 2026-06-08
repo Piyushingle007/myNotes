@@ -1,0 +1,215 @@
+:root {
+  /* Design Reference Color Tokens */
+  --bg-base: #121212;
+  --bg-surface: #181818;
+  --bg-mid-dark: #1f1f1f;
+  --bg-card-hover: #2a2a2a;
+  
+  --accent: #1ed760;
+  --accent-hover: #1fdf64;
+  --accent-active: #1aa04c;
+  
+  --text-primary: #ffffff;
+  --text-secondary: #b3b3b3;
+  --text-tertiary: #7c7c7c;
+  
+  --semantic-error: #f3727f;
+  --semantic-warning: #ffa42b;
+  --semantic-info: #539df5;
+  
+  --border-color: #292929;
+  --border-highlight: #4d4d4d;
+  
+  --shadow-heavy: rgba(0, 0, 0, 0.5) 0px 8px 24px;
+  --shadow-medium: rgba(0, 0, 0, 0.3) 0px 8px 8px;
+  
+  /* Fonts */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+  
+  /* Radii */
+  --radius-subtle: 4px;
+  --radius-standard: 6px;
+  --radius-comfortable: 8px;
+  --radius-pill: 500px;
+  --radius-full-pill: 9999px;
+  --radius-circle: 50%;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: var(--bg-base);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom Dark Scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #5a5a5a;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #7a7a7a;
+}
+
+/* Reset buttons and inputs */
+button, input, select, textarea {
+  font-family: inherit;
+  font-size: inherit;
+  background: none;
+  border: none;
+  color: inherit;
+  outline: none;
+}
+
+button {
+  cursor: pointer;
+  user-select: none;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* Micro-animations and Utilities */
+.transition-all {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.ripple {
+  position: relative;
+  overflow: hidden;
+}
+
+/* Pill Button (Reference UI) */
+.btn-pill {
+  background-color: var(--bg-mid-dark);
+  color: var(--text-primary);
+  padding: 8px 16px;
+  border-radius: var(--radius-full-pill);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1.4px;
+  font-size: 12px;
+  transition: transform 0.1s ease, background-color 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-pill:hover {
+  background-color: var(--bg-card-hover);
+  transform: scale(1.03);
+}
+
+.btn-pill:active {
+  transform: scale(0.97);
+}
+
+.btn-pill-primary {
+  background-color: var(--accent);
+  color: #000000;
+}
+
+.btn-pill-primary:hover {
+  background-color: var(--accent-hover);
+}
+
+.btn-pill-outline {
+  background-color: transparent;
+  border: 1px solid var(--border-highlight);
+}
+
+.btn-pill-outline:hover {
+  border-color: var(--text-primary);
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+/* Circular Control (Reference UI) */
+.btn-circle {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-circle);
+  background-color: var(--bg-mid-dark);
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.1s ease, background-color 0.2s ease;
+}
+
+.btn-circle:hover {
+  background-color: var(--bg-card-hover);
+  transform: scale(1.05);
+}
+
+.btn-circle:active {
+  transform: scale(0.95);
+}
+
+.btn-circle-primary {
+  background-color: var(--accent);
+  color: #000000;
+}
+
+.btn-circle-primary:hover {
+  background-color: var(--accent-hover);
+}
+
+/* Reference Cards */
+.card-dark {
+  background-color: var(--bg-surface);
+  border-radius: var(--radius-comfortable);
+  padding: 16px;
+  transition: background-color 0.2s ease;
+}
+
+.card-dark:hover {
+  background-color: var(--bg-mid-dark);
+}
+
+/* Forms and Inputs */
+.input-pill {
+  background-color: var(--bg-mid-dark);
+  border-radius: var(--radius-pill);
+  padding: 10px 16px;
+  width: 100%;
+  color: var(--text-primary);
+  border: 1px solid transparent;
+  transition: border-color 0.2s ease;
+}
+
+.input-pill::placeholder {
+  color: var(--text-tertiary);
+}
+
+.input-pill:focus {
+  border-color: var(--border-highlight);
+  background-color: var(--bg-surface);
+}
+
+/* Selection and Highlighting */
+::selection {
+  background-color: rgba(30, 215, 96, 0.3);
+  color: var(--text-primary);
+}
