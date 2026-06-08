@@ -297,6 +297,8 @@
 
 	const modKey = navigator.platform.startsWith('Mac') ? '⌘' : 'Ctrl';
 	const isMobile = /android|iphone|ipad|ipod/i.test(navigator.userAgent);
+	let enterPressStart = 0;
+	let enterPressTimer: any = null;
 
 	// Track virtual keyboard height on mobile via visualViewport
 	let keyboardHeight = $state(0);
@@ -3260,6 +3262,43 @@
 			editorProps: {
 				attributes: { class: 'editor-content', spellcheck: 'false' },
 				handleDOMEvents: {
+					keydown: (view, event) => {
+						if (isMobile && event.key === 'Enter' && !event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey) {
+							if (enterPressStart === 0) {
+								enterPressStart = Date.now();
+								clearTimeout(enterPressTimer);
+								enterPressTimer = setTimeout(() => {
+									if (enterPressStart > 0 && editor) {
+										editor.commands.undo();
+										const tabEvent = new KeyboardEvent('keydown', {
+											key: 'Tab',
+											code: 'Tab',
+											keyCode: 9,
+											which: 9,
+											bubbles: true,
+											cancelable: true
+										});
+										editor.view.dom.dispatchEvent(tabEvent);
+										enterPressStart = 0;
+									}
+								}, 500);
+							}
+						}
+						return false;
+					},
+					keyup: (view, event) => {
+						if (isMobile && event.key === 'Enter') {
+							clearTimeout(enterPressTimer);
+							const duration = enterPressStart > 0 ? Date.now() - enterPressStart : 0;
+							enterPressStart = 0;
+							if (duration > 500 || duration === 0) {
+								event.preventDefault();
+								event.stopPropagation();
+								return true;
+							}
+						}
+						return false;
+					},
 					// Prevent focus-caused scroll jumps when clicking details toggle buttons.
 					// Pre-focusing with preventScroll means TipTap's focus() call sees
 					// hasFocus()=true and skips its scrolling view.focus() call.
@@ -4535,17 +4574,15 @@
 					class="icon-btn"
 					class:active={$activeNote?.meta.pinned}
 					onclick={() => {
-						if ($activeNote) {
+						if ($activeNote && $activeNotePath) {
 							$activeNote.meta.pinned = !$activeNote.meta.pinned;
-							$editorDirty = true;
-							autoSave();
+							appState.toggleFavorite($activeNotePath);
 						}
 					}}
-					title={$activeNote?.meta.pinned ? 'Unpin note' : 'Pin note'}
+					title={$activeNote?.meta.pinned ? 'Remove from Favorites' : 'Add to Favorites'}
 				>
 					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-						<path d="M12 17v5"/>
-						<path d="M9 2h6l-1 7h4l-2 4H8l-2-4h4L9 2z"/>
+						<path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
 					</svg>
 				</button>
 				<button

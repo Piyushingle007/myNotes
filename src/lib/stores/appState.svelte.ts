@@ -596,15 +596,8 @@ class AppState {
         }
       }
       
-      // Select first note by default on desktop if any, but keep dashboard open on mobile
-      const isMobileViewport = typeof window !== 'undefined' && window.innerWidth < 768;
-      if (!isMobileViewport) {
-        if (this.notes && this.notes.length > 0) {
-          this.selectNote(this.notes[0].path);
-        }
-      } else {
-        this.activeNotePath = null;
-      }
+      // Do not open any note by default on startup (shows dashboard)
+      this.activeNotePath = null;
     } catch (err) {
       console.error('[MyNotes] initSandbox error caught:', err);
       throw err;
@@ -629,14 +622,10 @@ class AppState {
         }
       }
 
-      const isMobileViewport = typeof window !== 'undefined' && window.innerWidth < 768;
-      if (!isMobileViewport && this.notes.length > 0) {
-        this.selectNote(this.notes[0].path);
-      } else {
-        this.activeNotePath = null;
-        this.activeNoteContent = '';
-        this.activeNoteTitle = '';
-      }
+      // Do not open any note by default on directory select (shows dashboard)
+      this.activeNotePath = null;
+      this.activeNoteContent = '';
+      this.activeNoteTitle = '';
     } catch (e) {
       console.error('Failed to open directory', e);
     }
