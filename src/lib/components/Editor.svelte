@@ -234,6 +234,86 @@
     const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
     const isModifier = isMac ? e.metaKey : e.ctrlKey;
 
+    // List continuation helper on Enter keypress
+    if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      const textarea = e.currentTarget as HTMLTextAreaElement;
+      const start = textarea.selectionStart;
+      const text = textarea.value;
+
+      // Find current line start and end
+      const lastNewline = text.lastIndexOf('\n', start - 1);
+      const lineStart = lastNewline === -1 ? 0 : lastNewline + 1;
+      const nextNewline = text.indexOf('\n', start);
+      const lineEnd = nextNewline === -1 ? text.length : nextNewline;
+      const lineText = text.slice(lineStart, lineEnd);
+
+      // Match markdown checklist, bullet list, and numbered list prefixes
+      const checkboxMatch = lineText.match(/^(\s*)-\s\[[ xX]\]\s*(.*)$/);
+      const bulletMatch = lineText.match(/^(\s*)([-*+])\s*(.*)$/);
+      const numberMatch = lineText.match(/^(\s*)(\d+)\.\s*(.*)$/);
+
+      if (checkboxMatch) {
+        e.preventDefault();
+        const [_, indent, content] = checkboxMatch;
+        if (content.trim() === '') {
+          // Erase checklist prefix if item is empty (exiting list)
+          const before = text.slice(0, lineStart);
+          const after = text.slice(lineEnd);
+          appState.activeNoteContent = before + indent + after;
+          appState.editorDirty = true;
+          setTimeout(() => {
+            textarea.focus();
+            textarea.setSelectionRange(lineStart + indent.length, lineStart + indent.length);
+          }, 0);
+        } else {
+          // Continue checkbox list
+          wrapSelection(`\n${indent}- [ ] `, '');
+        }
+        return;
+      }
+
+      if (numberMatch) {
+        e.preventDefault();
+        const [_, indent, numStr, content] = numberMatch;
+        if (content.trim() === '') {
+          // Erase numbered prefix if item is empty (exiting list)
+          const before = text.slice(0, lineStart);
+          const after = text.slice(lineEnd);
+          appState.activeNoteContent = before + indent + after;
+          appState.editorDirty = true;
+          setTimeout(() => {
+            textarea.focus();
+            textarea.setSelectionRange(lineStart + indent.length, lineStart + indent.length);
+          }, 0);
+        } else {
+          // Continue numbered list with incremented counter
+          const nextNum = parseInt(numStr, 10) + 1;
+          wrapSelection(`\n${indent}${nextNum}. `, '');
+        }
+        return;
+      }
+
+      if (bulletMatch) {
+        e.preventDefault();
+        const [_, indent, bullet, content] = bulletMatch;
+        if (content.trim() === '') {
+          // Erase bullet prefix if item is empty (exiting list)
+          const before = text.slice(0, lineStart);
+          const after = text.slice(lineEnd);
+          appState.activeNoteContent = before + indent + after;
+          appState.editorDirty = true;
+          setTimeout(() => {
+            textarea.focus();
+            textarea.setSelectionRange(lineStart + indent.length, lineStart + indent.length);
+          }, 0);
+        } else {
+          // Continue bullet list
+          wrapSelection(`\n${indent}${bullet} `, '');
+        }
+        return;
+      }
+    }
+
     if (isModifier) {
       if (e.key === 'b' || e.key === 'B') {
         e.preventDefault();
