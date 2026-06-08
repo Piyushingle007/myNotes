@@ -40,7 +40,6 @@
 
   function clearFilters() {
     appState.activeNotebook = null;
-    appState.activeTag = null;
     searchInput = '';
   }
 </script>
@@ -87,8 +86,8 @@
     <h1 class="list-title">
       {#if appState.activeNotebook}
         {appState.activeNotebook}
-      {:else if appState.activeTag}
-        #{appState.activeTag}
+      {:else if appState.activeNotePath?.startsWith('Daily Notes/')}
+        Daily Logs
       {:else}
         All Notes
       {/if}
@@ -97,7 +96,7 @@
     <div class="header-actions flex-row">
       <span class="count-indicator">
         {appState.filteredNotes.length} notes
-        {#if appState.activeNotebook || appState.activeTag}
+        {#if appState.activeNotebook}
           <button class="clear-btn" onclick={clearFilters}>• Clear Filter</button>
         {/if}
         {#if appState.googleConnected && appState.syncEnabled}

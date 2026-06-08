@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { appState } from '../stores/appState.svelte';
   import { 
     Save, HelpCircle, ArrowLeft, BookOpen, AlertTriangle, Eye, Edit3, Columns,
@@ -70,13 +71,16 @@
     }, 0);
   }
 
-  // View mode state (Edit, Split, Preview)
-  let viewMode = $state<'edit' | 'split' | 'preview'>((localStorage.getItem('mynotes_editor_view_mode') as any) || 'edit');
+  // View mode state and mobile checks
+  let isMobile = $state(false);
+  onMount(() => {
+    const checkMobile = () => isMobile = window.innerWidth < 768;
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  });
 
-  function setViewMode(mode: 'edit' | 'split' | 'preview') {
-    viewMode = mode;
-    localStorage.setItem('mynotes_editor_view_mode', mode);
-  }
+  let effectiveViewMode = $derived(isMobile && appState.editorViewMode === 'split' ? 'edit' : appState.editorViewMode);
 
   // Preprocess Markdown & parse with marked
   let previewHtml = $derived.by(() => {
@@ -502,24 +506,24 @@
         <div class="segmented-control flex-row">
           <button 
             class="btn-segment" 
-            class:active={viewMode === 'edit'} 
-            onclick={() => setViewMode('edit')}
+            class:active={appState.editorViewMode === 'edit'} 
+            onclick={() => appState.setEditorViewMode('edit')}
             title="Edit Mode"
           >
             <Edit3 size={15} />
           </button>
           <button 
             class="btn-segment" 
-            class:active={viewMode === 'split'} 
-            onclick={() => setViewMode('split')}
+            class:active={appState.editorViewMode === 'split'} 
+            onclick={() => appState.setEditorViewMode('split')}
             title="Split View"
           >
             <Columns size={15} />
           </button>
           <button 
             class="btn-segment" 
-            class:active={viewMode === 'preview'} 
-            onclick={() => setViewMode('preview')}
+            class:active={appState.editorViewMode === 'preview'} 
+            onclick={() => appState.setEditorViewMode('preview')}
             title="Preview Mode"
           >
             <Eye size={15} />
@@ -635,7 +639,7 @@
 
     <!-- Textarea Editing Panel / Preview Panel Workspace -->
     <div class="editor-body flex-row">
-      {#if viewMode !== 'preview'}
+      {#if effectiveViewMode !== 'preview'}
         <div class="editor-pane">
           <textarea 
             class="editor-textarea font-mono" 
@@ -650,11 +654,11 @@
         </div>
       {/if}
 
-      {#if viewMode === 'split'}
+      {#if effectiveViewMode === 'split'}
         <div class="editor-separator"></div>
       {/if}
 
-      {#if viewMode !== 'edit'}
+      {#if effectiveViewMode !== 'edit'}
         <div 
           class="preview-pane markdown-body" 
           onclick={handlePreviewClick}
@@ -877,6 +881,7 @@
     overflow: hidden;
     padding: 16px 24px;
     background-color: var(--bg-base);
+    min-height: 0;
   }
 
   .editor-textarea {
@@ -1270,5 +1275,15 @@
   .btn-float-tool:hover {
     color: var(--text-primary);
     background-color: rgba(255, 255, 255, 0.08);
+  }
+
+  @media (max-width: 767px) {
+    .editor-header,
+    .editor-footer {
+      display: none !important;
+    }
+    .editor-body {
+      padding: 12px 16px !important;
+    }
   }
 </style>

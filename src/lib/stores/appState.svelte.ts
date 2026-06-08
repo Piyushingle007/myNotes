@@ -19,7 +19,6 @@ class AppState {
   activeNoteContent = $state<string>('');
   activeNoteTitle = $state<string>('');
   activeNotebook = $state<string | null>(null);
-  activeTag = $state<string | null>(null);
   activeTab = $state<'home' | 'search' | 'library' | 'daily'>('home');
   searchQuery = $state<string>('');
   showSettings = $state<boolean>(false);
@@ -54,6 +53,7 @@ class AppState {
   syncStatus = $state<'idle' | 'syncing' | 'error'>('idle');
   lastSyncedTime = $state<number | null>(localStorage.getItem('mynotes_last_synced') ? Number(localStorage.getItem('mynotes_last_synced')) : null);
   syncEnabled = $state<boolean>(localStorage.getItem('mynotes_sync_enabled') === 'true');
+  editorViewMode = $state<'edit' | 'split' | 'preview'>((localStorage.getItem('mynotes_editor_view_mode') as any) || 'edit');
 
   // Google Drive Sync Service (non-reactive class instance, token stored privately inside)
   syncService = new GoogleDriveSync(localStorage.getItem('mynotes_google_client_id') || '');
@@ -87,6 +87,11 @@ class AppState {
     this.theme = newTheme;
     localStorage.setItem('mynotes_theme', newTheme);
     this.applyThemeClass();
+  }
+
+  setEditorViewMode(mode: 'edit' | 'split' | 'preview') {
+    this.editorViewMode = mode;
+    localStorage.setItem('mynotes_editor_view_mode', mode);
   }
 
   applyThemeClass() {
@@ -183,24 +188,15 @@ class AppState {
     this.notes.forEach(note => {
       const parts = note.path.split('/');
       if (parts.length > 1) {
-        // Add all parent directories
-        parts.slice(0, -1).forEach((_, idx) => {
-          list.add(parts.slice(0, idx + 1).join('/'));
-        });
+        const folderPath = parts.slice(0, -1).join('/');
+        if (!folderPath.startsWith('Daily Notes')) {
+          parts.slice(0, -1).forEach((_, idx) => {
+            list.add(parts.slice(0, idx + 1).join('/'));
+          });
+        }
       }
     });
     return Array.from(list).sort();
-  }
-
-  get tags() {
-    const map = new Map<string, number>();
-    this.notes.forEach(note => {
-      const hashTags = this.extractTags(note.content);
-      hashTags.forEach(tag => {
-        map.set(tag, (map.get(tag) || 0) + 1);
-      });
-    });
-    return Array.from(map.entries()).sort((a, b) => b[1] - a[1]);
   }
 
   get filteredNotes() {
@@ -209,10 +205,6 @@ class AppState {
     if (this.activeNotebook) {
       const prefix = this.activeNotebook.endsWith('/') ? this.activeNotebook : this.activeNotebook + '/';
       list = list.filter(n => n.path.startsWith(prefix) || n.path === this.activeNotebook);
-    }
-
-    if (this.activeTag) {
-      list = list.filter(n => this.extractTags(n.content).includes(this.activeTag!));
     }
 
     if (this.searchQuery.trim()) {
@@ -229,6 +221,16 @@ class AppState {
 
     // Sort by modified date descending
     return [...list].sort((a, b) => b.modified - a.modified);
+  }
+
+  get linesCountInActiveNotebook() {
+    if (!this.notes || this.notes.length === 0) return 0;
+    if (!this.activeNotebook) {
+      return this.notes.reduce((sum, note) => sum + (note?.content || '').split('\n').length, 0);
+    }
+    const prefix = this.activeNotebook.endsWith('/') ? this.activeNotebook : this.activeNotebook + '/';
+    const notebookNotes = this.notes.filter(n => n.path.startsWith(prefix) || n.path === this.activeNotebook);
+    return notebookNotes.reduce((sum, note) => sum + (note?.content || '').split('\n').length, 0);
   }
 
   get recentNotes() {
@@ -556,36 +558,55 @@ class AppState {
 
 
   async initSandbox() {
-    this.storage = new IndexedDBAdapter();
-    const name = await this.storage.selectDirectory();
-    this.vaultName = name;
-    
-    // Seed basic notes if sandbox is empty
-    const list = await this.storage.listNotes();
-    if (list.length === 0) {
-      await this.storage.writeNote('Welcome.md', '# Welcome to MyNotes 📓\n\nThis is a clean, local-first markdown note-taking app.\n\n### Features\n- **Notebooks**: Group your notes inside folders.\n- **Multi-color Themes**: Choose between Steel, Nordic, Dracula, and more.\n- **Wikilinks**: Connect pages with `[[Welcome]]` style wiki-links.\n- **Graph View**: Navigate your notes visually.\n\nEnjoy writing! #notes #welcome');
-      await this.storage.writeNote('Recipes/Pizza.md', '# Perfect Pizza Dough 🍕\n\nIngredients:\n- 500g Flour\n- 325ml Water\n- 7g Yeast\n- 10g Salt\n\nMix, knead, let rise for 24h. Bake at max temp! #recipes #cooking');
-      await this.storage.writeNote('Daily Notes/2026-06-08.md', '# Daily Log: June 8, 2026 🗓️\n\n- Completed scaffolding MyNotes project!\n- Successfully integrated Svelte 5 global stores and IndexedDB fallback storage.\n- Next step: build the canvas force-directed note graph.\n\nFeeling productive! #journal #dev');
-    }
-    
-    await this.refreshNotes();
-    this.vaultReady = true;
-    
-    // Auto-sync after initialization
-    if (this.syncEnabled) {
-      if (this.googleConnected) {
-        this.syncNotes();
-      } else {
-        this.autoConnectGoogleDrive();
+    console.log('[MyNotes] initSandbox started');
+    try {
+      this.storage = new IndexedDBAdapter();
+      console.log('[MyNotes] IndexedDBAdapter instance created');
+      const name = await this.storage.selectDirectory();
+      console.log('[MyNotes] selectDirectory returned:', name);
+      this.vaultName = name;
+      
+      // Clean up existing default files if they are in the storage
+      console.log('[MyNotes] listNotes starting...');
+      const list = await this.storage.listNotes();
+      console.log('[MyNotes] listNotes completed, count:', list?.length);
+      const defaultFiles = ['Welcome.md', 'Recipes/Pizza.md', 'Daily Notes/2026-06-08.md'];
+      let needsRefresh = false;
+      for (const file of defaultFiles) {
+        if (list && list.some(n => n.path === file)) {
+          console.log('[MyNotes] deleting default file:', file);
+          await this.storage.deleteNote(file);
+          needsRefresh = true;
+        }
       }
-    }
-    
-    // Select welcome note by default
-    const welcome = this.notes.find(n => n.path === 'Welcome.md');
-    if (welcome) {
-      this.selectNote(welcome.path);
-    } else if (this.notes.length > 0) {
-      this.selectNote(this.notes[0].path);
+      
+      console.log('[MyNotes] refreshNotes starting...');
+      await this.refreshNotes();
+      console.log('[MyNotes] refreshNotes completed');
+      this.vaultReady = true;
+      console.log('[MyNotes] vaultReady set to true');
+      
+      // Auto-sync after initialization
+      if (this.syncEnabled) {
+        if (this.googleConnected) {
+          this.syncNotes();
+        } else {
+          this.autoConnectGoogleDrive();
+        }
+      }
+      
+      // Select first note by default on desktop if any, but keep dashboard open on mobile
+      const isMobileViewport = typeof window !== 'undefined' && window.innerWidth < 768;
+      if (!isMobileViewport) {
+        if (this.notes && this.notes.length > 0) {
+          this.selectNote(this.notes[0].path);
+        }
+      } else {
+        this.activeNotePath = null;
+      }
+    } catch (err) {
+      console.error('[MyNotes] initSandbox error caught:', err);
+      throw err;
     }
   }
 
@@ -607,7 +628,8 @@ class AppState {
         }
       }
 
-      if (this.notes.length > 0) {
+      const isMobileViewport = typeof window !== 'undefined' && window.innerWidth < 768;
+      if (!isMobileViewport && this.notes.length > 0) {
         this.selectNote(this.notes[0].path);
       } else {
         this.activeNotePath = null;
@@ -790,12 +812,7 @@ class AppState {
     }
   }
 
-  // Tag utility helper
-  private extractTags(content: string): string[] {
-    const matches = content.match(/#\w+/g);
-    if (!matches) return [];
-    return Array.from(new Set(matches.map(m => m.slice(1).toLowerCase())));
-  }
+
 }
 
 export const appState = new AppState();

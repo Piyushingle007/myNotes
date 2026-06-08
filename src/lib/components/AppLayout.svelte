@@ -7,7 +7,7 @@
   import { 
     Home, Search, Library, Calendar, ChevronLeft, Plus, 
     FileText, Tag, FolderPlus, Compass, ArrowRight, Settings,
-    X, Cloud, RefreshCw, LogOut, Palette, ChevronRight, Menu
+    X, Cloud, RefreshCw, LogOut, Palette, ChevronRight, Menu, Folder
   } from 'lucide-svelte';
   import ResizeHandle from './ResizeHandle.svelte';
 
@@ -77,7 +77,7 @@
     {#if appState.activeNotePath}
       <!-- Fullscreen Editor Overlay for Mobile -->
       <div class="mobile-editor-container flex-col">
-        <div class="mobile-editor-top flex-row">
+        <div class="mobile-editor-top flex-row" style="justify-content: space-between; width: 100%;">
           <button 
             class="back-btn flex-row" 
             onclick={() => {
@@ -87,12 +87,24 @@
             aria-label="Back"
           >
             <ChevronLeft size={24} />
-            <span class="back-text">Notes</span>
           </button>
           
-          <div class="editor-note-meta flex-col">
-            <span class="small-tag">EDITING</span>
-            <span class="note-name-header">{appState.activeNote?.name}</span>
+          <!-- Edit/Preview View Toggle for Mobile -->
+          <div class="mobile-view-toggle flex-row" style="background-color: var(--bg-mid-dark); border-radius: var(--radius-pill); padding: 2px; gap: 4px;">
+            <button 
+              class="mobile-toggle-btn" 
+              onclick={() => appState.setEditorViewMode('edit')}
+              style="padding: 4px 10px; font-size: 11px; font-weight: 700; border-radius: var(--radius-pill); cursor: pointer; transition: background-color 0.2s, color 0.2s; color: {appState.editorViewMode === 'edit' || appState.editorViewMode === 'split' ? '#000000' : 'var(--text-secondary)'}; background-color: {appState.editorViewMode === 'edit' || appState.editorViewMode === 'split' ? 'var(--accent)' : 'transparent'};"
+            >
+              Edit
+            </button>
+            <button 
+              class="mobile-toggle-btn" 
+              onclick={() => appState.setEditorViewMode('preview')}
+              style="padding: 4px 10px; font-size: 11px; font-weight: 700; border-radius: var(--radius-pill); cursor: pointer; transition: background-color 0.2s, color 0.2s; color: {appState.editorViewMode === 'preview' ? '#000000' : 'var(--text-secondary)'}; background-color: {appState.editorViewMode === 'preview' ? 'var(--accent)' : 'transparent'};"
+            >
+              Preview
+            </button>
           </div>
           
           <!-- Save / Close Toolbar -->
@@ -116,7 +128,10 @@
         {#if appState.activeTab === 'home'}
           <div class="mobile-tab-view flex-col">
             <div class="mobile-header flex-row" style="justify-content: space-between; width: 100%;">
-              <h1>{greeting}</h1>
+              <div class="flex-col">
+                <h1>{greeting}</h1>
+                <span class="mobile-vault-stat" style="font-size: 12px; color: var(--text-secondary); margin-top: 4px;">{appState.notes.length} notes in your vault</span>
+              </div>
               <button 
                 class="icon-circle-btn flex-row" 
                 onclick={() => appState.showSettings = true}
@@ -126,33 +141,47 @@
               </button>
             </div>
 
-            <!-- Recently Played Notes (2x3 Grid) -->
-            <div class="home-section">
-              <h2 class="section-title">Recently Opened</h2>
-              <div class="recent-grid">
-                {#each appState.recentNotes as note}
-                  <button class="recent-tile flex-row" onclick={() => appState.selectNote(note.path)}>
-                    <div class="tile-art flex-row">📄</div>
-                    <span class="tile-title">{note.name}</span>
-                  </button>
-                {/each}
+            <!-- Premium Stats Dashboard Card -->
+            <div class="home-section stats-section" style="margin-top: 8px; margin-bottom: 8px;">
+              <div class="stats-grid flex-row" style="gap: 12px; width: 100%;">
+                <div class="stat-card flex-col" style="flex: 1; padding: 12px; background: var(--bg-surface); border-radius: var(--radius-standard); align-items: center; border: 1px solid var(--border-color); text-align: center;">
+                  <span class="stat-value" style="font-size: 20px; font-weight: 700; color: var(--accent);">{appState.notebooks.length}</span>
+                  <span class="stat-label" style="font-size: 10px; color: var(--text-secondary); text-transform: uppercase; margin-top: 4px; font-weight: 600;">Notebooks</span>
+                </div>
+                <div class="stat-card flex-col" style="flex: 1; padding: 12px; background: var(--bg-surface); border-radius: var(--radius-standard); align-items: center; border: 1px solid var(--border-color); text-align: center;">
+                  <span class="stat-value" style="font-size: 20px; font-weight: 700; color: var(--accent);">{appState.notes.length}</span>
+                  <span class="stat-label" style="font-size: 10px; color: var(--text-secondary); text-transform: uppercase; margin-top: 4px; font-weight: 600;">Files</span>
+                </div>
+                <div class="stat-card flex-col" style="flex: 1.2; padding: 12px; background: var(--bg-surface); border-radius: var(--radius-standard); align-items: center; border: 1px solid var(--border-color); text-align: center; justify-content: center; min-width: 0;">
+                  <span class="stat-value" style="font-size: 20px; font-weight: 700; color: var(--accent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%;">{appState.linesCountInActiveNotebook}</span>
+                  <span class="stat-label" style="font-size: 10px; color: var(--text-secondary); text-transform: uppercase; margin-top: 4px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%;">
+                    {#if appState.activeNotebook}
+                      Lines in {appState.activeNotebook}
+                    {:else}
+                      Total Lines
+                    {/if}
+                  </span>
+                </div>
               </div>
             </div>
 
-            <!-- Tags Carousel Section -->
+            <!-- Recent Notes Cards Feed (Keep/Docs Style) -->
             <div class="home-section">
-              <h2 class="section-title">Popular Tags</h2>
-              <div class="tags-carousel flex-row">
-                {#each appState.tags.slice(0, 8) as [tag, count]}
-                  <button 
-                    class="tag-pill flex-row" 
-                    onclick={() => {
-                      appState.activeTag = tag;
-                      appState.activeTab = 'search';
-                    }}
-                  >
-                    #{tag} <span class="badge">{count}</span>
+              <h2 class="section-title">Recent Notes</h2>
+              <div class="recent-cards-list flex-col" style="gap: 12px;">
+                {#each appState.recentNotes as note}
+                  <button class="recent-note-card flex-col" onclick={() => appState.selectNote(note.path)}>
+                    <div class="card-header-row flex-row" style="justify-content: space-between; width: 100%;">
+                      <span class="card-note-title">{note.name}</span>
+                      <span class="card-note-time">{new Date(note.modified).toLocaleDateString(undefined, {month: 'short', day: 'numeric'})}</span>
+                    </div>
+                    <p class="card-note-snippet">{(note.content || '').replace(/[#*`_\-\[\]()]/g, ' ').slice(0, 75)}...</p>
+                    {#if note.path.includes('/')}
+                      <span class="card-notebook-badge">{note.path.split('/')[0]}</span>
+                    {/if}
                   </button>
+                {:else}
+                  <div class="empty-cards" style="font-size: 12px; color: var(--text-tertiary); text-align: center; padding: 20px 0;">No notes found. Click the + button below to create one!</div>
                 {/each}
               </div>
             </div>
@@ -181,7 +210,7 @@
               <Search size={20} class="search-icon" />
               <input 
                 type="text" 
-                placeholder="Search notes, folders, tags..." 
+                placeholder="Search notes, folders..." 
                 bind:value={mobileSearchInput}
                 oninput={() => appState.searchQuery = mobileSearchInput}
                 class="mobile-search-input"
@@ -203,28 +232,45 @@
                 {/each}
               </div>
             {:else}
-              <!-- Browse Categories (Colored Tags Grid) -->
-              <div class="browse-categories flex-col">
-                <span class="section-title">Browse all tags</span>
-                <div class="browse-grid">
-                  <!-- Custom styled colored cards -->
-                  {#each appState.tags as [tag, _], index}
-                    <!-- Cycle through distinct Spotify category colors -->
-                    {@const colors = ['#E8115B', '#BC4639', '#1C8A43', '#1E3264', '#E1118C', '#E91429', '#27856A', '#608108']}
-                    {@const color = colors[index % colors.length]}
+              <!-- Notebooks Folder List -->
+              <div class="search-section flex-col" style="gap: 8px;">
+                <span class="section-title">Notebooks</span>
+                <div class="notebook-list flex-col" style="gap: 6px;">
+                  {#each appState.notebooks as notebook}
                     <button 
-                      class="browse-card" 
-                      style="background-color: {color};"
+                      class="notebook-row flex-row" 
                       onclick={() => {
-                        appState.activeTag = tag;
-                        mobileSearchInput = `#${tag}`;
-                        appState.searchQuery = tag;
+                        appState.activeNotebook = notebook;
+                        appState.activeTab = 'library';
                       }}
+                      style="width: 100%; padding: 10px 12px; border-radius: var(--radius-standard); border: 1px solid var(--border-color); background-color: var(--bg-surface); gap: 12px; text-align: left;"
                     >
-                      <span class="category-name">#{tag}</span>
+                      <Folder size={18} style="color: var(--accent); flex-shrink: 0;" />
+                      <span style="font-size: 13px; font-weight: 600; color: var(--text-primary);">{notebook}</span>
                     </button>
                   {:else}
-                    <div class="empty-browse">No categories available. Add tags like #work or #personal.</div>
+                    <div class="empty-list" style="font-size: 12px; color: var(--text-tertiary); text-align: center; padding: 12px 0;">No notebooks created yet.</div>
+                  {/each}
+                </div>
+              </div>
+
+              <!-- Recent Notes in Search View -->
+              <div class="search-section flex-col" style="gap: 8px; margin-top: 16px;">
+                <span class="section-title">Recent Notes</span>
+                <div class="recent-list flex-col" style="gap: 6px;">
+                  {#each appState.recentNotes.slice(0, 5) as note}
+                    <button 
+                      class="search-result-row flex-row" 
+                      onclick={() => appState.selectNote(note.path)}
+                    >
+                      <div class="row-art">📄</div>
+                      <div class="row-info flex-col">
+                        <span class="row-title">{note.name}</span>
+                        <span class="row-sub">{note.path}</span>
+                      </div>
+                    </button>
+                  {:else}
+                    <div class="empty-list" style="font-size: 12px; color: var(--text-tertiary); text-align: center; padding: 12px 0;">No notes found.</div>
                   {/each}
                 </div>
               </div>
@@ -353,12 +399,26 @@
         {/if}
       </div>
 
+      <!-- Floating Action Button (FAB) on Mobile -->
+      {#if appState.activeTab === 'library' || appState.activeTab === 'home'}
+        <button 
+          class="mobile-fab flex-row" 
+          onclick={() => {
+            const title = prompt('Enter note title:', 'New Note');
+            if (title) appState.createNote(title, appState.activeNotebook);
+          }}
+          aria-label="Add new note"
+        >
+          <Plus size={24} />
+        </button>
+      {/if}
+
       <!-- Android Bottom Navigation Bar (Spotify Style) -->
       <div class="android-bottom-nav flex-row">
         <button 
           class="nav-tab flex-col" 
           class:active={appState.activeTab === 'home'} 
-          onclick={() => { appState.activeTab = 'home'; appState.activeNotebook = null; appState.activeTag = null; }}
+          onclick={() => { appState.activeTab = 'home'; appState.activeNotebook = null; }}
         >
           <Home size={22} />
           <span>Home</span>
@@ -376,7 +436,7 @@
         <button 
           class="nav-tab flex-col" 
           class:active={appState.activeTab === 'library'} 
-          onclick={() => { appState.activeTab = 'library'; appState.activeNotebook = null; appState.activeTag = null; }}
+          onclick={() => { appState.activeTab = 'library'; appState.activeNotebook = null; }}
         >
           <Library size={22} />
           <span>Library</span>
@@ -699,8 +759,11 @@
   }
 
   .mobile-content {
+    flex-grow: 1;
     overflow-y: auto;
-    padding-bottom: 70px; /* space for bottom nav */
+    padding-bottom: 90px; /* space for bottom nav and FAB */
+    min-height: 0;
+    -webkit-overflow-scrolling: touch;
   }
 
   .mobile-tab-view {
@@ -732,75 +795,68 @@
     color: var(--text-primary);
   }
 
-  /* Recent Grid (2x3 tiles) */
-  .recent-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 8px;
+  /* Recent Note Cards List */
+  .recent-cards-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
   }
 
-  .recent-tile {
-    background-color: rgba(255, 255, 255, 0.06);
-    border-radius: var(--radius-subtle);
-    padding: 0;
+  .recent-note-card {
+    background-color: var(--bg-surface);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-comfortable);
+    padding: 14px 16px;
     text-align: left;
-    height: 48px;
-    overflow: hidden;
+    width: 100%;
     gap: 8px;
-    transition: background-color 0.2s;
+    transition: transform 0.15s ease, border-color 0.2s ease, background-color 0.2s ease;
   }
 
-  .recent-tile:active {
-    background-color: rgba(255, 255, 255, 0.15);
-  }
-
-  .tile-art {
-    width: 48px;
-    height: 48px;
-    background-color: var(--bg-surface);
-    font-size: 18px;
-    justify-content: center;
-    flex-shrink: 0;
-  }
-
-  .tile-title {
-    font-size: 11px;
-    font-weight: 600;
-    color: var(--text-primary);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    padding-right: 8px;
-  }
-
-  /* Tags Carousel */
-  .tags-carousel {
-    gap: 8px;
-    overflow-x: auto;
-    padding-bottom: 4px;
-    scroll-snap-type: x mandatory;
-  }
-
-  .tags-carousel::-webkit-scrollbar {
-    display: none; /* Hide scrollbars for app feel */
-  }
-
-  .tag-pill {
-    background-color: var(--bg-surface);
-    color: var(--text-primary);
-    padding: 6px 12px;
-    border-radius: var(--radius-full-pill);
-    font-size: 11px;
-    font-weight: 600;
-    white-space: nowrap;
-    gap: 4px;
-  }
-
-  .tag-pill .badge {
+  .recent-note-card:active {
+    transform: scale(0.98);
     background-color: var(--bg-mid-dark);
-    padding: 2px 6px;
-    border-radius: 50%;
+  }
+
+  .card-header-row {
+    justify-content: space-between;
+    width: 100%;
+  }
+
+  .card-note-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-primary);
+  }
+
+  .card-note-time {
+    font-size: 10px;
+    color: var(--text-tertiary);
+  }
+
+  .card-note-snippet {
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+    margin: 0;
+    word-break: break-word;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    text-align: left;
+  }
+
+  .card-notebook-badge {
     font-size: 9px;
+    font-weight: 700;
+    color: var(--accent);
+    background-color: rgba(0, 173, 181, 0.08);
+    padding: 2px 8px;
+    border-radius: var(--radius-pill);
+    align-self: flex-start;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
   }
 
   /* Cards */
@@ -854,40 +910,14 @@
     color: var(--text-tertiary);
   }
 
-  /* Browse Category Grid */
-  .browse-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
-    margin-top: 8px;
+  /* Notebook search lists */
+  .notebook-row {
+    transition: transform 0.15s ease, background-color 0.2s ease;
   }
 
-  .browse-card {
-    height: 90px;
-    border-radius: var(--radius-comfortable);
-    padding: 12px;
-    text-align: left;
-    position: relative;
-    overflow: hidden;
-  }
-
-  .browse-card:active {
-    transform: scale(0.97);
-  }
-
-  .category-name {
-    font-size: 14px;
-    font-weight: 700;
-    color: #ffffff;
-    word-break: break-all;
-  }
-
-  .empty-browse {
-    grid-column: 1 / span 2;
-    text-align: center;
-    font-size: 11px;
-    color: var(--text-tertiary);
-    padding: 24px 0;
+  .notebook-row:active {
+    transform: scale(0.98);
+    background-color: var(--bg-mid-dark) !important;
   }
 
   /* Search Result List */
@@ -976,6 +1006,7 @@
     gap: 8px;
     overflow-x: auto;
     padding-bottom: 2px;
+    -webkit-overflow-scrolling: touch;
   }
 
   .lib-filters::-webkit-scrollbar {
@@ -1061,35 +1092,62 @@
     gap: 8px;
   }
 
-  /* Mobile Bottom Navigation Bar */
+  /* Mobile Bottom Navigation Bar - Floating Glassmorphic Pill */
   .android-bottom-nav {
     position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    height: 64px;
-    background-color: rgba(24, 24, 24, 0.95);
-    backdrop-filter: blur(12px);
-    border-top: 1px solid var(--border-color);
+    bottom: 16px;
+    left: 16px;
+    right: 16px;
+    height: 56px;
+    background-color: rgba(24, 27, 32, 0.85); /* var(--bg-surface) with opacity */
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: var(--radius-pill);
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
     justify-content: space-around;
     z-index: 10;
+    padding: 0 8px;
   }
 
   .nav-tab {
-    padding: 8px 12px;
+    padding: 6px 12px;
     color: var(--text-secondary);
-    gap: 4px;
+    gap: 2px;
     align-items: center;
-    transition: color 0.2s;
+    justify-content: center;
+    border-radius: var(--radius-pill);
+    transition: all 0.2s ease;
   }
 
   .nav-tab.active {
-    color: var(--text-primary);
+    color: var(--accent);
+    background-color: rgba(255, 255, 255, 0.04);
   }
 
   .nav-tab span {
     font-size: 9px;
-    font-weight: 600;
+    font-weight: 750;
+  }
+
+  /* Floating Action Button (FAB) */
+  .mobile-fab {
+    position: absolute;
+    bottom: 88px; /* sits above floating bottom nav */
+    right: 20px;
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    background-color: var(--accent);
+    color: #000000;
+    box-shadow: 0 4px 16px rgba(0, 173, 181, 0.35);
+    justify-content: center;
+    z-index: 20;
+    transition: transform 0.15s ease, background-color 0.2s;
+  }
+
+  .mobile-fab:active {
+    transform: scale(0.9);
   }
 
   /* Full-Screen Mobile Editor Overlay */
@@ -1161,6 +1219,7 @@
   .mobile-editor-wrapper {
     flex-grow: 1;
     overflow: hidden;
+    min-height: 0;
   }
 
   /* ============================================== */
@@ -1185,6 +1244,9 @@
     border-radius: var(--radius-comfortable);
     width: 90%;
     max-width: 480px;
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
     box-shadow: var(--shadow-heavy);
     animation: settings-slide-up 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
     overflow: hidden;
@@ -1232,6 +1294,10 @@
   .settings-content {
     padding: 24px;
     gap: 20px;
+    overflow-y: auto;
+    flex-grow: 1;
+    min-height: 0;
+    -webkit-overflow-scrolling: touch;
   }
 
   .form-group {

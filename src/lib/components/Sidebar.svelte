@@ -1,6 +1,6 @@
 <script lang="ts">
   import { appState } from '../stores/appState.svelte';
-  import { Folder, Plus, Trash2, Tag, Settings, Library, Palette, FolderOpen, X, ChevronRight, FileText } from 'lucide-svelte';
+  import { Folder, Plus, Trash2, Calendar, Settings, Library, Palette, FolderOpen, X, ChevronRight, FileText } from 'lucide-svelte';
   import GoogleLogo from './GoogleLogo.svelte';
 
   let newNotebookName = $state('');
@@ -8,12 +8,22 @@
 
   function selectNotebook(notebook: string | null) {
     appState.activeNotebook = notebook;
-    appState.activeTag = null;
   }
 
-  function selectTag(tag: string | null) {
-    appState.activeTag = tag;
-    appState.activeNotebook = null;
+  async function handleDesktopDailyNote() {
+    const today = new Date().toISOString().split('T')[0];
+    const dailyPath = `Daily Notes/${today}.md`;
+    
+    // Check if it already exists
+    const existing = appState.notes.find(n => n.path === dailyPath);
+    if (existing) {
+      appState.selectNote(existing.path);
+    } else {
+      await appState.storage.createDirectory('Daily Notes');
+      await appState.storage.writeNote(dailyPath, `# Daily Log: ${today} 🗓️\n\n- Write daily highlights here...\n\n#journal`);
+      await appState.refreshNotes();
+      appState.selectNote(dailyPath);
+    }
   }
 
   async function handleCreateNotebook(e: SubmitEvent) {
@@ -113,7 +123,7 @@
     <div class="list-scroll">
       <div 
         class="nav-item flex-row" 
-        class:active={appState.activeNotebook === null && appState.activeTag === null}
+        class:active={appState.activeNotebook === null && !appState.activeNotePath?.startsWith('Daily Notes/')}
         role="button"
         tabindex="0"
         onclick={() => selectNotebook(null)}
@@ -152,26 +162,43 @@
     </div>
   </div>
 
-  <!-- Tags Section -->
-  <div class="section-container flex-col tags-container">
+  <!-- Daily Logs Section -->
+  <div class="section-container flex-col daily-container">
     <div class="section-header flex-row">
-      <Tag size={18} class="sec-icon" />
-      <span class="section-title">Tags</span>
+      <Calendar size={18} class="sec-icon" />
+      <span class="section-title">Daily Logs</span>
+      <button class="add-btn flex-row" onclick={handleDesktopDailyNote} aria-label="Create/Open today's note">
+        <Plus size={16} />
+      </button>
     </div>
     
-    <div class="list-scroll tag-grid">
-      {#each appState.tags as [tag, count]}
-        <button 
-          class="tag-chip" 
-          class:active={appState.activeTag === tag}
-          onclick={() => selectTag(tag)}
+    <div class="list-scroll">
+      {#each appState.notes.filter(n => n.path.startsWith('Daily Notes/')).sort((a, b) => (b.name || '').localeCompare(a.name || '')) as note}
+        <div 
+          class="nav-item flex-row" 
+          class:active={appState.activeNotePath === note.path}
+          role="button"
+          tabindex="0"
+          onclick={() => appState.selectNote(note.path)}
+          onkeydown={(e) => e.key === 'Enter' && appState.selectNote(note.path)}
+          style="padding: 6px 8px; gap: 8px;"
         >
-          #{tag} <span class="tag-count">({count})</span>
-        </button>
+          <div class="playlist-art" style="width: 28px; height: 28px; font-size: 14px;">🗓️</div>
+          <div class="nav-text flex-col">
+            <span class="title" style="font-size: 12px;">{note.name}</span>
+          </div>
+          <button 
+            class="item-delete-btn" 
+            onclick={(e) => { e.stopPropagation(); if (confirm('Delete this daily log?')) appState.deleteNote(note.path); }}
+            aria-label="Delete daily note"
+            style="right: 4px;"
+          >
+            <Trash2 size={12} />
+          </button>
+        </div>
+      {:else}
+        <span class="empty-text">No daily logs found</span>
       {/each}
-      {#if appState.tags.length === 0}
-        <span class="empty-text">No tags found in notes</span>
-      {/if}
     </div>
   </div>
 
@@ -246,7 +273,7 @@
     overflow: hidden;
   }
 
-  .tags-container {
+  .daily-container {
     flex: 0.8;
   }
 
@@ -375,38 +402,7 @@
     background-color: rgba(255, 255, 255, 0.05);
   }
 
-  .tag-grid {
-    flex-direction: row;
-    flex-wrap: wrap;
-    gap: 6px;
-    align-content: flex-start;
-  }
 
-  .tag-chip {
-    background-color: var(--bg-mid-dark);
-    padding: 6px 10px;
-    border-radius: var(--radius-full-pill);
-    font-size: 12px;
-    font-weight: 500;
-    color: var(--text-secondary);
-    transition: background-color 0.2s, color 0.2s;
-  }
-
-  .tag-chip:hover {
-    background-color: var(--bg-card-hover);
-    color: var(--text-primary);
-  }
-
-  .tag-chip.active {
-    background-color: var(--accent);
-    color: #000000;
-    font-weight: 600;
-  }
-
-  .tag-count {
-    font-size: 10px;
-    opacity: 0.8;
-  }
 
   .empty-text {
     font-size: 11px;
