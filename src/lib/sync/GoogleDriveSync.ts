@@ -134,15 +134,106 @@ export class GoogleDriveSync {
     return res.text();
   }
 
+  // Find or create a subfolder hierarchy recursively on Google Drive
+  async getOrCreateSubfolders(dirPath: string, parentId: string): Promise<string> {
+    const parts = dirPath.split('/').filter(Boolean);
+    let currentParentId = parentId;
+
+    for (const part of parts) {
+      const query = encodeURIComponent(`mimeType = 'application/vnd.google-apps.folder' and name = '${part.replace(/'/g, "\\'")}' and '${currentParentId}' in parents and trashed = false`);
+      const searchUrl = `https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name)`;
+      
+      const res = await this.apiCall(searchUrl);
+      const data = await res.json();
+      
+      if (data.files && data.files.length > 0) {
+        currentParentId = data.files[0].id;
+      } else {
+        // Create folder
+        const createUrl = 'https://www.googleapis.com/drive/v3/files';
+        const createRes = await this.apiCall(createUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            name: part,
+            mimeType: 'application/vnd.google-apps.folder',
+            parents: [currentParentId]
+          })
+        });
+        const folder = await createRes.json();
+        currentParentId = folder.id;
+      }
+    }
+
+    return currentParentId;
+  }
+
+  // List all markdown files in sync folder recursively
+  async listAllFilesRecursively(vaultFolderId: string): Promise<Array<DriveFileMeta & { path: string }>> {
+    const url = `https://www.googleapis.com/drive/v3/files?fields=files(id,name,modifiedTime,parents,mimeType)&pageSize=1000&q=trashed=false`;
+    const res = await this.apiCall(url);
+    const data = await res.json();
+    const allItems: any[] = data.files || [];
+
+    const itemMap = new Map<string, { name: string; parents?: string[]; mimeType: string }>();
+    for (const item of allItems) {
+      itemMap.set(item.id, {
+        name: item.name,
+        parents: item.parents,
+        mimeType: item.mimeType
+      });
+    }
+
+    const resolvePath = (itemId: string): string | null => {
+      let currentId = itemId;
+      const pathParts: string[] = [];
+
+      while (true) {
+        if (currentId === vaultFolderId) {
+          return pathParts.reverse().join('/');
+        }
+        
+        const item = itemMap.get(currentId);
+        if (!item) return null;
+
+        pathParts.push(item.name);
+
+        if (!item.parents || item.parents.length === 0) {
+          return null;
+        }
+        currentId = item.parents[0];
+      }
+    };
+
+    const results: Array<DriveFileMeta & { path: string }> = [];
+    for (const item of allItems) {
+      if (item.mimeType !== 'application/vnd.google-apps.folder' && item.name.toLowerCase().endsWith('.md')) {
+        const relativePath = resolvePath(item.id);
+        if (relativePath) {
+          results.push({
+            id: item.id,
+            name: item.name,
+            modifiedTime: item.modifiedTime,
+            path: relativePath
+          });
+        }
+      }
+    }
+
+    return results;
+  }
+
   // Upload/Update file (Multipart upload for metadata + content)
-  async uploadFile(filename: string, content: string, fileId?: string): Promise<{ id: string; modifiedTime: string }> {
-    const folderId = await this.getOrCreateSyncFolder();
+  async uploadFile(filename: string, content: string, fileId?: string, parentFolderId?: string): Promise<{ id: string; modifiedTime: string }> {
+    const resolvedParentId = parentFolderId || await this.getOrCreateSyncFolder();
     
     const metadata: any = {
       name: filename
     };
     if (!fileId) {
-      metadata.parents = [folderId];
+      metadata.parents = [resolvedParentId];
     }
 
     const url = fileId

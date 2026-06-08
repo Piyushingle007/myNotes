@@ -1,6 +1,6 @@
 <script lang="ts">
   import { appState } from '../stores/appState.svelte';
-  import { Folder, Plus, Trash2, Tag, Settings, Library, Moon, Sun, FolderOpen } from 'lucide-svelte';
+  import { Folder, Plus, Trash2, Tag, Settings, Library, Moon, Sun, FolderOpen, X } from 'lucide-svelte';
 
   let newNotebookName = $state('');
   let showCreateInput = $state(false);
@@ -139,6 +139,50 @@
       {/if}
     </div>
   </div>
+
+  <!-- Recent Folders Section -->
+  {#if appState.recentFolders.length > 0}
+    <div class="section-container flex-col recent-folders-container">
+      <div class="section-header flex-row">
+        <Folder size={18} class="sec-icon" />
+        <span class="section-title">Recent Folders</span>
+      </div>
+      
+      <div class="list-scroll recent-folders-list">
+        <!-- Always show Local Sandbox as first option -->
+        <button 
+          class="recent-folder-item flex-row" 
+          class:active={appState.vaultName === 'Local Sandbox' || appState.vaultName === null}
+          onclick={() => appState.selectRecentFolder('Local Sandbox')}
+        >
+          <span class="folder-icon">⭐</span>
+          <span class="folder-name">Local Sandbox</span>
+        </button>
+
+        {#each appState.recentFolders as folder}
+          <div class="recent-folder-row flex-row">
+            <button 
+              class="recent-folder-item flex-row" 
+              class:active={appState.vaultName === folder.name}
+              onclick={() => appState.selectRecentFolder(folder.name)}
+              title={folder.name}
+            >
+              <span class="folder-icon">📂</span>
+              <span class="folder-name">{folder.name}</span>
+            </button>
+            <button 
+              class="folder-delete-btn" 
+              onclick={() => appState.removeRecentFolder(folder.name)}
+              aria-label="Remove folder"
+              title="Remove from recents"
+            >
+              <X size={12} />
+            </button>
+          </div>
+        {/each}
+      </div>
+    </div>
+  {/if}
 
   <!-- Footer Actions -->
   <div class="footer-actions flex-col">
@@ -426,5 +470,87 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .recent-folders-container {
+    flex: 0.6;
+    margin-bottom: 4px;
+  }
+
+  .recent-folder-row {
+    position: relative;
+    width: 100%;
+    justify-content: space-between;
+    gap: 4px;
+    align-items: center;
+  }
+
+  .recent-folder-item {
+    background: transparent;
+    border: none;
+    outline: none;
+    padding: 6px 8px;
+    border-radius: var(--radius-standard);
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 500;
+    gap: 8px;
+    width: 100%;
+    text-align: left;
+    transition: background-color 0.2s, color 0.2s;
+    cursor: pointer;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .recent-folder-item:hover {
+    background-color: var(--bg-mid-dark);
+    color: var(--text-primary);
+  }
+
+  .recent-folder-item.active {
+    background-color: rgba(255, 255, 255, 0.08);
+    color: var(--accent);
+    font-weight: 600;
+  }
+
+  .folder-icon {
+    font-size: 14px;
+    flex-shrink: 0;
+  }
+
+  .folder-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .folder-delete-btn {
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--text-tertiary);
+    padding: 4px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: color 0.2s, background-color 0.2s;
+    opacity: 0;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .recent-folder-row:hover .folder-delete-btn {
+    opacity: 1;
+  }
+
+  .folder-delete-btn:hover {
+    color: var(--semantic-error);
+    background-color: rgba(255, 255, 255, 0.05);
   }
 </style>
