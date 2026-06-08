@@ -126,6 +126,451 @@
   --border-highlight: #4d4d4d;
 }
 
+/* Cyberpunk Neon Theme (Multicolor) */
+:root.theme-cyberpunk {
+  --bg-base: #0b0813;
+  --bg-surface: #140e28;
+  --bg-mid-dark: #1b1236;
+  --bg-card-hover: #261a4c;
+  
+  --accent: #00ffff;
+  --accent-hover: #ff007f;
+  --accent-active: #ffff00;
+  
+  --border-color: #261a4c;
+  --border-highlight: #ff007f;
+}
+
+/* Midnight Cherry Theme */
+:root.theme-cherry {
+  --bg-base: #0a0404;
+  --bg-surface: #140909;
+  --bg-mid-dark: #200d0d;
+  --bg-card-hover: #2f1414;
+  
+  --accent: #ff2a2a;
+  --accent-hover: #ff5555;
+  --accent-active: #cc0000;
+  
+  --border-color: #200d0d;
+  --border-highlight: #2f1414;
+}
+
+/* Aether Space Theme */
+:root.theme-space {
+  --bg-base: #080b12;
+  --bg-surface: #0f1423;
+  --bg-mid-dark: #171e35;
+  --bg-card-hover: #212b4b;
+  
+  --accent: #8b5cf6;
+  --accent-hover: #a78bfa;
+  --accent-active: #7c3aed;
+  
+  --border-color: #171e35;
+  --border-highlight: #212b4b;
+}
+
+/* Ocean Abyss Theme */
+:root.theme-abyss {
+  --bg-base: #050c0f;
+  --bg-surface: #09151b;
+  --bg-mid-dark: #0f222b;
+  --bg-card-hover: #16323f;
+  
+  --accent: #14b8a6;
+  --accent-hover: #2dd4bf;
+  --accent-active: #0f766e;
+  
+  --border-color: #0f222b;
+  --border-highlight: #16323f;
+}
+
+/* Sunset Horizon Theme (Multicolor) */
+:root.theme-sunset {
+  --bg-base: #120c17;
+  --bg-surface: #1c1224;
+  --bg-mid-dark: #281a33;
+  --bg-card-hover: #372347;
+  
+  --accent: #f43f5e;
+  --accent-hover: #fb923c;
+  --accent-active: #ec4899;
+  
+  --border-color: #281a33;
+  --border-highlight: #372347;
+}
+
+/* Golden Obsidian Theme */
+:root.theme-gold {
+  --bg-base: #0d0d0d;
+  --bg-surface: #151515;
+  --bg-mid-dark: #1f1f1f;
+  --bg-card-hover: #2a2a2a;
+  
+  --accent: #d4af37;
+  --accent-hover: #f3e5ab;
+  --accent-active: #aa7c11;
+  
+  --border-color: #1f1f1f;
+  --border-highlight: #2a2a2a;
+}
+
+/* Solarized Dark Theme */
+:root.theme-solarized {
+  --bg-base: #002b36;
+  --bg-surface: #073642;
+  --bg-mid-dark: #586e75;
+  --bg-card-hover: #657b83;
+  
+  --accent: #2aa198;
+  --accent-hover: #268bd2;
+  --accent-active: #859900;
+  
+  --text-primary: #93a1a1;
+  --text-secondary: #839496;
+  --text-tertiary: #586e75;
+  
+  --border-color: #073642;
+  --border-highlight: #586e75;
+}
+
+/* Nord Deep Theme */
+:root.theme-norddeep {
+  --bg-base: #1e222a;
+  --bg-surface: #242933;
+  --bg-mid-dark: #2e3440;
+  --bg-card-hover: #3b4252;
+  
+  --accent: #88c0d0;
+  --accent-hover: #8fbcbb;
+  --accent-active: #81a1c1;
+  
+  --border-color: #2e3440;
+  --border-highlight: #3b4252;
+}
+
+/* Monochrome Slate Theme */
+:root.theme-slate {
+  --bg-base: #18181b;
+  --bg-surface: #27272a;
+  --bg-mid-dark: #3f3f46;
+  --bg-card-hover: #52525b;
+  
+  --accent: #fafafa;
+  --accent-hover: #e4e4e7;
+  --accent-active: #a1a1aa;
+  
+  --border-color: #27272a;
+  --border-highlight: #3f3f46;
+}
+
+/* Toxic Glow Theme */
+:root.theme-toxic {
+  --bg-base: #0e100f;
+  --bg-surface: #161a18;
+  --bg-mid-dark: #222925;
+  --bg-card-hover: #303a34;
+  
+  --accent: #39ff14;
+  --accent-hover: #7fff00;
+  --accent-active: #228b22;
+  
+  --border-color: #222925;
+  --border-highlight: #303a34;
+}
+
+/* Paper Lite Theme (Light) */
+:root.theme-paper {
+  --bg-base: #fcfbf9;
+  --bg-surface: #f5f3ef;
+  --bg-mid-dark: #e9e5dd;
+  --bg-card-hover: #ded9cf;
+  
+  --accent: #2b2a27;
+  --accent-hover: #4a4843;
+  --accent-active: #0f0f0e;
+  
+  --text-primary: #1f1e1c;
+  --text-secondary: #5c5954;
+  --text-tertiary: #8f8b83;
+  
+  --border-color: #e9e5dd;
+  --border-highlight: #ded9cf;
+}
+
+/* Sakura Breeze Theme (Light Multicolor) */
+:root.theme-sakura {
+  --bg-base: #fff0f3;
+  --bg-surface: #ffe3e8;
+  --bg-mid-dark: #ffccd5;
+  --bg-card-hover: #ffb3c1;
+  
+  --accent: #ff758f;
+  --accent-hover: #ff4d6d;
+  --accent-active: #c9184a;
+  
+  --text-primary: #590d22;
+  --text-secondary: #800f2f;
+  --text-tertiary: #a5a5a5;
+  
+  --border-color: #ffccd5;
+  --border-highlight: #ffb3c1;
+}
+
+/* Minty Fresh Theme (Light) */
+:root.theme-mint {
+  --bg-base: #f0fdf4;
+  --bg-surface: #dcfce7;
+  --bg-mid-dark: #bbf7d0;
+  --bg-card-hover: #86efac;
+  
+  --accent: #16a34a;
+  --accent-hover: #15803d;
+  --accent-active: #166534;
+  
+  --text-primary: #14532d;
+  --text-secondary: #166534;
+  --text-tertiary: #4ade80;
+  
+  --border-color: #bbf7d0;
+  --border-highlight: #86efac;
+}
+
+/* Lavender Dream Theme (Light) */
+:root.theme-lavender {
+  --bg-base: #faf5ff;
+  --bg-surface: #f3e8ff;
+  --bg-mid-dark: #e9d5ff;
+  --bg-card-hover: #d8b4fe;
+  
+  --accent: #9333ea;
+  --accent-hover: #7e22ce;
+  --accent-active: #6b21a8;
+  
+  --text-primary: #3b0764;
+  --text-secondary: #581c87;
+  --text-tertiary: #c084fc;
+  
+  --border-color: #e9d5ff;
+  --border-highlight: #d8b4fe;
+}
+
+/* Retro Terminal Theme */
+:root.theme-matrix {
+  --bg-base: #051a05;
+  --bg-surface: #0a290a;
+  --bg-mid-dark: #104010;
+  --bg-card-hover: #186018;
+  
+  --accent: #33ff33;
+  --accent-hover: #66ff66;
+  --accent-active: #00cc00;
+  
+  --text-primary: #33ff33;
+  --text-secondary: #22b822;
+  --text-tertiary: #117711;
+  
+  --border-color: #104010;
+  --border-highlight: #186018;
+}
+
+/* Prism Rainbow Theme (Multicolor) */
+:root.theme-prism {
+  --bg-base: #101014;
+  --bg-surface: #1a1a24;
+  --bg-mid-dark: #252535;
+  --bg-card-hover: #33334a;
+  
+  --accent: #a78bfa;
+  --accent-hover: #ec4899;
+  --accent-active: #3b82f6;
+  
+  --border-color: #252535;
+  --border-highlight: #a78bfa;
+}
+
+/* Solar Flare Theme (Multicolor) */
+:root.theme-solarflare {
+  --bg-base: #140c06;
+  --bg-surface: #20140c;
+  --bg-mid-dark: #301e12;
+  --bg-card-hover: #422b1c;
+  
+  --accent: #f97316;
+  --accent-hover: #ef4444;
+  --accent-active: #eab308;
+  
+  --border-color: #301e12;
+  --border-highlight: #422b1c;
+}
+
+/* Synthwave 1984 Theme (Multicolor) */
+:root.theme-synthwave {
+  --bg-base: #170621;
+  --bg-surface: #240a34;
+  --bg-mid-dark: #351547;
+  --bg-card-hover: #4b2061;
+  
+  --accent: #ff007f;
+  --accent-hover: #39ff14;
+  --accent-active: #00ffff;
+  
+  --border-color: #351547;
+  --border-highlight: #ff007f;
+}
+
+/* Northern Lights Theme (Multicolor) */
+:root.theme-aurora {
+  --bg-base: #030f12;
+  --bg-surface: #071d22;
+  --bg-mid-dark: #0e2d33;
+  --bg-card-hover: #173f47;
+  
+  --accent: #34d399;
+  --accent-hover: #a78bfa;
+  --accent-active: #3b82f6;
+  
+  --border-color: #0e2d33;
+  --border-highlight: #34d399;
+}
+
+/* Bubblegum Pop Theme (Multicolor) */
+:root.theme-bubblegum {
+  --bg-base: #0f0914;
+  --bg-surface: #1a1024;
+  --bg-mid-dark: #271936;
+  --bg-card-hover: #38254c;
+  
+  --accent: #f472b6;
+  --accent-hover: #60a5fa;
+  --accent-active: #fb7185;
+  
+  --border-color: #271936;
+  --border-highlight: #f472b6;
+}
+
+/* Cotton Candy Theme (Light Multicolor) */
+:root.theme-cottoncandy {
+  --bg-base: #fff5f7;
+  --bg-surface: #f0f7ff;
+  --bg-mid-dark: #ffe4e9;
+  --bg-card-hover: #dbeafe;
+  
+  --accent: #ec4899;
+  --accent-hover: #3b82f6;
+  --accent-active: #f43f5e;
+  
+  --text-primary: #1e1b4b;
+  --text-secondary: #4338ca;
+  --text-tertiary: #a5b4fc;
+  
+  --border-color: #ffe4e9;
+  --border-highlight: #dbeafe;
+}
+
+/* Volcanic Ash Theme */
+:root.theme-volcano {
+  --bg-base: #111111;
+  --bg-surface: #1c1c1c;
+  --bg-mid-dark: #2c2c2c;
+  --bg-card-hover: #3a3a3a;
+  
+  --accent: #ff4500;
+  --accent-hover: #ff8c00;
+  --accent-active: #ff0000;
+  
+  --border-color: #2c2c2c;
+  --border-highlight: #3a3a3a;
+}
+
+/* Glitch Matrix Theme (Multicolor) */
+:root.theme-glitch {
+  --bg-base: #000000;
+  --bg-surface: #050505;
+  --bg-mid-dark: #111111;
+  --bg-card-hover: #222222;
+  
+  --accent: #00ff66;
+  --accent-hover: #ff00ff;
+  --accent-active: #00ff00;
+  
+  --border-color: #111111;
+  --border-highlight: #ff00ff;
+}
+
+/* Matcha Latte Theme (Light) */
+:root.theme-matcha {
+  --bg-base: #f7f4eb;
+  --bg-surface: #efeae0;
+  --bg-mid-dark: #e0d7c7;
+  --bg-card-hover: #d0c3ae;
+  
+  --accent: #606c38;
+  --accent-hover: #283618;
+  --accent-active: #dda15e;
+  
+  --text-primary: #283618;
+  --text-secondary: #606c38;
+  --text-tertiary: #dda15e;
+  
+  --border-color: #e0d7c7;
+  --border-highlight: #d0c3ae;
+}
+
+/* Barbie World Theme (Light Multicolor) */
+:root.theme-barbie {
+  --bg-base: #fff0f6;
+  --bg-surface: #ffd3e2;
+  --bg-mid-dark: #ffb3d1;
+  --bg-card-hover: #ff80b3;
+  
+  --accent: #ff007f;
+  --accent-hover: #cc0066;
+  --accent-active: #7f003f;
+  
+  --text-primary: #4a001f;
+  --text-secondary: #99003d;
+  --text-tertiary: #ff80b3;
+  
+  --border-color: #ffb3d1;
+  --border-highlight: #ff80b3;
+}
+
+/* Ice Cream Sundae Theme (Light Multicolor) */
+:root.theme-sundae {
+  --bg-base: #fefefa;
+  --bg-surface: #fffbeb;
+  --bg-mid-dark: #fef3c7;
+  --bg-card-hover: #fde68a;
+  
+  --accent: #fb7185;
+  --accent-hover: #78350f;
+  --accent-active: #f43f5e;
+  
+  --text-primary: #78350f;
+  --text-secondary: #b45309;
+  --text-tertiary: #fb7185;
+  
+  --border-color: #fef3c7;
+  --border-highlight: #fde68a;
+}
+
+/* Retro Vaporwave Theme (Multicolor) */
+:root.theme-vaporwave {
+  --bg-base: #1c0a35;
+  --bg-surface: #2a0f4f;
+  --bg-mid-dark: #3d176e;
+  --bg-card-hover: #542093;
+  
+  --accent: #00ffff;
+  --accent-hover: #ff00ff;
+  --accent-active: #ff007f;
+  
+  --border-color: #3d176e;
+  --border-highlight: #ff00ff;
+}
+
 * {
   box-sizing: border-box;
   margin: 0;

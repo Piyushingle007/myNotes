@@ -89,23 +89,10 @@
             <ChevronLeft size={24} />
           </button>
           
-          <!-- Edit/Preview View Toggle for Mobile -->
-          <div class="mobile-view-toggle flex-row" style="background-color: var(--bg-mid-dark); border-radius: var(--radius-pill); padding: 2px; gap: 4px;">
-            <button 
-              class="mobile-toggle-btn" 
-              onclick={() => appState.setEditorViewMode('edit')}
-              style="padding: 4px 10px; font-size: 11px; font-weight: 700; border-radius: var(--radius-pill); cursor: pointer; transition: background-color 0.2s, color 0.2s; color: {appState.editorViewMode === 'edit' || appState.editorViewMode === 'split' ? '#000000' : 'var(--text-secondary)'}; background-color: {appState.editorViewMode === 'edit' || appState.editorViewMode === 'split' ? 'var(--accent)' : 'transparent'};"
-            >
-              Edit
-            </button>
-            <button 
-              class="mobile-toggle-btn" 
-              onclick={() => appState.setEditorViewMode('preview')}
-              style="padding: 4px 10px; font-size: 11px; font-weight: 700; border-radius: var(--radius-pill); cursor: pointer; transition: background-color 0.2s, color 0.2s; color: {appState.editorViewMode === 'preview' ? '#000000' : 'var(--text-secondary)'}; background-color: {appState.editorViewMode === 'preview' ? 'var(--accent)' : 'transparent'};"
-            >
-              Preview
-            </button>
-          </div>
+          <!-- Note title / state placeholder -->
+          <span style="font-size: 14px; font-weight: 700; color: var(--text-primary); text-overflow: ellipsis; overflow: hidden; white-space: nowrap; max-width: 55%;">
+            {appState.activeNoteTitle || 'Editing Note'}
+          </span>
           
           <!-- Save / Close Toolbar -->
           <button 

@@ -4580,29 +4580,6 @@
 				</button>
 				<button
 					class="icon-btn"
-					class:active={isQuickAccess}
-					onclick={async () => {
-						if (!noteRelativePath) return;
-						try {
-							if (isQuickAccess) {
-								await removeQuickAccess(noteRelativePath);
-							} else {
-								await addQuickAccess(noteRelativePath);
-							}
-							const qa = await getQuickAccess();
-							$quickAccessPaths = qa.map(n => n.relative_path);
-						} catch (e) {
-							console.error('Quick access toggle failed:', e);
-						}
-					}}
-					title={isQuickAccess ? 'Remove from Quick Access' : 'Add to Quick Access'}
-				>
-					<svg width="16" height="16" viewBox="0 0 24 24" fill={isQuickAccess ? 'currentColor' : 'none'} stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-						<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-					</svg>
-				</button>
-				<button
-					class="icon-btn"
 					class:active={showOutline}
 					onclick={() => { showOutline = !showOutline; if (showOutline) updateOutline(); }}
 					title="Outline"
@@ -4961,170 +4938,7 @@
 		{#if editorReady && !$sourceMode && !$viewerNote}
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<div class="editor-formatting-bar" style={isMobile ? `${keyboardHeight > 0 ? `bottom: ${keyboardHeight}px;` : ''}${anyDropdownOpen ? 'overflow: visible;' : ''}` : ''} onclick={() => { headingDropdown = false; colorDropdown = false; highlightDropdown = false; tablePickerOpen = false; alignDropdown = false; insertDropdown = false; }}>
-				{#if isMobile}
-				<!-- ═══ MOBILE formatting bar: compact, relevant buttons only ═══ -->
 
-				<!-- Insert (+) dropdown - at front like desktop -->
-				<div class="fmt-dropdown-wrap">
-					<button class="fmt-btn insert-btn" onclick={(e) => { e.stopPropagation(); insertDropdown = !insertDropdown; headingDropdown = false; }} title="Insert">
-						<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
-					</button>
-					{#if insertDropdown}
-						<!-- svelte-ignore a11y_no_static_element_interactions -->
-						<div class="fmt-dropdown insert-dropdown" onclick={(e) => e.stopPropagation()}>
-							<button onclick={() => { insertDropdown = false; document.querySelector<HTMLInputElement>('#insert-image-input')?.click(); }}>
-								<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 00-2.828 0L6 21"/></svg>
-								Image
-							</button>
-							<button onclick={() => { insertDropdown = false; document.querySelector<HTMLInputElement>('#insert-file-input')?.click(); }}>
-								<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 22a2 2 0 01-2-2V4a2 2 0 012-2h8a2.4 2.4 0 011.704.706l3.588 3.588A2.4 2.4 0 0120 8v12a2 2 0 01-2 2z"/><path d="M14 2v5a1 1 0 001 1h5"/></svg>
-								File
-							</button>
-							<button onclick={() => { insertDropdown = false; editor?.chain().focus().setHorizontalRule().run(); }}>
-								<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14"/></svg>
-								Horizontal Rule
-							</button>
-							<button onclick={() => { insertDropdown = false; editor?.chain().focus().toggleCodeBlock().run(); }}>
-								<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m10 9-3 3 3 3"/><path d="m14 15 3-3-3-3"/><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
-								Code Block
-							</button>
-							<button onclick={() => { insertDropdown = false; editor?.chain().focus().toggleBlockquote().run(); }}>
-								<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 5H3"/><path d="M21 12H8"/><path d="M21 19H8"/><path d="M3 12v7"/></svg>
-								Quote
-							</button>
-						</div>
-					{/if}
-				</div>
-
-				<div class="fmt-sep"></div>
-
-				<!-- Tab Indent / Outdent Buttons -->
-				<button class="fmt-btn" onclick={() => {
-					if (editor) {
-						editor.view.dom.dispatchEvent(new KeyboardEvent('keydown', {
-							key: 'Tab',
-							code: 'Tab',
-							keyCode: 9,
-							which: 9,
-							bubbles: true,
-							cancelable: true
-						}));
-					}
-				}} title="Tab Indent">
-					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-						<path d="M5 12h14"/>
-						<polyline points="13 6 19 12 13 18"/>
-						<line x1="21" y1="5" x2="21" y2="19"/>
-					</svg>
-				</button>
-				<button class="fmt-btn" onclick={() => {
-					if (editor) {
-						editor.view.dom.dispatchEvent(new KeyboardEvent('keydown', {
-							key: 'Tab',
-							code: 'Tab',
-							keyCode: 9,
-							which: 9,
-							shiftKey: true,
-							bubbles: true,
-							cancelable: true
-						}));
-					}
-				}} title="Shift+Tab Outdent">
-					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-						<path d="M19 12H5"/>
-						<polyline points="11 6 5 12 11 18"/>
-						<line x1="3" y1="5" x2="3" y2="19"/>
-					</svg>
-				</button>
-
-				<div class="fmt-sep"></div>
-
-				<!-- Heading dropdown -->
-				<div class="fmt-dropdown-wrap">
-					<button class="fmt-btn" class:active={(editorState >= 0 && editor?.isActive('heading'))} onclick={(e) => { e.stopPropagation(); headingDropdown = !headingDropdown; insertDropdown = false; }} title="Heading">
-						<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 12h12"/><path d="M6 20V4"/><path d="M18 20V4"/></svg>
-					</button>
-					{#if headingDropdown}
-						<!-- svelte-ignore a11y_no_static_element_interactions -->
-						<div class="fmt-dropdown" onclick={(e) => e.stopPropagation()}>
-							<button class:active={(editorState >= 0 && editor?.isActive('heading', { level: 1 }))} onclick={() => { editor?.chain().focus().toggleHeading({ level: 1 }).run(); headingDropdown = false; }}>Heading 1</button>
-							<button class:active={(editorState >= 0 && editor?.isActive('heading', { level: 2 }))} onclick={() => { editor?.chain().focus().toggleHeading({ level: 2 }).run(); headingDropdown = false; }}>Heading 2</button>
-							<button class:active={(editorState >= 0 && editor?.isActive('heading', { level: 3 }))} onclick={() => { editor?.chain().focus().toggleHeading({ level: 3 }).run(); headingDropdown = false; }}>Heading 3</button>
-							<button class:active={(editorState >= 0 && editor?.isActive('paragraph'))} onclick={() => { editor?.chain().focus().setParagraph().run(); headingDropdown = false; }}>Paragraph</button>
-						</div>
-					{/if}
-				</div>
-
-				<div class="fmt-sep"></div>
-
-				<!-- Bold / Italic / Underline / Strike -->
-				<button class="fmt-btn" class:active={(editorState >= 0 && editor?.isActive('bold'))} onclick={() => editor?.chain().focus().toggleBold().run()} title="Bold">
-					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 12h9a4 4 0 010 8H7a1 1 0 01-1-1V5a1 1 0 011-1h7a4 4 0 010 8"/></svg>
-				</button>
-				<button class="fmt-btn" class:active={(editorState >= 0 && editor?.isActive('italic'))} onclick={() => editor?.chain().focus().toggleItalic().run()} title="Italic">
-					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" x2="10" y1="4" y2="4"/><line x1="14" x2="5" y1="20" y2="20"/><line x1="15" x2="9" y1="4" y2="20"/></svg>
-				</button>
-				<button class="fmt-btn" class:active={(editorState >= 0 && editor?.isActive('underline'))} onclick={() => editor?.chain().focus().toggleUnderline().run()} title="Underline">
-					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4v6a6 6 0 0012 0V4"/><line x1="4" x2="20" y1="20" y2="20"/></svg>
-				</button>
-				<button class="fmt-btn" class:active={(editorState >= 0 && editor?.isActive('strike'))} onclick={() => editor?.chain().focus().toggleStrike().run()} title="Strikethrough">
-					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4H9a3 3 0 00-2.83 4"/><path d="M14 12a4 4 0 010 8H6"/><line x1="4" x2="20" y1="12" y2="12"/></svg>
-				</button>
-
-				<div class="fmt-sep"></div>
-
-				<!-- Link -->
-				<button class="fmt-btn" class:active={(editorState >= 0 && editor?.isActive('link'))} onclick={addLinkFromToolbar} title="Link">
-					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>
-				</button>
-
-				<div class="fmt-sep"></div>
-
-				<!-- Lists -->
-				<button class="fmt-btn" class:active={(editorState >= 0 && editor?.isActive('bulletList'))} onclick={() => editor?.chain().focus().toggleBulletList().run()} title="Bullet List">
-					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h.01"/><path d="M3 12h.01"/><path d="M3 19h.01"/><path d="M8 5h13"/><path d="M8 12h13"/><path d="M8 19h13"/></svg>
-				</button>
-				<button class="fmt-btn" class:active={(editorState >= 0 && editor?.isActive('orderedList'))} onclick={() => editor?.chain().focus().toggleOrderedList().run()} title="Numbered List">
-					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5h10"/><path d="M11 12h10"/><path d="M11 19h10"/><path d="M4 4h1v5"/><path d="M4 9h2"/><path d="M6.5 20H3.4c0-1 2.6-1.925 2.6-3.5a1.5 1.5 0 00-2.6-1.02"/></svg>
-				</button>
-				<button class="fmt-btn" class:active={(editorState >= 0 && editor?.isActive('taskList'))} onclick={() => editor?.chain().focus().toggleTaskList().run()} title="Task List">
-					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 5h8"/><path d="M13 12h8"/><path d="M13 19h8"/><path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/></svg>
-				</button>
-
-				<div class="fmt-sep"></div>
-
-				<!-- Highlight -->
-				<button class="fmt-btn" class:active={(editorState >= 0 && editor?.isActive('highlight'))} onclick={() => editor?.chain().focus().toggleHighlight({ color: highlightColors[0].value }).run()} title="Highlight">
-					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 11-6 6v3h9l3-3"/><path d="m22 12-4.6 4.6a2 2 0 01-2.8 0l-5.2-5.2a2 2 0 010-2.8L14 4"/></svg>
-				</button>
-
-				<div class="fmt-sep"></div>
-
-				<!-- Insert date/time -->
-				<button class="fmt-btn" onclick={() => insertTimestamp('datetime')} title="Insert date and time">
-					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 7.5V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h6"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="16" y1="2" x2="16" y2="6"/><circle cx="18" cy="17" r="4"/><path d="M18 15.5v1.5l1 1"/></svg>
-				</button>
-
-				<div class="fmt-sep"></div>
-
-				<!-- Undo / Redo -->
-				<button class="fmt-btn" onclick={() => editor?.chain().focus().undo().run()} title="Undo">
-					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 015.5 5.5 5.5 5.5 0 01-5.5 5.5H11"/></svg>
-				</button>
-				<button class="fmt-btn" onclick={() => editor?.chain().focus().redo().run()} title="Redo">
-					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5A5.5 5.5 0 004 14.5 5.5 5.5 0 009.5 20H13"/></svg>
-				</button>
-
-				{#if $appConfig?.ai_provider}
-				<div class="fmt-sep"></div>
-				<button class="fmt-btn" onclick={openAiMenu} title="AI Actions">
-					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-						<path d="M12 8V4l-2-2"/><rect x="4" y="8" width="16" height="12" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M9 13v2"/><path d="M15 13v2"/>
-					</svg>
-				</button>
-				{/if}
-
-				{:else}
 				<!-- ═══ DESKTOP formatting bar: full feature set ═══ -->
 
 				<!-- Insert (+) dropdown -->
@@ -5473,8 +5287,6 @@
 				}} title="Outdent (Shift+Tab)">
 					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="4" x2="21" y2="4"/><line x1="11" y1="9" x2="21" y2="9"/><line x1="11" y1="14" x2="21" y2="14"/><line x1="3" y1="19" x2="21" y2="19"/><polyline points="7 9 3 11.5 7 14"/></svg>
 				</button>
-
-				{/if}
 			</div>
 		{/if}
 	{/if}
@@ -6125,14 +5937,9 @@
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<div class="link-modal" onclick={(e) => e.stopPropagation()}>
 			<div class="link-modal-header">
-				<svg width="28" height="28" viewBox="0 0 48 48" fill="none">
-					<rect width="48" height="48" rx="12" fill="var(--accent)" />
-					<circle cx="16" cy="16" r="3.5" fill="white" opacity="0.9" />
-					<circle cx="32" cy="16" r="3.5" fill="white" opacity="0.9" />
-					<circle cx="16" cy="32" r="3.5" fill="white" opacity="0.9" />
-					<circle cx="32" cy="32" r="3.5" fill="white" opacity="0.9" />
-					<line x1="19" y1="18" x2="29" y2="30" stroke="white" stroke-width="2" stroke-linecap="round" opacity="0.7" />
-					<line x1="29" y1="18" x2="19" y2="30" stroke="white" stroke-width="2" stroke-linecap="round" opacity="0.7" />
+				<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--accent); margin-right: 8px;">
+					<path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/>
+					<path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/>
 				</svg>
 				<span>Insert Link</span>
 			</div>

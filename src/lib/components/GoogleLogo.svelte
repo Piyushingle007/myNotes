@@ -5,24 +5,42 @@
 <svg 
   width={size} 
   height={size} 
-  viewBox="0 0 24 24" 
+  viewBox="0 0 48 48" 
   fill="none" 
   xmlns="http://www.w3.org/2000/svg"
   class="google-logo-svg"
 >
-  <!-- Main paper card -->
-  <path d="M19 9H14V4H5V20H19V9Z" fill="var(--bg-surface)" stroke="var(--border-highlight)" stroke-width="1.5" stroke-linejoin="round"/>
+  <defs>
+    <!-- Soft shadow to create the 3D overlapping folded look typical of Google logos -->
+    <filter id="google-shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="1.5" stdDeviation="1.2" flood-color="#000" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+
+  <!-- Connecting Rungs (Notebook Binding Spiral style in Google brand colors) -->
+  <!-- Top Rung (Red) -->
+  <line x1="18" y1="12" x2="30" y2="12" stroke="#EA4335" stroke-width="3.2" stroke-linecap="round" />
   
-  <!-- Folded corner (Yellow) -->
-  <path d="M14 4V9H19L14 4Z" fill="#FBBC05" stroke="var(--border-highlight)" stroke-width="1.5" stroke-linejoin="round"/>
+  <!-- Middle Rung (Blue) -->
+  <line x1="20" y1="24" x2="28" y2="24" stroke="#4285F4" stroke-width="3.2" stroke-linecap="round" />
   
-  <!-- Google Colored Stripes inside the note -->
-  <!-- Top line: Blue -->
-  <line x1="8" y1="12" x2="16" y2="12" stroke="#4285F4" stroke-width="2" stroke-linecap="round"/>
-  <!-- Middle line: Red -->
-  <line x1="8" y1="15" x2="16" y2="15" stroke="#EA4335" stroke-width="2" stroke-linecap="round"/>
-  <!-- Bottom line: Green -->
-  <line x1="8" y1="18" x2="13" y2="18" stroke="#34A853" stroke-width="2" stroke-linecap="round"/>
+  <!-- Bottom Rung (Yellow) -->
+  <line x1="18" y1="36" x2="30" y2="36" stroke="#FBBC05" stroke-width="3.2" stroke-linecap="round" />
+
+  <!-- Intertwining Strands (Double Helix Binder) -->
+  <!-- We layer the paths to create a woven over-under overlapping effect -->
+  
+  <!-- 1. Yellow Segment (Top Right) - Drawn first (underneath at the top crossing) -->
+  <path d="M 34 6 C 18 6, 18 18, 24 18 C 27 18, 28 21, 28 24" stroke="#FBBC05" stroke-width="5.5" stroke-linecap="round" fill="none" />
+
+  <!-- 2. Red Segment (Bottom Left) - Drawn second (underneath at the bottom crossing) -->
+  <path d="M 20 24 C 20 27, 21 30, 24 30 C 30 30, 30 42, 14 42" stroke="#EA4335" stroke-width="5.5" stroke-linecap="round" fill="none" />
+
+  <!-- 3. Blue Segment (Top Left) - Drawn third (with shadow to overlay the Yellow strand at top crossing) -->
+  <path d="M 14 6 C 30 6, 30 18, 24 18 C 21 18, 20 21, 20 24" stroke="#4285F4" stroke-width="5.5" stroke-linecap="round" fill="none" filter="url(#google-shadow)" />
+
+  <!-- 4. Green Segment (Bottom Right) - Drawn fourth (with shadow to overlay the Red strand at bottom crossing) -->
+  <path d="M 28 24 C 28 27, 27 30, 24 30 C 18 30, 18 42, 34 42" stroke="#34A853" stroke-width="5.5" stroke-linecap="round" fill="none" filter="url(#google-shadow)" />
 </svg>
 
 <style>
