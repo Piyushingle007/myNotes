@@ -4,7 +4,6 @@
   import Sidebar from './Sidebar.svelte';
   import NoteList from './NoteList.svelte';
   import Editor from './Editor.svelte';
-  import GraphView from './GraphView.svelte';
   import { 
     Home, Search, Library, Calendar, ChevronLeft, Plus, 
     FileText, Tag, FolderPlus, Compass, ArrowRight, Settings,
@@ -14,7 +13,6 @@
 
   // Responsive state
   let isMobile = $state(false);
-  let showGraph = $state(false);
   let mobileSearchInput = $state('');
   let newMobileFolder = $state('');
   let showMobileFolderForm = $state(false);
@@ -108,7 +106,7 @@
           </button>
         </div>
         <div class="mobile-editor-wrapper">
-          <Editor bind:showGraph={showGraph} />
+          <Editor />
         </div>
       </div>
     {:else}
@@ -416,12 +414,7 @@
 
     <!-- Right Panel (Editor) -->
     <div class="editor-panel flex-row" style="display: {appState.editorCollapsed ? 'none' : 'flex'}; min-width: 0;">
-      <Editor bind:showGraph={showGraph} />
-      
-      <!-- Far Right Graph visualizer (Collapsible) -->
-      {#if showGraph}
-        <GraphView />
-      {/if}
+      <Editor />
     </div>
 
     {#if appState.sidebarCollapsed && appState.notelistCollapsed && appState.editorCollapsed}

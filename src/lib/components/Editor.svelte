@@ -1,15 +1,12 @@
 <script lang="ts">
   import { appState } from '../stores/appState.svelte';
   import { 
-    Save, HelpCircle, Network, ArrowLeft, BookOpen, AlertTriangle, Eye, Edit3, Columns,
+    Save, HelpCircle, ArrowLeft, BookOpen, AlertTriangle, Eye, Edit3, Columns,
     Bold, Italic, Strikethrough, Code, Highlighter, Heading1, Heading2, Heading3, Heading4,
     List, ListOrdered, ListTodo, Quote, Terminal, Minus, Table, Link2, Image as ImageIcon, Underline,
     Indent, Outdent, X, Menu, FileText
   } from 'lucide-svelte';
   import { marked } from 'marked';
-
-  // State to track if graph view is toggled open on the right
-  let { showGraph = $bindable(false) } = $props();
 
   let autosaveTimer: number | null = null;
 
@@ -499,16 +496,7 @@
           <span class="btn-label">Link</span>
         </button>
 
-        <!-- Graph Visualization Toggle -->
-        <button 
-          class="btn-control flex-row" 
-          class:active={showGraph} 
-          onclick={() => showGraph = !showGraph}
-          title="Toggle Note Graph"
-        >
-          <Network size={18} />
-          <span class="btn-label">Visualizer</span>
-        </button>
+
 
         <!-- Segmented View Toggle -->
         <div class="segmented-control flex-row">

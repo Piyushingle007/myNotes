@@ -378,8 +378,20 @@ class AppState {
       const mappings: Record<string, string | SyncMapping> = JSON.parse(localStorage.getItem('mynotes_drive_mappings') || '{}');
       const activeMappings: Record<string, SyncMapping> = {};
 
-      // Map of drive files by name for faster lookup
-      const driveFileMap = new Map(driveFiles.map(f => [f.name.replace(/\.md$/, '').toLowerCase(), f]));
+      // Map of drive files by path for faster lookup
+      const driveFileMap = new Map(driveFiles.map(f => [f.path ? f.path.toLowerCase() : '', f]));
+
+      // Helper to upload a note to Drive, resolving/creating folders recursively
+      const uploadNoteToDrive = async (notePath: string, filename: string, content: string, fileId?: string): Promise<{ id: string; modifiedTime: string }> => {
+        const parts = notePath.split('/');
+        if (parts.length > 1) {
+          const folderNames = parts.slice(0, -1);
+          const subfolderId = await this.syncService.getOrCreateSubfolders(folderId, folderNames);
+          return this.syncService.uploadFile(filename, content, fileId, subfolderId);
+        } else {
+          return this.syncService.uploadFile(filename, content, fileId);
+        }
+      };
 
       // Step 1: Sync local files to remote
       for (const note of this.notes) {
@@ -398,10 +410,10 @@ class AppState {
           }
         }
 
-        // Match by ID, or fallback to name
+        // Match by ID, or fallback to relative path
         const driveFile = remoteId 
           ? driveFiles.find(f => f.id === remoteId)
-          : driveFileMap.get(note.name.toLowerCase());
+          : driveFileMap.get(note.path.toLowerCase());
 
         console.log(`Sync check for: ${note.path}`);
         if (driveFile) {
@@ -419,7 +431,7 @@ class AppState {
             console.log('  Conflict detected! Resolving via Last Modified Wins.');
             if (note.modified > remoteTime) {
               console.log('  Local is newer. Uploading note...');
-              const uploadRes = await this.syncService.uploadFile(`${note.name}.md`, note.content, driveFile.id);
+              const uploadRes = await uploadNoteToDrive(note.path, `${note.name}.md`, note.content, driveFile.id);
               const updatedRemoteTime = new Date(uploadRes.modifiedTime).getTime();
               activeMappings[note.path] = {
                 id: uploadRes.id,
@@ -438,7 +450,7 @@ class AppState {
             }
           } else if (localChanged) {
             console.log('  Local changed since last sync. Uploading updates...');
-            const uploadRes = await this.syncService.uploadFile(`${note.name}.md`, note.content, driveFile.id);
+            const uploadRes = await uploadNoteToDrive(note.path, `${note.name}.md`, note.content, driveFile.id);
             const updatedRemoteTime = new Date(uploadRes.modifiedTime).getTime();
             activeMappings[note.path] = {
               id: uploadRes.id,
@@ -468,7 +480,7 @@ class AppState {
             await this.storage.deleteNote(note.path);
           } else {
             console.log('  New local note found. Uploading to Google Drive...');
-            const uploadRes = await this.syncService.uploadFile(`${note.name}.md`, note.content);
+            const uploadRes = await uploadNoteToDrive(note.path, `${note.name}.md`, note.content);
             const updatedRemoteTime = new Date(uploadRes.modifiedTime).getTime();
             activeMappings[note.path] = {
               id: uploadRes.id,
@@ -481,36 +493,41 @@ class AppState {
 
       // Step 2: Sync remote files that don't exist locally
       for (const remote of driveFiles) {
-        const localPath = Object.keys(mappings).find(key => {
+        if (!remote.path) continue;
+
+        // Check if this remote file was already matched/processed in Step 1
+        const processedPath = Object.keys(activeMappings).find(key => activeMappings[key].id === remote.id);
+        if (processedPath) {
+          continue; // Already synced/updated in Step 1
+        }
+
+        // Check if there was an old mapping for this remote file
+        const oldLocalPath = Object.keys(mappings).find(key => {
           const mapVal = mappings[key];
           const id = typeof mapVal === 'string' ? mapVal : mapVal.id;
           return id === remote.id;
         });
-        const cleanName = remote.name.replace(/\.md$/, '');
 
-        if (!localPath) {
-          console.log(`New remote file found: ${remote.name} (ID: ${remote.id})`);
-          const existingLocal = this.notes.find(n => n.name.toLowerCase() === cleanName.toLowerCase());
-          if (existingLocal) {
-            console.log(`  Matching local file found by name: ${existingLocal.path}. Pairing.`);
-            const remoteTime = new Date(remote.modifiedTime).getTime();
-            activeMappings[existingLocal.path] = {
-              id: remote.id,
-              lastSyncLocalTime: existingLocal.modified,
-              lastSyncRemoteTime: remoteTime
-            };
-          } else {
-            console.log('  No matching local file. Downloading...');
-            const remoteContent = await this.syncService.downloadFile(remote.id);
-            const newLocalPath = `${cleanName}.md`;
-            await this.storage.writeNote(newLocalPath, remoteContent);
-            const remoteTime = new Date(remote.modifiedTime).getTime();
-            activeMappings[newLocalPath] = {
-              id: remote.id,
-              lastSyncLocalTime: Date.now(),
-              lastSyncRemoteTime: remoteTime
-            };
+        if (oldLocalPath) {
+          // The file was previously synced, but is no longer present locally.
+          // This means it was deleted locally. We should delete it on Google Drive.
+          console.log(`Note ${oldLocalPath} was deleted locally. Deleting remote file ${remote.path} (ID: ${remote.id}) on Drive...`);
+          try {
+            await this.syncService.deleteFile(remote.id);
+          } catch (e) {
+            console.error(`Failed to delete remote file ${remote.id}:`, e);
           }
+        } else {
+          // This is a brand new remote file from another client. Download it.
+          console.log(`New remote file found: ${remote.path} (ID: ${remote.id}). Downloading...`);
+          const remoteContent = await this.syncService.downloadFile(remote.id);
+          await this.storage.writeNote(remote.path, remoteContent);
+          const remoteTime = new Date(remote.modifiedTime).getTime();
+          activeMappings[remote.path] = {
+            id: remote.id,
+            lastSyncLocalTime: Date.now(),
+            lastSyncRemoteTime: remoteTime
+          };
         }
       }
 
@@ -535,6 +552,8 @@ class AppState {
       }
     }
   }
+
+
 
   async initSandbox() {
     this.storage = new IndexedDBAdapter();

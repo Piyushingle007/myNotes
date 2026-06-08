@@ -4,6 +4,7 @@ export interface DriveFileMeta {
   id: string;
   name: string;
   modifiedTime: string; // ISO String
+  path?: string;
 }
 
 export class GoogleDriveSync {
@@ -146,15 +147,101 @@ export class GoogleDriveSync {
     return folder.id;
   }
 
-  // List all markdown files in sync folder
-  async listFiles(folderId: string): Promise<DriveFileMeta[]> {
-    const query = encodeURIComponent(`'${folderId}' in parents and trashed = false`);
-    const url = `https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name,modifiedTime)&pageSize=1000`;
+  // Resolve or create nested subfolders recursively on Google Drive
+  async getOrCreateSubfolders(parentFolderId: string, folderNames: string[]): Promise<string> {
+    let currentParentId = parentFolderId;
+    for (const name of folderNames) {
+      const query = encodeURIComponent(`mimeType = 'application/vnd.google-apps.folder' and name = '${name.replace(/'/g, "\\'")}' and '${currentParentId}' in parents and trashed = false`);
+      const url = `https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name)`;
+      const res = await this.apiCall(url);
+      const data = await res.json();
+      
+      if (data.files && data.files.length > 0) {
+        currentParentId = data.files[0].id;
+      } else {
+        // Create folder inside currentParentId
+        const createUrl = 'https://www.googleapis.com/drive/v3/files';
+        const createRes = await this.apiCall(createUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            name: name,
+            mimeType: 'application/vnd.google-apps.folder',
+            parents: [currentParentId]
+          })
+        });
+        const folder = await createRes.json();
+        currentParentId = folder.id;
+      }
+    }
+    return currentParentId;
+  }
+
+  // List all files and folders created by this app (paginated)
+  async listAllFilesAndFolders(): Promise<any[]> {
+    let allItems: any[] = [];
+    let nextPageToken: string | null = null;
+    do {
+      let url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent('trashed = false')}&fields=nextPageToken,files(id,name,mimeType,parents,modifiedTime)&pageSize=1000`;
+      if (nextPageToken) {
+        url += `&pageToken=${nextPageToken}`;
+      }
+      const res = await this.apiCall(url);
+      const data = await res.json();
+      const files = data.files || [];
+      allItems = allItems.concat(files);
+      nextPageToken = data.nextPageToken || null;
+    } while (nextPageToken);
+    return allItems;
+  }
+
+  // List all markdown files under rootFolderId recursively, computing relative paths
+  async listFiles(rootFolderId: string): Promise<DriveFileMeta[]> {
+    const allItems = await this.listAllFilesAndFolders();
     
-    const res = await this.apiCall(url);
-    const data = await res.json();
-    const files: DriveFileMeta[] = data.files || [];
-    return files.filter(f => f.name.toLowerCase().endsWith('.md'));
+    // Create a map of items by ID for O(1) parent lookup
+    const itemMap = new Map<string, any>();
+    for (const item of allItems) {
+      itemMap.set(item.id, item);
+    }
+
+    // Helper to resolve the relative path of an item recursively
+    const resolvePath = (itemId: string, visited = new Set<string>()): string | null => {
+      if (visited.has(itemId)) return null; // Cycle detected
+      visited.add(itemId);
+      const item = itemMap.get(itemId);
+      if (!item) return null;
+      if (item.id === rootFolderId) return '';
+      if (!item.parents || item.parents.length === 0) return null;
+      
+      const parentId = item.parents[0];
+      if (parentId === rootFolderId) {
+        return item.name;
+      }
+      
+      const parentPath = resolvePath(parentId, visited);
+      if (parentPath === null) return null;
+      return parentPath ? `${parentPath}/${item.name}` : item.name;
+    };
+
+    // Filter only markdown files that belong to our root folder tree
+    const markdownFiles: DriveFileMeta[] = [];
+    for (const item of allItems) {
+      if (item.mimeType !== 'application/vnd.google-apps.folder' && item.name.toLowerCase().endsWith('.md')) {
+        const relativePath = resolvePath(item.id);
+        if (relativePath !== null) {
+          markdownFiles.push({
+            id: item.id,
+            name: item.name,
+            modifiedTime: item.modifiedTime,
+            path: relativePath
+          });
+        }
+      }
+    }
+    return markdownFiles;
   }
 
   // Download a file's raw content
@@ -165,8 +252,9 @@ export class GoogleDriveSync {
   }
 
   // Upload/Update file (Multipart upload for metadata + content)
-  async uploadFile(filename: string, content: string, fileId?: string): Promise<{ id: string; modifiedTime: string }> {
-    const folderId = await this.getOrCreateSyncFolder();
+  async uploadFile(filename: string, content: string, fileId?: string, parentFolderId?: string): Promise<{ id: string; modifiedTime: string }> {
+    const rootFolderId = await this.getOrCreateSyncFolder();
+    const folderId = parentFolderId || rootFolderId;
     
     const metadata: any = {
       name: filename
