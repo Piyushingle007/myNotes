@@ -1,6 +1,10 @@
 <script lang="ts">
   import { appState } from '../stores/appState.svelte';
-  import { Save, HelpCircle, Network, ArrowLeft, BookOpen, AlertTriangle, Eye, Edit3, Columns } from 'lucide-svelte';
+  import { 
+    Save, HelpCircle, Network, ArrowLeft, BookOpen, AlertTriangle, Eye, Edit3, Columns,
+    Bold, Italic, Strikethrough, Code, Highlighter, Heading1, Heading2, Heading3, Heading4,
+    List, ListOrdered, ListTodo, Quote, Terminal, Minus, Table, Link2, Image as ImageIcon, Underline 
+  } from 'lucide-svelte';
   import { marked } from 'marked';
 
   // State to track if graph view is toggled open on the right
@@ -138,6 +142,158 @@
       }
     }
   }
+
+  // Formatting helpers for Rich Editor toolbar
+  function wrapSelection(prefix: string, suffix: string) {
+    const textarea = document.querySelector('.editor-textarea') as HTMLTextAreaElement;
+    if (!textarea) return;
+    
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const text = textarea.value;
+    
+    const selectedText = text.slice(start, end);
+    const beforeText = text.slice(0, start);
+    const afterText = text.slice(end);
+    
+    const replacement = prefix + selectedText + suffix;
+    appState.activeNoteContent = beforeText + replacement + afterText;
+    appState.editorDirty = true;
+    
+    // Refocus and place selection
+    setTimeout(() => {
+      textarea.focus();
+      textarea.setSelectionRange(start + prefix.length, start + prefix.length + selectedText.length);
+    }, 0);
+  }
+
+  function toggleLinePrefix(prefix: string) {
+    const textarea = document.querySelector('.editor-textarea') as HTMLTextAreaElement;
+    if (!textarea) return;
+    
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const text = textarea.value;
+    
+    const lastNewline = text.lastIndexOf('\n', start - 1);
+    const lineStart = lastNewline === -1 ? 0 : lastNewline + 1;
+    
+    const nextNewline = text.indexOf('\n', end);
+    const lineEnd = nextNewline === -1 ? text.length : nextNewline;
+    
+    const lineText = text.slice(lineStart, lineEnd);
+    const beforeText = text.slice(0, lineStart);
+    const afterText = text.slice(lineEnd);
+    
+    let newLineText = lineText;
+    if (lineText.startsWith(prefix)) {
+      newLineText = lineText.slice(prefix.length);
+    } else {
+      // Remove other heading prefixes if we are adding a heading
+      if (prefix.trim().startsWith('#')) {
+        newLineText = lineText.replace(/^#+\s*/, '');
+      }
+      // Remove other list prefixes if we are adding a list
+      if (prefix.trim().startsWith('-') || prefix.trim().match(/^\d+\./)) {
+        newLineText = lineText.replace(/^([-*+]|\d+\.)\s*/, '');
+      }
+      newLineText = prefix + newLineText;
+    }
+    
+    appState.activeNoteContent = beforeText + newLineText + afterText;
+    appState.editorDirty = true;
+    
+    setTimeout(() => {
+      textarea.focus();
+      const newPos = start + (newLineText.length - lineText.length);
+      textarea.setSelectionRange(newPos, newPos);
+    }, 0);
+  }
+
+  function insertTable() {
+    const tableTemplate = `\n| Column 1 | Column 2 | Column 3 |\n| :--- | :--- | :--- |\n| Row 1 Col 1 | Row 1 Col 2 | Row 1 Col 3 |\n| Row 2 Col 1 | Row 2 Col 2 | Row 2 Col 3 |\n`;
+    wrapSelection('', tableTemplate);
+  }
+
+  function insertLink() {
+    const url = prompt('Enter link URL (e.g., https://example.com):');
+    if (url === null) return;
+    const text = prompt('Enter link text (optional):') || 'link';
+    wrapSelection(`[${text}](${url})`, '');
+  }
+
+  function insertImage() {
+    const url = prompt('Enter image URL (e.g., https://example.com/image.png):');
+    if (url === null) return;
+    const alt = prompt('Enter image description (alt text):') || 'image';
+    wrapSelection(`![${alt}](${url})`, '');
+  }
+
+  // Keyboard Shortcuts Handler bound directly to textarea
+  function handleKeyDown(e: KeyboardEvent) {
+    const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+    const isModifier = isMac ? e.metaKey : e.ctrlKey;
+
+    if (isModifier) {
+      if (e.key === 'b' || e.key === 'B') {
+        e.preventDefault();
+        wrapSelection('**', '**');
+      } else if (e.key === 'i' || e.key === 'I') {
+        e.preventDefault();
+        wrapSelection('*', '*');
+      } else if (e.key === 'k' || e.key === 'K') {
+        e.preventDefault();
+        insertLink();
+      } else if (e.key === 'e' || e.key === 'E') {
+        e.preventDefault();
+        wrapSelection('`', '`');
+      } else if (e.key === 'h' || e.key === 'H') {
+        e.preventDefault();
+        wrapSelection('<mark>', '</mark>');
+      } else if (e.shiftKey && (e.key === 'x' || e.key === 'X')) {
+        e.preventDefault();
+        wrapSelection('~~', '~~');
+      } else if (e.altKey && e.key === '1') {
+        e.preventDefault();
+        toggleLinePrefix('# ');
+      } else if (e.altKey && e.key === '2') {
+        e.preventDefault();
+        toggleLinePrefix('## ');
+      } else if (e.altKey && e.key === '3') {
+        e.preventDefault();
+        toggleLinePrefix('### ');
+      } else if (e.altKey && e.key === '4') {
+        e.preventDefault();
+        toggleLinePrefix('#### ');
+      }
+    }
+  }
+
+  // Floating Selection Toolbar Logic
+  let floatingToolbarX = $state(0);
+  let floatingToolbarY = $state(0);
+  let showFloatingToolbar = $state(false);
+
+  function handleMouseUp(e: MouseEvent) {
+    const textarea = document.querySelector('.editor-textarea') as HTMLTextAreaElement;
+    if (!textarea) return;
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    
+    if (start !== end) {
+      floatingToolbarX = e.clientX;
+      floatingToolbarY = e.clientY - 45;
+      showFloatingToolbar = true;
+    } else {
+      showFloatingToolbar = false;
+    }
+  }
+
+  function handleTextareaBlur() {
+    setTimeout(() => {
+      showFloatingToolbar = false;
+    }, 200);
+  }
 </script>
 
 <div class="editor-container flex-col">
@@ -218,6 +374,81 @@
       </div>
     </div>
 
+    <!-- Formatting Toolbar (Phase 1) -->
+    <div class="formatting-toolbar flex-row">
+      <!-- Text formats -->
+      <button onclick={() => wrapSelection('**', '**')} title="Bold (Ctrl+B)" class="btn-tool">
+        <Bold size={15} />
+      </button>
+      <button onclick={() => wrapSelection('*', '*')} title="Italic (Ctrl+I)" class="btn-tool">
+        <Italic size={15} />
+      </button>
+      <button onclick={() => wrapSelection('~~', '~~')} title="Strikethrough (Ctrl+Shift+X)" class="btn-tool">
+        <Strikethrough size={15} />
+      </button>
+      <button onclick={() => wrapSelection('<u>', '</u>')} title="Underline" class="btn-tool">
+        <Underline size={15} />
+      </button>
+      <button onclick={() => wrapSelection('`', '`')} title="Inline Code (Ctrl+E)" class="btn-tool">
+        <Code size={15} />
+      </button>
+      <button onclick={() => wrapSelection('<mark>', '</mark>')} title="Highlight (Ctrl+H)" class="btn-tool">
+        <Highlighter size={15} />
+      </button>
+
+      <span class="tool-divider"></span>
+
+      <!-- Headings -->
+      <button onclick={() => toggleLinePrefix('# ')} title="Heading 1 (Ctrl+Alt+1)" class="btn-tool">
+        <Heading1 size={15} />
+      </button>
+      <button onclick={() => toggleLinePrefix('## ')} title="Heading 2 (Ctrl+Alt+2)" class="btn-tool">
+        <Heading2 size={15} />
+      </button>
+      <button onclick={() => toggleLinePrefix('### ')} title="Heading 3 (Ctrl+Alt+3)" class="btn-tool">
+        <Heading3 size={15} />
+      </button>
+
+      <span class="tool-divider"></span>
+
+      <!-- Lists -->
+      <button onclick={() => toggleLinePrefix('- ')} title="Bullet List" class="btn-tool">
+        <List size={15} />
+      </button>
+      <button onclick={() => toggleLinePrefix('1. ')} title="Numbered List" class="btn-tool">
+        <ListOrdered size={15} />
+      </button>
+      <button onclick={() => toggleLinePrefix('- [ ] ')} title="Task List" class="btn-tool">
+        <ListTodo size={15} />
+      </button>
+
+      <span class="tool-divider"></span>
+
+      <!-- Blocks & Elements -->
+      <button onclick={() => toggleLinePrefix('> ')} title="Blockquote" class="btn-tool">
+        <Quote size={15} />
+      </button>
+      <button onclick={() => wrapSelection('```\n', '\n```')} title="Code Block" class="btn-tool">
+        <Terminal size={15} />
+      </button>
+      <button onclick={() => wrapSelection('\n---\n', '')} title="Horizontal Rule" class="btn-tool">
+        <Minus size={15} />
+      </button>
+      <button onclick={insertTable} title="Insert Table" class="btn-tool">
+        <Table size={15} />
+      </button>
+
+      <span class="tool-divider"></span>
+
+      <!-- Media Links -->
+      <button onclick={insertLink} title="Insert Link (Ctrl+K)" class="btn-tool">
+        <Link2 size={15} />
+      </button>
+      <button onclick={insertImage} title="Insert Image" class="btn-tool">
+        <ImageIcon size={15} />
+      </button>
+    </div>
+
     <!-- Textarea Editing Panel / Preview Panel Workspace -->
     <div class="editor-body flex-row">
       {#if viewMode !== 'preview'}
@@ -226,6 +457,10 @@
             class="editor-textarea font-mono" 
             value={appState.activeNoteContent} 
             oninput={handleContentInput}
+            onkeydown={handleKeyDown}
+            onmouseup={handleMouseUp}
+            onkeyup={handleMouseUp}
+            onblur={handleTextareaBlur}
             placeholder="Start writing in markdown..."
           ></textarea>
         </div>
@@ -290,6 +525,32 @@
     </div>
   {/if}
 </div>
+
+{#if showFloatingToolbar}
+  <div 
+    class="floating-selection-toolbar flex-row" 
+    style="left: {floatingToolbarX}px; top: {floatingToolbarY}px;"
+  >
+    <button onclick={() => wrapSelection('**', '**')} title="Bold" class="btn-float-tool">
+      <Bold size={13} />
+    </button>
+    <button onclick={() => wrapSelection('*', '*')} title="Italic" class="btn-float-tool">
+      <Italic size={13} />
+    </button>
+    <button onclick={() => wrapSelection('~~', '~~')} title="Strikethrough" class="btn-float-tool">
+      <Strikethrough size={13} />
+    </button>
+    <button onclick={() => wrapSelection('`', '`')} title="Inline Code" class="btn-float-tool">
+      <Code size={13} />
+    </button>
+    <button onclick={() => wrapSelection('<mark>', '</mark>')} title="Highlight" class="btn-float-tool">
+      <Highlighter size={13} />
+    </button>
+    <button onclick={insertLink} title="Link" class="btn-float-tool">
+      <Link2 size={13} />
+    </button>
+  </div>
+{/if}
 
 <style>
   .editor-container {
@@ -695,5 +956,99 @@
 
   .preview-pane :global(td) {
     color: var(--text-secondary);
+  }
+
+  /* Formatting Toolbar styles */
+  .formatting-toolbar {
+    height: 40px;
+    background-color: var(--bg-surface);
+    border-bottom: 1px solid var(--border-color);
+    padding: 0 16px;
+    gap: 4px;
+    flex-shrink: 0;
+    overflow-x: auto;
+    display: flex;
+    align-items: center;
+  }
+
+  /* Hide scrollbar for Chrome, Safari and Opera */
+  .formatting-toolbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Hide scrollbar for IE, Edge and Firefox */
+  .formatting-toolbar {
+    -ms-overflow-style: none;  /* IE and Edge */
+    scrollbar-width: none;  /* Firefox */
+  }
+
+  .btn-tool {
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--text-secondary);
+    width: 28px;
+    height: 28px;
+    border-radius: var(--radius-small);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: color 0.2s, background-color 0.2s;
+    flex-shrink: 0;
+  }
+
+  .btn-tool:hover {
+    color: var(--text-primary);
+    background-color: rgba(255, 255, 255, 0.05);
+  }
+
+  .tool-divider {
+    width: 1px;
+    height: 16px;
+    background-color: var(--border-color);
+    margin: 0 6px;
+    flex-shrink: 0;
+  }
+
+  /* Floating Selection Toolbar styles */
+  .floating-selection-toolbar {
+    position: fixed;
+    z-index: 1000;
+    background-color: rgba(18, 18, 18, 0.9);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-pill);
+    padding: 3px;
+    gap: 2px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+    transform: translate(-50%, -100%);
+    animation: fade-in 0.15s ease-out;
+  }
+
+  @keyframes fade-in {
+    from { opacity: 0; transform: translate(-50%, -90%); }
+    to { opacity: 1; transform: translate(-50%, -100%); }
+  }
+
+  .btn-float-tool {
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--text-secondary);
+    width: 26px;
+    height: 26px;
+    border-radius: var(--radius-pill);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: color 0.15s, background-color 0.15s;
+  }
+
+  .btn-float-tool:hover {
+    color: var(--text-primary);
+    background-color: rgba(255, 255, 255, 0.08);
   }
 </style>
