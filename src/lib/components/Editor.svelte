@@ -296,18 +296,32 @@
 
 
 	const modKey = navigator.platform.startsWith('Mac') ? '⌘' : 'Ctrl';
-	const isMobile = /android|iphone|ipad|ipod/i.test(navigator.userAgent);
-	let enterPressStart = 0;
-	let enterPressTimer: any = null;
+	let isMobile = $state(false);
+	$effect(() => {
+		if (typeof window !== 'undefined') {
+			const updateMobile = () => {
+				isMobile = /android|iphone|ipad|ipod/i.test(navigator.userAgent) || window.innerWidth < 768;
+			};
+			updateMobile();
+			window.addEventListener('resize', updateMobile);
+			return () => window.removeEventListener('resize', updateMobile);
+		}
+	});
 
 	// Track virtual keyboard height on mobile via visualViewport
 	let keyboardHeight = $state(0);
-	if (isMobile && typeof window !== 'undefined' && window.visualViewport) {
-		const vv = window.visualViewport;
-		const update = () => { keyboardHeight = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop)); };
-		vv.addEventListener('resize', update);
-		vv.addEventListener('scroll', update);
-	}
+	$effect(() => {
+		if (isMobile && typeof window !== 'undefined' && window.visualViewport) {
+			const vv = window.visualViewport;
+			const updateHeight = () => { keyboardHeight = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop)); };
+			vv.addEventListener('resize', updateHeight);
+			vv.addEventListener('scroll', updateHeight);
+			return () => {
+				vv.removeEventListener('resize', updateHeight);
+				vv.removeEventListener('scroll', updateHeight);
+			};
+		}
+	});
 
 	let editorElement = $state<HTMLDivElement>(null!);
 	let sourceElement = $state<HTMLTextAreaElement>(null!);
@@ -3262,43 +3276,6 @@
 			editorProps: {
 				attributes: { class: 'editor-content', spellcheck: 'false' },
 				handleDOMEvents: {
-					keydown: (view, event) => {
-						if (isMobile && event.key === 'Enter' && !event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey) {
-							if (enterPressStart === 0) {
-								enterPressStart = Date.now();
-								clearTimeout(enterPressTimer);
-								enterPressTimer = setTimeout(() => {
-									if (enterPressStart > 0 && editor) {
-										editor.commands.undo();
-										const tabEvent = new KeyboardEvent('keydown', {
-											key: 'Tab',
-											code: 'Tab',
-											keyCode: 9,
-											which: 9,
-											bubbles: true,
-											cancelable: true
-										});
-										editor.view.dom.dispatchEvent(tabEvent);
-										enterPressStart = 0;
-									}
-								}, 500);
-							}
-						}
-						return false;
-					},
-					keyup: (view, event) => {
-						if (isMobile && event.key === 'Enter') {
-							clearTimeout(enterPressTimer);
-							const duration = enterPressStart > 0 ? Date.now() - enterPressStart : 0;
-							enterPressStart = 0;
-							if (duration > 500 || duration === 0) {
-								event.preventDefault();
-								event.stopPropagation();
-								return true;
-							}
-						}
-						return false;
-					},
 					// Prevent focus-caused scroll jumps when clicking details toggle buttons.
 					// Pre-focusing with preventScroll means TipTap's focus() call sees
 					// hasFocus()=true and skips its scrolling view.focus() call.
@@ -4484,7 +4461,7 @@
 		{/if}
 		{#if !$viewerNote}
 		<div class="editor-toolbar" class:mobile={isMobile}>
-			<div class="editor-title">
+			<div class="editor-title" style="display: flex; align-items: center; gap: 8px; width: 100%;">
 				<input
 					bind:this={titleInput}
 					type="text"
@@ -4540,6 +4517,23 @@
 						}
 					}}
 				/>
+				{#if isMobile}
+					<button
+						class="icon-btn"
+						style="padding: 6px; flex-shrink: 0;"
+						class:active={appState.favorites.includes($activeNotePath || '')}
+						onclick={() => {
+							if ($activeNotePath) {
+								appState.toggleFavorite($activeNotePath);
+							}
+						}}
+						title={appState.favorites.includes($activeNotePath || '') ? 'Remove from Favorites' : 'Add to Favorites'}
+					>
+						<svg width="20" height="20" viewBox="0 0 24 24" fill={appState.favorites.includes($activeNotePath || '') ? 'var(--accent)' : 'none'} stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+							<path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+						</svg>
+					</button>
+				{/if}
 			</div>
 			{#if !isMobile}
 			<div class="toolbar-actions">
@@ -4572,16 +4566,15 @@
 
 				<button
 					class="icon-btn"
-					class:active={$activeNote?.meta.pinned}
+					class:active={appState.favorites.includes($activeNotePath || '')}
 					onclick={() => {
-						if ($activeNote && $activeNotePath) {
-							$activeNote.meta.pinned = !$activeNote.meta.pinned;
+						if ($activeNotePath) {
 							appState.toggleFavorite($activeNotePath);
 						}
 					}}
-					title={$activeNote?.meta.pinned ? 'Remove from Favorites' : 'Add to Favorites'}
+					title={appState.favorites.includes($activeNotePath || '') ? 'Remove from Favorites' : 'Add to Favorites'}
 				>
-					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+					<svg width="16" height="16" viewBox="0 0 24 24" fill={appState.favorites.includes($activeNotePath || '') ? 'currentColor' : 'none'} stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 						<path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
 					</svg>
 				</button>
@@ -5005,6 +4998,47 @@
 
 				<div class="fmt-sep"></div>
 
+				<!-- Tab Indent / Outdent Buttons -->
+				<button class="fmt-btn" onclick={() => {
+					if (editor) {
+						editor.view.dom.dispatchEvent(new KeyboardEvent('keydown', {
+							key: 'Tab',
+							code: 'Tab',
+							keyCode: 9,
+							which: 9,
+							bubbles: true,
+							cancelable: true
+						}));
+					}
+				}} title="Tab Indent">
+					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+						<path d="M5 12h14"/>
+						<polyline points="13 6 19 12 13 18"/>
+						<line x1="21" y1="5" x2="21" y2="19"/>
+					</svg>
+				</button>
+				<button class="fmt-btn" onclick={() => {
+					if (editor) {
+						editor.view.dom.dispatchEvent(new KeyboardEvent('keydown', {
+							key: 'Tab',
+							code: 'Tab',
+							keyCode: 9,
+							which: 9,
+							shiftKey: true,
+							bubbles: true,
+							cancelable: true
+						}));
+					}
+				}} title="Shift+Tab Outdent">
+					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+						<path d="M19 12H5"/>
+						<polyline points="11 6 5 12 11 18"/>
+						<line x1="3" y1="5" x2="3" y2="19"/>
+					</svg>
+				</button>
+
+				<div class="fmt-sep"></div>
+
 				<!-- Heading dropdown -->
 				<div class="fmt-dropdown-wrap">
 					<button class="fmt-btn" class:active={(editorState >= 0 && editor?.isActive('heading'))} onclick={(e) => { e.stopPropagation(); headingDropdown = !headingDropdown; insertDropdown = false; }} title="Heading">
@@ -5136,6 +5170,47 @@
 						</div>
 					{/if}
 				</div>
+
+				<div class="fmt-sep"></div>
+
+				<!-- Tab Indent / Outdent Buttons -->
+				<button class="fmt-btn" onclick={() => {
+					if (editor) {
+						editor.view.dom.dispatchEvent(new KeyboardEvent('keydown', {
+							key: 'Tab',
+							code: 'Tab',
+							keyCode: 9,
+							which: 9,
+							bubbles: true,
+							cancelable: true
+						}));
+					}
+				}} title="Tab Indent">
+					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+						<path d="M5 12h14"/>
+						<polyline points="13 6 19 12 13 18"/>
+						<line x1="21" y1="5" x2="21" y2="19"/>
+					</svg>
+				</button>
+				<button class="fmt-btn" onclick={() => {
+					if (editor) {
+						editor.view.dom.dispatchEvent(new KeyboardEvent('keydown', {
+							key: 'Tab',
+							code: 'Tab',
+							keyCode: 9,
+							which: 9,
+							shiftKey: true,
+							bubbles: true,
+							cancelable: true
+						}));
+					}
+				}} title="Shift+Tab Outdent">
+					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+						<path d="M19 12H5"/>
+						<polyline points="11 6 5 12 11 18"/>
+						<line x1="3" y1="5" x2="3" y2="19"/>
+					</svg>
+				</button>
 
 				<div class="fmt-sep"></div>
 
