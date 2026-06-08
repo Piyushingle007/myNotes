@@ -501,7 +501,7 @@
 		} else {
 			editor.chain().focus().setFontFamily(fontValue).run();
 		}
-		fontDropdown = false;
+		setTimeout(() => { fontDropdown = false; }, 20);
 	}
 
 	let allFonts = $derived([...standardFonts, ...customFonts]);
@@ -569,7 +569,7 @@
 		} else {
 			editor.chain().focus().setMark('textStyle', { fontSize: sizeValue }).run();
 		}
-		fontSizeDropdown = false;
+		setTimeout(() => { fontSizeDropdown = false; }, 20);
 	}
 
 	let activeSizeLabel = $derived.by(() => {
@@ -862,6 +862,21 @@
 		...allSizes.map(s => ({ name: s, value: s }))
 	]);
 
+	const slashColorsList = [
+		{ name: 'Black', value: '#000000' },
+		{ name: 'Dark grey', value: '#333333' },
+		{ name: 'Medium grey', value: '#666666' },
+		{ name: 'Light grey', value: '#b5b5b5' },
+		{ name: 'Purple', value: '#a855f7' },
+		{ name: 'Pink', value: '#ec4899' },
+		{ name: 'Red', value: '#ef4444' },
+		{ name: 'Orange', value: '#f97316' },
+		{ name: 'Yellow', value: '#eab308' },
+		{ name: 'Green', value: '#22c55e' },
+		{ name: 'Teal', value: '#06b6d4' },
+		{ name: 'Light blue', value: '#3b82f6' }
+	];
+
 	let slashFiltered = $derived.by(() => {
 		// Get all potential font items
 		const fontItems = allFontsList.map(f => ({
@@ -885,6 +900,17 @@
 			}
 		}));
 
+		// Get all potential color items
+		const colorItems = slashColorsList.map(c => ({
+			type: 'color' as const,
+			label: c.name,
+			value: c.value,
+			action: () => {
+				setTextColor(c.value);
+				closeSlashMenu();
+			}
+		}));
+
 		// Get all potential command items
 		const commandItems = getSlashCommands().map(cmd => ({
 			type: 'command' as const,
@@ -901,8 +927,9 @@
 			return {
 				fonts: fontItems,
 				sizes: sizeItems,
+				colors: colorItems,
 				commands: commandItems,
-				flatList: [...fontItems, ...sizeItems, ...commandItems]
+				flatList: [...fontItems, ...sizeItems, ...colorItems, ...commandItems]
 			};
 		}
 
@@ -911,8 +938,9 @@
 			return {
 				fonts: fontItems,
 				sizes: sizeItems,
+				colors: colorItems,
 				commands: commandItems,
-				flatList: [...fontItems, ...sizeItems, ...commandItems]
+				flatList: [...fontItems, ...sizeItems, ...colorItems, ...commandItems]
 			};
 		}
 
@@ -926,6 +954,11 @@
 			s.label.toLowerCase().includes(q)
 		);
 
+		// Filter colors
+		const filteredColors = colorItems.filter(c =>
+			c.label.toLowerCase().includes(q)
+		);
+
 		// Filter commands
 		const filteredCommands = commandItems.filter(cmd =>
 			cmd.label.toLowerCase().includes(q) ||
@@ -935,8 +968,9 @@
 		return {
 			fonts: filteredFonts,
 			sizes: filteredSizes,
+			colors: filteredColors,
 			commands: filteredCommands,
-			flatList: [...filteredFonts, ...filteredSizes, ...filteredCommands]
+			flatList: [...filteredFonts, ...filteredSizes, ...filteredColors, ...filteredCommands]
 		};
 	});
 	let titleInput = $state<HTMLInputElement>(null!);
@@ -4038,7 +4072,7 @@
 		} else {
 			editor.chain().focus().setColor(color).run();
 		}
-		colorDropdown = false;
+		setTimeout(() => { colorDropdown = false; }, 20);
 	}
 
 	function setHighlightColor(color: string) {
@@ -4048,7 +4082,7 @@
 		} else {
 			editor.chain().focus().setHighlight({ color }).run();
 		}
-		highlightDropdown = false;
+		setTimeout(() => { highlightDropdown = false; }, 20);
 	}
 
 	function handleEditorClick(event: MouseEvent) {
@@ -6414,48 +6448,67 @@
 			{:else}
 				{#if slashFiltered.fonts.length > 0}
 					<div class="slash-menu-category-header">Font Family</div>
-					<div class="slash-font-picker-section" class:has-scroller={slashFiltered.fonts.length > 3}>
-						{#each slashFiltered.fonts as font, idx}
-							<button
-								class="slash-font-item"
-								class:selected={idx === slashSelectedIndex}
-								onmouseenter={() => slashSelectedIndex = idx}
-								onmousedown={(e) => { e.preventDefault(); executeSlashCommand(idx); }}
-								style="font-family: {font.value || 'inherit'};"
-							>
-								{font.label}
-							</button>
-						{/each}
-					</div>
-					{#if slashFiltered.sizes.length > 0 || slashFiltered.commands.length > 0}
+					{#each slashFiltered.fonts as font, idx}
+						<button
+							class="slash-menu-item"
+							class:selected={idx === slashSelectedIndex}
+							onmouseenter={() => slashSelectedIndex = idx}
+							onmousedown={(e) => { e.preventDefault(); executeSlashCommand(idx); }}
+						>
+							<span class="slash-menu-icon" style="font-family: {font.value || 'inherit'}; font-weight: 700;">Aa</span>
+							<div class="slash-menu-details">
+								<span class="slash-menu-label" style="font-family: {font.value || 'inherit'};">{font.label}</span>
+							</div>
+						</button>
+					{/each}
+					{#if slashFiltered.sizes.length > 0 || slashFiltered.colors.length > 0 || slashFiltered.commands.length > 0}
 						<div class="slash-menu-category-divider"></div>
 					{/if}
 				{/if}
 
 				{#if slashFiltered.sizes.length > 0}
 					<div class="slash-menu-category-header">Font Size</div>
-					<div class="slash-size-picker-section" class:has-scroller={slashFiltered.sizes.length > 3}>
-						{#each slashFiltered.sizes as size, idx}
-							{@const globalIdx = slashFiltered.fonts.length + idx}
-							<button
-								class="slash-size-item"
-								class:selected={globalIdx === slashSelectedIndex}
-								onmouseenter={() => slashSelectedIndex = globalIdx}
-								onmousedown={(e) => { e.preventDefault(); executeSlashCommand(globalIdx); }}
-							>
-								{size.label}
-							</button>
-						{/each}
-					</div>
-					{#if slashFiltered.commands.length > 0}
+					{#each slashFiltered.sizes as size, idx}
+						{@const globalIdx = slashFiltered.fonts.length + idx}
+						<button
+							class="slash-menu-item"
+							class:selected={globalIdx === slashSelectedIndex}
+							onmouseenter={() => slashSelectedIndex = globalIdx}
+							onmousedown={(e) => { e.preventDefault(); executeSlashCommand(globalIdx); }}
+						>
+							<span class="slash-menu-icon" style="font-size: 11px; font-weight: 700;">{size.label.replace('px', '')}</span>
+							<div class="slash-menu-details">
+								<span class="slash-menu-label">{size.label}</span>
+							</div>
+						</button>
+					{/each}
+				{/if}
+
+				{#if slashFiltered.colors.length > 0}
+					{#if slashFiltered.fonts.length > 0 || slashFiltered.sizes.length > 0}
 						<div class="slash-menu-category-divider"></div>
 					{/if}
+					<div class="slash-menu-category-header">Font Color</div>
+					{#each slashFiltered.colors as color, idx}
+						{@const globalIdx = slashFiltered.fonts.length + slashFiltered.sizes.length + idx}
+						<button
+							class="slash-menu-item"
+							class:selected={globalIdx === slashSelectedIndex}
+							onmouseenter={() => slashSelectedIndex = globalIdx}
+							onmousedown={(e) => { e.preventDefault(); executeSlashCommand(globalIdx); }}
+						>
+							<span class="slash-menu-icon" style="color: {color.value}; font-weight: 700;">Aa</span>
+							<div class="slash-menu-details">
+								<span class="slash-menu-label" style="color: {color.value};">{color.label}</span>
+							</div>
+						</button>
+					{/each}
 				{/if}
 
 				{#each slashFiltered.commands as cmd, i}
-					{@const globalIdx = slashFiltered.fonts.length + slashFiltered.sizes.length + i}
+					{@const globalIdx = slashFiltered.fonts.length + slashFiltered.sizes.length + slashFiltered.colors.length + i}
 					{#if i === 0 || cmd.category !== slashFiltered.commands[i - 1].category}
-						{#if i > 0 || (i === 0 && (slashFiltered.fonts.length > 0 || slashFiltered.sizes.length > 0))}
+						{#if i > 0 || (i === 0 && (slashFiltered.fonts.length > 0 || slashFiltered.sizes.length > 0 || slashFiltered.colors.length > 0))}
 							<div class="slash-menu-category-divider"></div>
 						{/if}
 						<div class="slash-menu-category-header">
