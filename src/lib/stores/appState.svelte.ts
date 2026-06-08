@@ -23,7 +23,6 @@ class AppState {
   showSettings = $state<boolean>(false);
   editorDirty = $state<boolean>(false);
   theme = $state<'dark' | 'black'>('dark');
-  recentFolders = $state<Array<{ name: string; handle: FileSystemDirectoryHandle; lastOpened: number }>>([]);
 
   // Google Drive Sync Reactive States
   googleClientId = $state<string>(localStorage.getItem('mynotes_google_client_id') || '');
@@ -62,7 +61,6 @@ class AppState {
   }
 
   constructor() {
-    this.loadRecentFolders();
     const token = localStorage.getItem('mynotes_google_access_token');
     const expiry = Number(localStorage.getItem('mynotes_google_token_expiry') || '0');
     
@@ -278,22 +276,16 @@ class AppState {
     this.syncStatus = 'syncing';
     try {
       console.log('--- STARTING GOOGLE DRIVE SYNC CYCLE ---');
-      const mainFolderId = await this.syncService.getOrCreateSyncFolder();
-      
-      // Get or create active vault subfolder inside main myNotes folder
-      const vaultName = this.vaultName || 'Local Sandbox';
-      const vaultFolderId = await this.syncService.getOrCreateSubfolders(vaultName, mainFolderId);
-      
-      // Retrieve all files in vault recursively, with resolved paths relative to vaultFolderId
-      const driveFiles = await this.syncService.listAllFilesRecursively(vaultFolderId);
-      console.log(`Remote Vault Folder ID: ${vaultFolderId}. Found ${driveFiles.length} files under vault '${vaultName}'.`);
+      const folderId = await this.syncService.getOrCreateSyncFolder();
+      const driveFiles = await this.syncService.listFiles(folderId);
+      console.log(`Remote Drive Folder ID: ${folderId}. Found ${driveFiles.length} files on Drive.`);
 
       // Load drive mappings
       const mappings: Record<string, string | SyncMapping> = JSON.parse(localStorage.getItem('mynotes_drive_mappings') || '{}');
       const activeMappings: Record<string, SyncMapping> = {};
 
-      // Map of drive files by path for faster lookup
-      const driveFileMap = new Map(driveFiles.map(f => [f.path.toLowerCase(), f]));
+      // Map of drive files by name for faster lookup
+      const driveFileMap = new Map(driveFiles.map(f => [f.name.replace(/\.md$/, '').toLowerCase(), f]));
 
       // Step 1: Sync local files to remote
       for (const note of this.notes) {
@@ -312,22 +304,12 @@ class AppState {
           }
         }
 
-        // Match by ID, or fallback to relative path
+        // Match by ID, or fallback to name
         const driveFile = remoteId 
           ? driveFiles.find(f => f.id === remoteId)
-          : driveFileMap.get(note.path.toLowerCase());
+          : driveFileMap.get(note.name.toLowerCase());
 
         console.log(`Sync check for: ${note.path}`);
-        
-        // Find or create subfolders on Drive for this note's path
-        let noteParentFolderId = vaultFolderId;
-        const lastSlash = note.path.lastIndexOf('/');
-        let uploadFilename = note.name + '.md';
-        if (lastSlash !== -1) {
-          const dirPath = note.path.substring(0, lastSlash);
-          noteParentFolderId = await this.syncService.getOrCreateSubfolders(dirPath, vaultFolderId);
-        }
-
         if (driveFile) {
           const remoteTime = new Date(driveFile.modifiedTime).getTime();
           console.log(`  Remote file found: ${driveFile.name} (ID: ${driveFile.id})`);
@@ -343,7 +325,7 @@ class AppState {
             console.log('  Conflict detected! Resolving via Last Modified Wins.');
             if (note.modified > remoteTime) {
               console.log('  Local is newer. Uploading note...');
-              const uploadRes = await this.syncService.uploadFile(uploadFilename, note.content, driveFile.id, noteParentFolderId);
+              const uploadRes = await this.syncService.uploadFile(`${note.name}.md`, note.content, driveFile.id);
               const updatedRemoteTime = new Date(uploadRes.modifiedTime).getTime();
               activeMappings[note.path] = {
                 id: uploadRes.id,
@@ -362,7 +344,7 @@ class AppState {
             }
           } else if (localChanged) {
             console.log('  Local changed since last sync. Uploading updates...');
-            const uploadRes = await this.syncService.uploadFile(uploadFilename, note.content, driveFile.id, noteParentFolderId);
+            const uploadRes = await this.syncService.uploadFile(`${note.name}.md`, note.content, driveFile.id);
             const updatedRemoteTime = new Date(uploadRes.modifiedTime).getTime();
             activeMappings[note.path] = {
               id: uploadRes.id,
@@ -392,7 +374,7 @@ class AppState {
             await this.storage.deleteNote(note.path);
           } else {
             console.log('  New local note found. Uploading to Google Drive...');
-            const uploadRes = await this.syncService.uploadFile(uploadFilename, note.content, undefined, noteParentFolderId);
+            const uploadRes = await this.syncService.uploadFile(`${note.name}.md`, note.content);
             const updatedRemoteTime = new Date(uploadRes.modifiedTime).getTime();
             activeMappings[note.path] = {
               id: uploadRes.id,
@@ -410,14 +392,13 @@ class AppState {
           const id = typeof mapVal === 'string' ? mapVal : mapVal.id;
           return id === remote.id;
         });
+        const cleanName = remote.name.replace(/\.md$/, '');
 
         if (!localPath) {
-          console.log(`New remote file found on Drive: ${remote.path} (ID: ${remote.id})`);
-          
-          // Match by relative path instead of flat name
-          const existingLocal = this.notes.find(n => n.path.toLowerCase() === remote.path.toLowerCase());
+          console.log(`New remote file found: ${remote.name} (ID: ${remote.id})`);
+          const existingLocal = this.notes.find(n => n.name.toLowerCase() === cleanName.toLowerCase());
           if (existingLocal) {
-            console.log(`  Matching local file found by path: ${existingLocal.path}. Pairing.`);
+            console.log(`  Matching local file found by name: ${existingLocal.path}. Pairing.`);
             const remoteTime = new Date(remote.modifiedTime).getTime();
             activeMappings[existingLocal.path] = {
               id: remote.id,
@@ -427,9 +408,10 @@ class AppState {
           } else {
             console.log('  No matching local file. Downloading...');
             const remoteContent = await this.syncService.downloadFile(remote.id);
-            await this.storage.writeNote(remote.path, remoteContent);
+            const newLocalPath = `${cleanName}.md`;
+            await this.storage.writeNote(newLocalPath, remoteContent);
             const remoteTime = new Date(remote.modifiedTime).getTime();
-            activeMappings[remote.path] = {
+            activeMappings[newLocalPath] = {
               id: remote.id,
               lastSyncLocalTime: Date.now(),
               lastSyncRemoteTime: remoteTime
@@ -459,7 +441,6 @@ class AppState {
       }
     }
   }
-
 
   async initSandbox() {
     this.storage = new IndexedDBAdapter();
@@ -501,11 +482,6 @@ class AppState {
       const name = await adapter.selectDirectory();
       this.storage = adapter;
       this.vaultName = name;
-      
-      if (adapter.dirHandle) {
-        await this.addRecentFolder(name, adapter.dirHandle);
-      }
-
       await this.refreshNotes();
       this.vaultReady = true;
       
@@ -681,136 +657,6 @@ class AppState {
     if (!matches) return [];
     return Array.from(new Set(matches.map(m => m.slice(1).toLowerCase())));
   }
-
-  // Recent Folders Management
-  async loadRecentFolders() {
-    const folders = await getRecentFolders();
-    this.recentFolders = folders.sort((a, b) => b.lastOpened - a.lastOpened);
-  }
-
-  async addRecentFolder(name: string, handle: FileSystemDirectoryHandle) {
-    if (name === 'Local Sandbox' || name === 'Sandbox') return;
-    await saveRecentFolder(name, handle);
-    await this.loadRecentFolders();
-  }
-
-  async removeRecentFolder(name: string) {
-    await deleteRecentFolder(name);
-    await this.loadRecentFolders();
-  }
-
-  async selectRecentFolder(name: string) {
-    if (name === 'Local Sandbox') {
-      await this.initSandbox();
-      return;
-    }
-
-    const folder = this.recentFolders.find(f => f.name === name);
-    if (!folder) return;
-
-    try {
-      const handle = folder.handle;
-      const permission = await (handle as any).queryPermission({ mode: 'readwrite' });
-      if (permission !== 'granted') {
-        const request = await (handle as any).requestPermission({ mode: 'readwrite' });
-        if (request !== 'granted') {
-          alert('Permission denied to access folder');
-          return;
-        }
-      }
-
-      const adapter = new FileSystemAccessAdapter(handle);
-      this.storage = adapter;
-      this.vaultName = name;
-      
-      // Update last opened timestamp
-      await this.addRecentFolder(name, handle);
-
-      await this.refreshNotes();
-      this.vaultReady = true;
-
-      // Auto-sync after folder switch
-      if (this.syncEnabled) {
-        if (this.googleConnected) {
-          this.syncNotes();
-        } else {
-          this.autoConnectGoogleDrive();
-        }
-      }
-
-      if (this.notes.length > 0) {
-        this.selectNote(this.notes[0].path);
-      } else {
-        this.activeNotePath = null;
-        this.activeNoteContent = '';
-        this.activeNoteTitle = '';
-      }
-    } catch (e) {
-      console.error('Failed to switch folder', e);
-      alert('Failed to switch to folder: ' + e);
-    }
-  }
 }
 
 export const appState = new AppState();
-
-// ----------------------------------------------------
-// Recent Folders IndexedDB Helpers
-// ----------------------------------------------------
-interface RecentFolderEntry {
-  name: string;
-  handle: FileSystemDirectoryHandle;
-  lastOpened: number;
-}
-
-function openRecentFoldersDb(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open('myNotesRecentFolders', 1);
-    request.onupgradeneeded = () => {
-      const db = request.result;
-      if (!db.objectStoreNames.contains('folders')) {
-        db.createObjectStore('folders', { keyPath: 'name' });
-      }
-    };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-}
-
-async function saveRecentFolder(name: string, handle: FileSystemDirectoryHandle) {
-  const db = await openRecentFoldersDb();
-  const tx = db.transaction('folders', 'readwrite');
-  const store = tx.objectStore('folders');
-  await new Promise<void>((resolve, reject) => {
-    const req = store.put({ name, handle, lastOpened: Date.now() });
-    req.onsuccess = () => resolve();
-    req.onerror = () => reject(req.error);
-  });
-}
-
-async function getRecentFolders(): Promise<RecentFolderEntry[]> {
-  try {
-    const db = await openRecentFoldersDb();
-    const tx = db.transaction('folders', 'readonly');
-    const store = tx.objectStore('folders');
-    return new Promise((resolve, reject) => {
-      const req = store.getAll();
-      req.onsuccess = () => resolve(req.result || []);
-      req.onerror = () => reject(req.error);
-    });
-  } catch (e) {
-    console.error('Failed to get recent folders', e);
-    return [];
-  }
-}
-
-async function deleteRecentFolder(name: string) {
-  const db = await openRecentFoldersDb();
-  const tx = db.transaction('folders', 'readwrite');
-  const store = tx.objectStore('folders');
-  await new Promise<void>((resolve, reject) => {
-    const req = store.delete(name);
-    req.onsuccess = () => resolve();
-    req.onerror = () => reject(req.error);
-  });
-}

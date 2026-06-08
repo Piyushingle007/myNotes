@@ -135,7 +135,7 @@ export class IndexedDBAdapter implements StorageAdapter {
 // 2. Native File System Access API Adapter
 // ----------------------------------------------------
 export class FileSystemAccessAdapter implements StorageAdapter {
-  dirHandle: FileSystemDirectoryHandle | null = null;
+  private dirHandle: FileSystemDirectoryHandle | null = null;
 
   constructor(dirHandle?: FileSystemDirectoryHandle) {
     if (dirHandle) this.dirHandle = dirHandle;

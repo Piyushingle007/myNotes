@@ -451,52 +451,6 @@
           </div>
         </div>
 
-        <!-- Recent Folders (Mobile Swapper) -->
-        {#if appState.recentFolders.length > 0}
-          <div class="form-group flex-col" style="gap: 6px; margin-top: 4px;">
-            <span class="form-label">Switch Recent Folder</span>
-            <div class="recent-folders-mobile flex-col" style="gap: 4px; max-height: 120px; overflow-y: auto;">
-              <!-- Local Sandbox Option -->
-              <div class="recent-folder-row-mobile flex-row" style="justify-content: space-between; align-items: center; width: 100%;">
-                <button 
-                  class="btn-recent-folder-mobile"
-                  class:active={appState.vaultName === 'Local Sandbox' || appState.vaultName === null}
-                  onclick={() => {
-                    appState.showSettings = false;
-                    appState.selectRecentFolder('Local Sandbox');
-                  }}
-                  style="flex-grow: 1; text-align: left; background: transparent; border: none; padding: 6px 8px; border-radius: var(--radius-small); font-size: 12px; color: var(--text-secondary);"
-                >
-                  ⭐ Local Sandbox
-                </button>
-              </div>
-
-              {#each appState.recentFolders as folder}
-                <div class="recent-folder-row-mobile flex-row" style="justify-content: space-between; align-items: center; width: 100%; gap: 8px;">
-                  <button 
-                    class="btn-recent-folder-mobile"
-                    class:active={appState.vaultName === folder.name}
-                    onclick={() => {
-                      appState.showSettings = false;
-                      appState.selectRecentFolder(folder.name);
-                    }}
-                    style="flex-grow: 1; text-align: left; background: transparent; border: none; padding: 6px 8px; border-radius: var(--radius-small); font-size: 12px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
-                  >
-                    📂 {folder.name}
-                  </button>
-                  <button 
-                    onclick={() => appState.removeRecentFolder(folder.name)}
-                    style="background: transparent; border: none; padding: 6px; color: var(--text-tertiary);"
-                    aria-label="Remove folder"
-                  >
-                    <X size={12} />
-                  </button>
-                </div>
-              {/each}
-            </div>
-          </div>
-        {/if}
-
         <span class="settings-section-title" style="margin-top: 8px; border-top: 1px solid var(--border-color); padding-top: 16px;">Google Drive Sync</span>
 
         <!-- Client ID input section -->
@@ -1310,20 +1264,5 @@
 
   @keyframes sync-spin {
     to { transform: rotate(360deg); }
-  }
-
-  .btn-recent-folder-mobile {
-    transition: background-color 0.2s, color 0.2s;
-    cursor: pointer;
-  }
-
-  .btn-recent-folder-mobile:active {
-    background-color: rgba(255, 255, 255, 0.05);
-  }
-
-  .btn-recent-folder-mobile.active {
-    color: var(--accent) !important;
-    font-weight: 600;
-    background-color: rgba(255, 255, 255, 0.03);
   }
 </style>
