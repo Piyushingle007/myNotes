@@ -7,19 +7,13 @@
 
   import DashboardView from './DashboardView.svelte';
   import DocumentsView from './DocumentsView.svelte';
-  import TemplateMarketplace from './TemplateMarketplace.svelte';
-  import AiWorkspace from './AiWorkspace.svelte';
-  import AnalyticsView from './AnalyticsView.svelte';
   import SettingsView from './SettingsView.svelte';
 
   import { 
     Home, 
     FileText, 
-    Sparkles, 
-    Cpu, 
     Settings,
-    Cloud,
-    RefreshCw
+    Cloud
   } from 'lucide-svelte';
 
   // Responsive state
@@ -80,18 +74,10 @@
       <div class="mobile-content-area flex-grow">
         {#if appState.activeTab === 'dashboard'}
           <DashboardView />
-        {:else}
-          {#if appState.activeTab === 'documents'}
-            <DocumentsView />
-          {:else if appState.activeTab === 'templates'}
-            <TemplateMarketplace />
-          {:else if appState.activeTab === 'ai'}
-            <AiWorkspace />
-          {:else if appState.activeTab === 'analytics'}
-            <AnalyticsView />
-          {:else if appState.activeTab === 'settings'}
-            <SettingsView />
-          {/if}
+        {:else if appState.activeTab === 'documents'}
+          <DocumentsView />
+        {:else if appState.activeTab === 'settings'}
+          <SettingsView />
         {/if}
       </div>
 
@@ -113,24 +99,6 @@
         >
           <FileText size={20} />
           <span>Files</span>
-        </button>
-
-        <button 
-          class="nav-tab flex-col" 
-          class:active={appState.activeTab === 'templates'}
-          onclick={() => appState.activeTab = 'templates'}
-        >
-          <Sparkles size={20} />
-          <span>Templates</span>
-        </button>
-
-        <button 
-          class="nav-tab flex-col" 
-          class:active={appState.activeTab === 'ai'}
-          onclick={() => appState.activeTab = 'ai'}
-        >
-          <Cpu size={20} />
-          <span>AI Assistant</span>
         </button>
 
         <button 
@@ -185,12 +153,6 @@
             <DashboardView />
           {:else if appState.activeTab === 'documents'}
             <DocumentsView />
-          {:else if appState.activeTab === 'templates'}
-            <TemplateMarketplace />
-          {:else if appState.activeTab === 'ai'}
-            <AiWorkspace />
-          {:else if appState.activeTab === 'analytics'}
-            <AnalyticsView />
           {:else if appState.activeTab === 'settings'}
             <SettingsView />
           {/if}

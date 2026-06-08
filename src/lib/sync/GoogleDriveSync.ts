@@ -127,6 +127,15 @@ export class GoogleDriveSync {
     return files.filter(f => f.name.toLowerCase().endsWith('.md'));
   }
 
+  // List all subfolders under a folder
+  async listSubfolders(parentFolderId: string): Promise<Array<{ id: string; name: string }>> {
+    const query = encodeURIComponent(`mimeType = 'application/vnd.google-apps.folder' and '${parentFolderId}' in parents and trashed = false`);
+    const url = `https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name)`;
+    const res = await this.apiCall(url);
+    const data = await res.json();
+    return data.files || [];
+  }
+
   // Download a file's raw content
   async downloadFile(fileId: string): Promise<string> {
     const url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`;

@@ -18,7 +18,9 @@ class AppState {
   activeNoteTitle = $state<string>('');
   activeNotebook = $state<string | null>(null);
   activeTag = $state<string | null>(null);
-  activeTab = $state<'dashboard' | 'documents' | 'templates' | 'ai' | 'analytics' | 'settings'>('dashboard');
+  activeTab = $state<'dashboard' | 'documents' | 'settings'>('dashboard');
+  customDriveFolderId = $state<string | null>(localStorage.getItem('mynotes_custom_drive_folder_id'));
+  customDriveFolderName = $state<string | null>(localStorage.getItem('mynotes_custom_drive_folder_name'));
   searchQuery = $state<string>('');
   showSettings = $state<boolean>(false);
   editorDirty = $state<boolean>(false);
@@ -179,6 +181,18 @@ class AppState {
     localStorage.setItem('mynotes_pinned_paths', JSON.stringify(this.pinnedPaths));
   }
 
+  setCustomDriveFolder(id: string | null, name: string | null) {
+    this.customDriveFolderId = id;
+    this.customDriveFolderName = name;
+    if (id && name) {
+      localStorage.setItem('mynotes_custom_drive_folder_id', id);
+      localStorage.setItem('mynotes_custom_drive_folder_name', name);
+    } else {
+      localStorage.removeItem('mynotes_custom_drive_folder_id');
+      localStorage.removeItem('mynotes_custom_drive_folder_name');
+    }
+  }
+
   setTheme(theme: 'light' | 'dark' | 'black') {
     this.theme = theme;
     localStorage.setItem('mynotes_theme', theme);
@@ -332,8 +346,13 @@ class AppState {
       const mainFolderId = await this.syncService.getOrCreateSyncFolder();
       
       // Get or create active vault subfolder inside main myNotes folder
-      const vaultName = this.vaultName || 'Local Sandbox';
-      const vaultFolderId = await this.syncService.getOrCreateSubfolders(vaultName, mainFolderId);
+      let vaultFolderId: string;
+      const vaultName = this.customDriveFolderName || this.vaultName || 'Local Sandbox';
+      if (this.customDriveFolderId) {
+        vaultFolderId = this.customDriveFolderId;
+      } else {
+        vaultFolderId = await this.syncService.getOrCreateSubfolders(vaultName, mainFolderId);
+      }
       
       // Retrieve all files in vault recursively, with resolved paths relative to vaultFolderId
       const driveFiles = await this.syncService.listAllFilesRecursively(vaultFolderId);
