@@ -1,226 +1,201 @@
 <script lang="ts">
   import { appState } from '../stores/appState.svelte';
-  import { Folder, Plus, Trash2, Tag, Settings, Library, Moon, Sun, FolderOpen, X } from 'lucide-svelte';
+  import { 
+    Home, 
+    FileText, 
+    Sparkles, 
+    Cpu, 
+    BarChart2, 
+    Settings, 
+    FolderOpen, 
+    Moon, 
+    Sun,
+    Trash2,
+    X,
+    Folder
+  } from 'lucide-svelte';
 
-  let newNotebookName = $state('');
-  let showCreateInput = $state(false);
+  let showRecentDropdown = $state(false);
 
-  function selectNotebook(notebook: string | null) {
-    appState.activeNotebook = notebook;
-    appState.activeTag = null;
-  }
-
-  function selectTag(tag: string | null) {
-    appState.activeTag = tag;
-    appState.activeNotebook = null;
-  }
-
-  async function handleCreateNotebook(e: SubmitEvent) {
-    e.preventDefault();
-    if (!newNotebookName.trim()) return;
-    await appState.createNotebook(newNotebookName);
-    newNotebookName = '';
-    showCreateInput = false;
-  }
-
-  async function handleDeleteNotebook(notebook: string, event: Event) {
-    event.stopPropagation();
-    if (confirm(`Are you sure you want to delete folder "${notebook}" and all its notes?`)) {
-      await appState.deleteNotebook(notebook);
+  function selectTab(tab: typeof appState.activeTab) {
+    appState.activeTab = tab;
+    // Clear filters when switching top-level tabs to avoid getting stuck
+    if (tab !== 'documents') {
+      appState.activeNotebook = null;
+      appState.activeTag = null;
     }
   }
 
   function toggleTheme() {
-    appState.theme = appState.theme === 'dark' ? 'black' : 'dark';
-    const root = document.documentElement;
-    if (appState.theme === 'black') {
-      root.style.setProperty('--bg-base', '#000000');
-      root.style.setProperty('--bg-surface', '#0a0a0a');
-      root.style.setProperty('--bg-mid-dark', '#121212');
-    } else {
-      root.style.setProperty('--bg-base', '#121212');
-      root.style.setProperty('--bg-surface', '#181818');
-      root.style.setProperty('--bg-mid-dark', '#1f1f1f');
-    }
+    const nextTheme = appState.theme === 'light' ? 'dark' : appState.theme === 'dark' ? 'black' : 'light';
+    appState.setTheme(nextTheme);
+  }
+
+  async function handleOpenDirectory() {
+    await appState.openDirectory();
+  }
+
+  async function handleRemoveRecent(name: string, event: Event) {
+    event.stopPropagation();
+    await appState.removeRecentFolder(name);
   }
 </script>
 
 <div class="sidebar flex-col">
   <!-- Logo Section -->
   <div class="logo-section flex-row">
-    <div class="logo-icon">🎵</div>
+    <div class="logo-icon">📓</div>
     <span class="logo-text">myNotes</span>
   </div>
 
-  <!-- Main Library Section -->
-  <div class="section-container flex-col">
-    <div class="section-header flex-row">
-      <Library size={18} class="sec-icon" />
-      <span class="section-title">Notebooks</span>
-      <button class="add-btn flex-row" onclick={() => showCreateInput = !showCreateInput} aria-label="Add notebook">
-        <Plus size={16} />
-      </button>
-    </div>
+  <!-- Main Navigation Drawer -->
+  <div class="navigation-menu flex-col flex-grow">
+    <!-- Dashboard -->
+    <button 
+      class="nav-item flex-row" 
+      class:active={appState.activeTab === 'dashboard'} 
+      onclick={() => selectTab('dashboard')}
+    >
+      <Home size={20} class="nav-icon" />
+      <span class="nav-label">Dashboard</span>
+    </button>
 
-    {#if showCreateInput}
-      <form onsubmit={handleCreateNotebook} class="create-form">
-        <input 
-          type="text" 
-          placeholder="New Notebook..." 
-          bind:value={newNotebookName}
-          class="create-input"
-          required
-          autofocus
-        />
-      </form>
-    {/if}
+    <!-- Documents Browser -->
+    <button 
+      class="nav-item flex-row" 
+      class:active={appState.activeTab === 'documents'} 
+      onclick={() => selectTab('documents')}
+    >
+      <FileText size={20} class="nav-icon" />
+      <span class="nav-label">Documents</span>
+    </button>
 
-    <div class="list-scroll">
-      <div 
-        class="nav-item flex-row" 
-        class:active={appState.activeNotebook === null && appState.activeTag === null}
-        role="button"
-        tabindex="0"
-        onclick={() => selectNotebook(null)}
-        onkeydown={(e) => e.key === 'Enter' && selectNotebook(null)}
-      >
-        <div class="playlist-art">⭐</div>
-        <div class="nav-text flex-col">
-          <span class="title">All Notes</span>
-          <span class="subtitle">{appState.notes.length} notes</span>
-        </div>
-      </div>
+    <!-- Templates -->
+    <button 
+      class="nav-item flex-row" 
+      class:active={appState.activeTab === 'templates'} 
+      onclick={() => selectTab('templates')}
+    >
+      <Sparkles size={20} class="nav-icon" />
+      <span class="nav-label">Templates</span>
+    </button>
 
-      {#each appState.notebooks as notebook}
-        <div 
-          class="nav-item flex-row" 
-          class:active={appState.activeNotebook === notebook}
-          role="button"
-          tabindex="0"
-          onclick={() => selectNotebook(notebook)}
-          onkeydown={(e) => e.key === 'Enter' && selectNotebook(notebook)}
-        >
-          <div class="playlist-art">📂</div>
-          <div class="nav-text flex-col">
-            <span class="title">{notebook}</span>
-            <span class="subtitle">Notebook</span>
-          </div>
-          <button 
-            class="item-delete-btn" 
-            onclick={(e) => handleDeleteNotebook(notebook, e)}
-            aria-label="Delete notebook"
-          >
-            <Trash2 size={14} />
-          </button>
-        </div>
-      {/each}
-    </div>
+    <!-- AI Workspace -->
+    <button 
+      class="nav-item flex-row" 
+      class:active={appState.activeTab === 'ai'} 
+      onclick={() => selectTab('ai')}
+    >
+      <Cpu size={20} class="nav-icon" />
+      <span class="nav-label">AI Workspace</span>
+    </button>
+
+    <!-- Analytics -->
+    <button 
+      class="nav-item flex-row" 
+      class:active={appState.activeTab === 'analytics'} 
+      onclick={() => selectTab('analytics')}
+    >
+      <BarChart2 size={20} class="nav-icon" />
+      <span class="nav-label">Analytics</span>
+    </button>
+
+    <!-- Settings -->
+    <button 
+      class="nav-item flex-row" 
+      class:active={appState.activeTab === 'settings'} 
+      onclick={() => selectTab('settings')}
+    >
+      <Settings size={20} class="nav-icon" />
+      <span class="nav-label">Settings</span>
+    </button>
   </div>
 
-  <!-- Tags Section -->
-  <div class="section-container flex-col tags-container">
-    <div class="section-header flex-row">
-      <Tag size={18} class="sec-icon" />
-      <span class="section-title">Tags</span>
-    </div>
-    
-    <div class="list-scroll tag-grid">
-      {#each appState.tags as [tag, count]}
-        <button 
-          class="tag-chip" 
-          class:active={appState.activeTag === tag}
-          onclick={() => selectTag(tag)}
-        >
-          #{tag} <span class="tag-count">({count})</span>
-        </button>
-      {/each}
-      {#if appState.tags.length === 0}
-        <span class="empty-text">No tags found in notes</span>
-      {/if}
-    </div>
-  </div>
+  <div class="divider"></div>
 
-  <!-- Recent Folders Section -->
-  {#if appState.recentFolders.length > 0}
-    <div class="section-container flex-col recent-folders-container">
-      <div class="section-header flex-row">
-        <Folder size={18} class="sec-icon" />
-        <span class="section-title">Recent Folders</span>
+  <!-- Vault/Directory Controller Section -->
+  <div class="vault-controller flex-col">
+    <!-- Active Vault Button/Dropdown Toggle -->
+    <button 
+      class="vault-display-card flex-row" 
+      onclick={() => showRecentDropdown = !showRecentDropdown}
+    >
+      <div class="vault-avatar">📂</div>
+      <div class="vault-meta flex-col">
+        <span class="vault-title">{appState.vaultName || 'Sandbox'}</span>
+        <span class="vault-status">{appState.notes.length} notes</span>
       </div>
-      
-      <div class="list-scroll recent-folders-list">
-        <!-- Always show Local Sandbox as first option -->
+      <span class="dropdown-chevron">{showRecentDropdown ? '▲' : '▼'}</span>
+    </button>
+
+    <!-- Recent Vaults Dropdown List -->
+    {#if showRecentDropdown}
+      <div class="recent-vaults-list flex-col">
+        <!-- Local Sandbox Default option -->
         <button 
-          class="recent-folder-item flex-row" 
+          class="recent-vault-item flex-row" 
           class:active={appState.vaultName === 'Local Sandbox' || appState.vaultName === null}
-          onclick={() => appState.selectRecentFolder('Local Sandbox')}
+          onclick={() => { appState.selectRecentFolder('Local Sandbox'); showRecentDropdown = false; }}
         >
-          <span class="folder-icon">⭐</span>
-          <span class="folder-name">Local Sandbox</span>
+          <span class="icon">⭐</span>
+          <span class="name">Local Sandbox</span>
         </button>
 
         {#each appState.recentFolders as folder}
-          <div class="recent-folder-row flex-row">
+          <div class="recent-vault-row flex-row">
             <button 
-              class="recent-folder-item flex-row" 
+              class="recent-vault-item flex-row" 
               class:active={appState.vaultName === folder.name}
-              onclick={() => appState.selectRecentFolder(folder.name)}
-              title={folder.name}
+              onclick={() => { appState.selectRecentFolder(folder.name); showRecentDropdown = false; }}
             >
-              <span class="folder-icon">📂</span>
-              <span class="folder-name">{folder.name}</span>
+              <span class="icon">📂</span>
+              <span class="name">{folder.name}</span>
             </button>
             <button 
-              class="folder-delete-btn" 
-              onclick={() => appState.removeRecentFolder(folder.name)}
-              aria-label="Remove folder"
-              title="Remove from recents"
+              class="remove-recent-btn" 
+              onclick={(e) => handleRemoveRecent(folder.name, e)}
+              title="Remove from history"
             >
               <X size={12} />
             </button>
           </div>
         {/each}
       </div>
-    </div>
-  {/if}
+    {/if}
 
-  <!-- Footer Actions -->
-  <div class="footer-actions flex-col">
-    <button class="footer-btn flex-row" onclick={appState.openDirectory.bind(appState)}>
-      <FolderOpen size={16} />
-      <span>Open Local Directory</span>
-    </button>
-    
-    <button class="footer-btn flex-row" onclick={toggleTheme}>
-      {#if appState.theme === 'dark'}
-        <Moon size={16} />
-        <span>Amoled Black Theme</span>
-      {:else}
-        <Sun size={16} />
-        <span>Standard Dark Theme</span>
-      {/if}
-    </button>
+    <!-- Bottom Actions -->
+    <div class="bottom-actions flex-col">
+      <button class="footer-action-btn flex-row" onclick={handleOpenDirectory}>
+        <FolderOpen size={16} />
+        <span>Open Vault Folder</span>
+      </button>
 
-    <button class="footer-btn flex-row" onclick={() => appState.showSettings = true}>
-      <Settings size={16} />
-      <span>Google Drive Sync</span>
-    </button>
-
-    <div class="vault-info flex-col">
-      <span class="info-label">Active Directory</span>
-      <span class="info-value">{appState.vaultName || 'Unknown'}</span>
+      <button class="footer-action-btn flex-row" onclick={toggleTheme}>
+        {#if appState.theme === 'light'}
+          <Sun size={16} />
+          <span>Light Mode</span>
+        {:else if appState.theme === 'dark'}
+          <Moon size={16} />
+          <span>Dark Mode</span>
+        {:else}
+          <span class="theme-icon">🖤</span>
+          <span>AMOLED Black</span>
+        {/if}
+      </button>
     </div>
   </div>
 </div>
 
 <style>
   .sidebar {
-    width: 260px;
-    background-color: #000000;
+    width: 280px;
+    background-color: var(--bg-surface);
     height: 100%;
-    padding: 16px 8px;
-    gap: 12px;
+    padding: 24px 16px;
+    gap: 16px;
     border-right: 1px solid var(--border-color);
+    flex-shrink: 0;
+    z-index: 10;
   }
 
   .flex-col {
@@ -234,8 +209,13 @@
     align-items: center;
   }
 
+  .flex-grow {
+    flex-grow: 1;
+  }
+
+  /* Logo */
   .logo-section {
-    padding: 8px 16px 16px;
+    padding: 0 8px 16px 8px;
     gap: 12px;
   }
 
@@ -244,313 +224,250 @@
   }
 
   .logo-text {
-    font-size: 20px;
+    font-family: var(--font-sans);
+    font-size: 22px;
     font-weight: 800;
+    color: var(--text-primary);
     letter-spacing: -0.5px;
   }
 
-  .section-container {
-    background-color: var(--bg-surface);
-    border-radius: var(--radius-comfortable);
-    padding: 12px;
-    flex: 1.2;
-    overflow: hidden;
-  }
-
-  .tags-container {
-    flex: 0.8;
-  }
-
-  .section-header {
-    justify-content: space-between;
-    padding: 4px 8px 12px;
-    color: var(--text-secondary);
-  }
-
-  .sec-icon {
-    margin-right: 8px;
-  }
-
-  .section-title {
-    font-weight: 700;
-    font-size: 14px;
-    flex-grow: 1;
-  }
-
-  .add-btn {
-    width: 24px;
-    height: 24px;
-    border-radius: 50%;
-    justify-content: center;
-    color: var(--text-secondary);
-    transition: background-color 0.2s, color 0.2s;
-  }
-
-  .add-btn:hover {
-    background-color: var(--bg-mid-dark);
-    color: var(--text-primary);
-  }
-
-  .create-form {
-    padding: 0 8px 8px;
-  }
-
-  .create-input {
-    background-color: var(--bg-mid-dark);
-    border: 1px solid var(--border-color);
-    padding: 8px 12px;
-    width: 100%;
-    border-radius: var(--radius-subtle);
-    font-size: 13px;
-    color: var(--text-primary);
-  }
-
-  .create-input:focus {
-    border-color: var(--accent);
-  }
-
-  .list-scroll {
-    overflow-y: auto;
-    flex-grow: 1;
-    display: flex;
-    flex-direction: column;
+  /* Navigation Drawer Menu */
+  .navigation-menu {
     gap: 4px;
+    overflow-y: auto;
   }
 
   .nav-item {
-    padding: 8px;
-    border-radius: var(--radius-standard);
-    gap: 12px;
-    text-align: left;
     width: 100%;
-    transition: background-color 0.2s;
-    position: relative;
+    height: 48px;
+    padding: 0 16px;
+    border-radius: var(--radius-full);
+    gap: 16px;
+    color: var(--text-secondary);
+    transition: var(--transition-fast);
+    text-align: left;
+    font-family: var(--font-sans);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
   }
 
   .nav-item:hover {
-    background-color: var(--bg-mid-dark);
+    background-color: rgba(120, 120, 120, 0.08);
+    color: var(--text-primary);
   }
 
   .nav-item.active {
-    background-color: rgba(255, 255, 255, 0.08);
+    background-color: var(--primary-container);
+    color: var(--on-primary-container);
   }
 
-  .playlist-art {
-    width: 44px;
-    height: 44px;
-    background-color: #282828;
-    border-radius: var(--radius-subtle);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 20px;
+  .nav-icon {
     flex-shrink: 0;
   }
 
-  .nav-text {
+  .divider {
+    height: 1px;
+    background-color: var(--border-color);
+    margin: 8px 0;
+  }
+
+  /* Vault Controller */
+  .vault-controller {
+    gap: 12px;
+    position: relative;
+  }
+
+  .vault-display-card {
+    width: 100%;
+    background-color: var(--bg-surface-container);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-m);
+    padding: 12px;
+    gap: 12px;
+    cursor: pointer;
+    transition: var(--transition-fast);
+  }
+
+  .vault-display-card:hover {
+    border-color: var(--text-tertiary);
+  }
+
+  .vault-avatar {
+    font-size: 20px;
+    width: 36px;
+    height: 36px;
+    background-color: var(--bg-surface);
+    border-radius: var(--radius-s);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .vault-meta {
     flex-grow: 1;
+    text-align: left;
     overflow: hidden;
   }
 
-  .nav-text .title {
-    font-weight: 600;
+  .vault-title {
     font-size: 13px;
+    font-weight: 700;
     color: var(--text-primary);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
 
-  .nav-text .subtitle {
+  .vault-status {
     font-size: 11px;
-    color: var(--text-secondary);
+    color: var(--text-tertiary);
     margin-top: 2px;
   }
 
-  .item-delete-btn {
-    opacity: 0;
-    transition: opacity 0.2s, color 0.2s;
+  .dropdown-chevron {
+    font-size: 10px;
     color: var(--text-secondary);
-    padding: 4px;
-    border-radius: 4px;
+  }
+
+  /* Dropdown lists */
+  .recent-vaults-list {
     position: absolute;
-    right: 8px;
+    bottom: 120px;
+    left: 0;
+    right: 0;
+    background-color: var(--bg-surface);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-m);
+    box-shadow: var(--shadow-lvl3);
+    padding: 6px;
+    gap: 2px;
+    z-index: 50;
+    max-height: 180px;
+    overflow-y: auto;
   }
 
-  .nav-item:hover .item-delete-btn {
-    opacity: 1;
+  .recent-vault-row {
+    position: relative;
+    width: 100%;
+    justify-content: space-between;
   }
 
-  .item-delete-btn:hover {
-    color: var(--semantic-error);
-    background-color: rgba(255, 255, 255, 0.05);
-  }
-
-  .tag-grid {
-    flex-direction: row;
-    flex-wrap: wrap;
-    gap: 6px;
-    align-content: flex-start;
-  }
-
-  .tag-chip {
-    background-color: var(--bg-mid-dark);
-    padding: 6px 10px;
-    border-radius: var(--radius-full-pill);
+  .recent-vault-item {
+    flex-grow: 1;
+    padding: 8px 12px;
+    border-radius: var(--radius-s);
+    gap: 10px;
     font-size: 12px;
     font-weight: 500;
+    text-align: left;
     color: var(--text-secondary);
-    transition: background-color 0.2s, color 0.2s;
   }
 
-  .tag-chip:hover {
-    background-color: var(--bg-card-hover);
+  .recent-vault-item:hover {
+    background-color: var(--bg-surface-container);
     color: var(--text-primary);
   }
 
-  .tag-chip.active {
-    background-color: var(--accent);
-    color: #000000;
+  .recent-vault-item.active {
+    background-color: var(--primary-container);
+    color: var(--on-primary-container);
     font-weight: 600;
   }
 
-  .tag-count {
-    font-size: 10px;
-    opacity: 0.8;
-  }
-
-  .empty-text {
-    font-size: 11px;
+  .remove-recent-btn {
+    opacity: 0;
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    padding: 4px;
+    border-radius: 4px;
     color: var(--text-tertiary);
-    padding: 8px;
+    transition: var(--transition-fast);
   }
 
-  .footer-actions {
-    gap: 8px;
-    padding: 8px;
-    border-top: 1px solid var(--border-color);
+  .recent-vault-row:hover .remove-recent-btn {
+    opacity: 1;
   }
 
-  .footer-btn {
+  .remove-recent-btn:hover {
+    color: var(--semantic-error);
+    background-color: rgba(120, 120, 120, 0.1);
+  }
+
+  /* Bottom Buttons */
+  .bottom-actions {
+    gap: 4px;
+  }
+
+  .footer-action-btn {
+    width: 100%;
     padding: 8px 12px;
-    border-radius: var(--radius-pill);
+    border-radius: var(--radius-s);
     gap: 12px;
     font-size: 12px;
     font-weight: 600;
     color: var(--text-secondary);
-    transition: background-color 0.2s, color 0.2s;
-    width: 100%;
-    text-align: left;
-    justify-content: flex-start;
+    transition: var(--transition-fast);
   }
 
-  .footer-btn:hover {
-    background-color: var(--bg-surface);
+  .footer-action-btn:hover {
+    background-color: var(--bg-surface-container);
     color: var(--text-primary);
   }
 
-  .vault-info {
-    padding: 12px 12px 4px;
-    gap: 2px;
-    border-top: 1px dashed var(--border-color);
-    margin-top: 4px;
+  @media (max-width: 900px) {
+    /* Side rail look on tablets */
+    .sidebar {
+      width: 72px;
+      padding: 16px 8px;
+      align-items: center;
+    }
+    .logo-text, .nav-label, .vault-meta, .dropdown-chevron, .bottom-actions span {
+      display: none;
+    }
+    .logo-section {
+      padding: 0;
+      justify-content: center;
+    }
+    .nav-item {
+      padding: 0;
+      justify-content: center;
+      border-radius: var(--radius-circle);
+      width: 48px;
+      height: 48px;
+    }
+    .vault-display-card {
+      padding: 8px;
+      justify-content: center;
+      border-radius: var(--radius-circle);
+      width: 48px;
+      height: 48px;
+    }
+    .vault-avatar {
+      margin: 0;
+      width: 32px;
+      height: 32px;
+    }
+    .recent-vaults-list {
+      bottom: 110px;
+      width: 200px;
+      left: 60px;
+    }
+    .footer-action-btn {
+      padding: 0;
+      width: 40px;
+      height: 40px;
+      justify-content: center;
+      border-radius: var(--radius-circle);
+    }
   }
 
-  .info-label {
-    font-size: 10px;
-    color: var(--text-tertiary);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
-
-  .info-value {
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--text-secondary);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .recent-folders-container {
-    flex: 0.6;
-    margin-bottom: 4px;
-  }
-
-  .recent-folder-row {
-    position: relative;
-    width: 100%;
-    justify-content: space-between;
-    gap: 4px;
-    align-items: center;
-  }
-
-  .recent-folder-item {
-    background: transparent;
-    border: none;
-    outline: none;
-    padding: 6px 8px;
-    border-radius: var(--radius-standard);
-    color: var(--text-secondary);
-    font-size: 12px;
-    font-weight: 500;
-    gap: 8px;
-    width: 100%;
-    text-align: left;
-    transition: background-color 0.2s, color 0.2s;
-    cursor: pointer;
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-  }
-
-  .recent-folder-item:hover {
-    background-color: var(--bg-mid-dark);
-    color: var(--text-primary);
-  }
-
-  .recent-folder-item.active {
-    background-color: rgba(255, 255, 255, 0.08);
-    color: var(--accent);
-    font-weight: 600;
-  }
-
-  .folder-icon {
-    font-size: 14px;
-    flex-shrink: 0;
-  }
-
-  .folder-name {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .folder-delete-btn {
-    background: transparent;
-    border: none;
-    outline: none;
-    color: var(--text-tertiary);
-    padding: 4px;
-    border-radius: 4px;
-    cursor: pointer;
-    transition: color 0.2s, background-color 0.2s;
-    opacity: 0;
-    flex-shrink: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .recent-folder-row:hover .folder-delete-btn {
-    opacity: 1;
-  }
-
-  .folder-delete-btn:hover {
-    color: var(--semantic-error);
-    background-color: rgba(255, 255, 255, 0.05);
+  @media (max-width: 600px) {
+    /* Hide sidebar completely on mobile - layout will use bottom tab bar */
+    .sidebar {
+      display: none;
+    }
   }
 </style>

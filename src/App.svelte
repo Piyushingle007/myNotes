@@ -33,25 +33,26 @@
 
 {#if initializing}
   <div class="loader flex-col">
-    <div class="loader-logo">🎵</div>
+    <div class="loader-logo">📓</div>
     <div class="spinner"></div>
+    <span class="loader-text">Initializing workspace...</span>
   </div>
 {:else if appState.vaultReady}
   <AppLayout />
 {:else}
   <div class="welcome-screen flex-col">
-    <div class="welcome-content flex-col">
-      <div class="welcome-logo">🎵</div>
+    <div class="welcome-card md3-card-outlined flex-col">
+      <div class="welcome-logo">📓</div>
       <h1 class="welcome-title">myNotes</h1>
-      <p class="welcome-sub">Local-first markdown notes. Dark mode, achromatic design, fully offline.</p>
+      <p class="welcome-sub">Premium Material Design 3 local-first markdown note-taking vault. Fully offline & secure.</p>
       
       <div class="welcome-actions flex-col">
-        <button class="btn-pill btn-pill-primary flex-row welcome-btn" onclick={() => appState.initSandbox()}>
+        <button class="md3-btn welcome-btn" onclick={() => appState.initSandbox()}>
           <Play size={16} />
           <span>Launch Local Sandbox</span>
         </button>
 
-        <button class="btn-pill btn-pill-outline flex-row welcome-btn" onclick={() => appState.openDirectory()}>
+        <button class="md3-btn md3-btn-outlined welcome-btn" onclick={() => appState.openDirectory()}>
           <FolderOpen size={16} />
           <span>Open Folder on Device</span>
         </button>
@@ -75,15 +76,22 @@
   .loader {
     width: 100vw;
     height: 100vh;
-    background-color: #000000;
+    background-color: var(--bg-base);
+    color: var(--text-primary);
     align-items: center;
     justify-content: center;
-    gap: 24px;
+    gap: 16px;
   }
 
   .loader-logo {
     font-size: 64px;
     animation: pulse 1.5s infinite ease-in-out;
+  }
+
+  .loader-text {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-secondary);
   }
 
   @keyframes pulse {
@@ -92,16 +100,16 @@
       opacity: 0.8;
     }
     50% {
-      transform: scale(1.1);
+      transform: scale(1.08);
       opacity: 1;
     }
   }
 
   .spinner {
-    width: 28px;
-    height: 28px;
-    border: 3px solid rgba(255, 255, 255, 0.1);
-    border-top-color: var(--accent);
+    width: 32px;
+    height: 32px;
+    border: 3px solid var(--border-color);
+    border-top-color: var(--primary);
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
   }
@@ -115,24 +123,27 @@
   .welcome-screen {
     width: 100vw;
     height: 100vh;
-    background-color: #000000;
+    background-color: var(--bg-base);
     align-items: center;
     justify-content: center;
     padding: 24px;
   }
 
-  .welcome-content {
+  .welcome-card {
     align-items: center;
     text-align: center;
-    gap: 16px;
-    max-width: 380px;
+    gap: 20px;
+    max-width: 420px;
+    padding: 40px;
+    background-color: var(--bg-surface);
   }
 
   .welcome-logo {
-    font-size: 80px;
+    font-size: 72px;
   }
 
   .welcome-title {
+    font-family: var(--font-sans);
     font-size: 36px;
     font-weight: 850;
     letter-spacing: -1px;
@@ -140,10 +151,10 @@
   }
 
   .welcome-sub {
-    font-size: 13px;
+    font-size: 14px;
     color: var(--text-secondary);
     line-height: 1.6;
-    margin-bottom: 16px;
+    margin-bottom: 8px;
   }
 
   .welcome-actions {
@@ -153,8 +164,7 @@
 
   .welcome-btn {
     width: 100%;
+    height: 48px;
     justify-content: center;
-    padding: 12px 24px;
-    font-size: 13px;
   }
 </style>

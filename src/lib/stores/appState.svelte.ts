@@ -18,11 +18,15 @@ class AppState {
   activeNoteTitle = $state<string>('');
   activeNotebook = $state<string | null>(null);
   activeTag = $state<string | null>(null);
-  activeTab = $state<'home' | 'search' | 'library' | 'daily'>('home');
+  activeTab = $state<'dashboard' | 'documents' | 'templates' | 'ai' | 'analytics' | 'settings'>('dashboard');
   searchQuery = $state<string>('');
   showSettings = $state<boolean>(false);
   editorDirty = $state<boolean>(false);
-  theme = $state<'dark' | 'black'>('dark');
+  theme = $state<'light' | 'dark' | 'black'>((localStorage.getItem('mynotes_theme') as any) || 'dark');
+  accentHue = $state<number>(Number(localStorage.getItem('mynotes_accent_hue') || '142'));
+  density = $state<'comfortable' | 'compact'>((localStorage.getItem('mynotes_density') as any) || 'comfortable');
+  fontSizeScale = $state<'small' | 'medium' | 'large'>((localStorage.getItem('mynotes_font_size_scale') as any) || 'medium');
+  pinnedPaths = $state<string[]>(JSON.parse(localStorage.getItem('mynotes_pinned_paths') || '[]'));
   recentFolders = $state<Array<{ name: string; handle: FileSystemDirectoryHandle; lastOpened: number }>>([]);
 
   // Google Drive Sync Reactive States
@@ -84,6 +88,7 @@ class AppState {
         console.warn('Google SDK load failed during token restore:', err);
       });
     }
+    this.applyStyleTokens();
   }
 
   notebooks = $derived.by(() => {
@@ -144,6 +149,10 @@ class AppState {
     return [...this.notes].sort((a, b) => b.modified - a.modified).slice(0, 6);
   });
 
+  pinnedNotes = $derived.by(() => {
+    return this.notes.filter(n => this.pinnedPaths.includes(n.path));
+  });
+
   activeNote = $derived.by(() => {
     if (!this.activeNotePath) return null;
     return this.notes.find(n => n.path === this.activeNotePath) || null;
@@ -159,6 +168,48 @@ class AppState {
   setSyncEnabled(enabled: boolean) {
     this.syncEnabled = enabled;
     localStorage.setItem('mynotes_sync_enabled', String(enabled));
+  }
+
+  togglePin(path: string) {
+    if (this.pinnedPaths.includes(path)) {
+      this.pinnedPaths = this.pinnedPaths.filter(p => p !== path);
+    } else {
+      this.pinnedPaths = [...this.pinnedPaths, path];
+    }
+    localStorage.setItem('mynotes_pinned_paths', JSON.stringify(this.pinnedPaths));
+  }
+
+  setTheme(theme: 'light' | 'dark' | 'black') {
+    this.theme = theme;
+    localStorage.setItem('mynotes_theme', theme);
+    this.applyStyleTokens();
+  }
+
+  setAccentHue(hue: number) {
+    this.accentHue = hue;
+    localStorage.setItem('mynotes_accent_hue', String(hue));
+    this.applyStyleTokens();
+  }
+
+  setDensity(density: 'comfortable' | 'compact') {
+    this.density = density;
+    localStorage.setItem('mynotes_density', density);
+    this.applyStyleTokens();
+  }
+
+  setFontSizeScale(scale: 'small' | 'medium' | 'large') {
+    this.fontSizeScale = scale;
+    localStorage.setItem('mynotes_font_size_scale', scale);
+    this.applyStyleTokens();
+  }
+
+  applyStyleTokens() {
+    if (typeof document === 'undefined') return;
+    const root = document.documentElement;
+    root.setAttribute('data-theme', this.theme);
+    root.style.setProperty('--accent-base', this.accentHue.toString());
+    root.setAttribute('data-density', this.density);
+    root.setAttribute('data-font-scale', this.fontSizeScale);
   }
 
   async connectGoogleDrive() {
@@ -466,12 +517,12 @@ class AppState {
     const name = await this.storage.selectDirectory();
     this.vaultName = name;
     
-    // Seed basic notes if sandbox is empty
-    const list = await this.storage.listNotes();
-    if (list.length === 0) {
-      await this.storage.writeNote('Welcome.md', '# Welcome to myNotes 🎵\n\nThis is a dark, local-first markdown note-taking app styled like a music player.\n\n### Features\n- **Playlists are Notebooks**: Group your notes inside folders.\n- **Achromatic Design**: Elegant black and gray palette with subtle green accents.\n- **Wikilinks**: Connect pages with `[[Welcome]]` style wiki-links.\n- **Graph View**: Navigate your notes visually.\n\nEnjoy writing in the dark! #notes #welcome');
-      await this.storage.writeNote('Recipes/Pizza.md', '# Perfect Pizza Dough 🍕\n\nIngredients:\n- 500g Flour\n- 325ml Water\n- 7g Yeast\n- 10g Salt\n\nMix, knead, let rise for 24h. Bake at max temp! #recipes #cooking');
-      await this.storage.writeNote('Daily Notes/2026-06-08.md', '# Daily Log: June 8, 2026 🗓️\n\n- Completed scaffolding myNotes project!\n- Successfully integrated Svelte 5 global stores and IndexedDB fallback storage.\n- Next step: build the canvas force-directed note graph.\n\nFeeling productive! #journal #dev');
+    // Clear/delete predefined notes if they exist to start fresh
+    const predefs = ['Welcome.md', 'Recipes/Pizza.md', 'Daily Notes/2026-06-08.md'];
+    for (const p of predefs) {
+      try {
+        await this.storage.deleteNote(p);
+      } catch (e) {}
     }
     
     await this.refreshNotes();
@@ -486,13 +537,11 @@ class AppState {
       }
     }
     
-    // Select welcome note by default
-    const welcome = this.notes.find(n => n.path === 'Welcome.md');
-    if (welcome) {
-      this.selectNote(welcome.path);
-    } else if (this.notes.length > 0) {
-      this.selectNote(this.notes[0].path);
-    }
+    // Do NOT open any note by default
+    this.activeNotePath = null;
+    this.activeNoteContent = '';
+    this.activeNoteTitle = '';
+    this.activeTab = 'dashboard';
   }
 
   async openDirectory() {
@@ -518,13 +567,11 @@ class AppState {
         }
       }
 
-      if (this.notes.length > 0) {
-        this.selectNote(this.notes[0].path);
-      } else {
-        this.activeNotePath = null;
-        this.activeNoteContent = '';
-        this.activeNoteTitle = '';
-      }
+      // Do NOT open any note by default
+      this.activeNotePath = null;
+      this.activeNoteContent = '';
+      this.activeNoteTitle = '';
+      this.activeTab = 'dashboard';
     } catch (e) {
       console.error('Failed to open directory', e);
     }
@@ -614,6 +661,22 @@ class AppState {
     // Trigger auto background sync
     if (this.syncEnabled && this.googleConnected) {
       this.syncNotes();
+    }
+  }
+
+  async createDailyNote() {
+    const today = new Date().toISOString().split('T')[0];
+    const dailyPath = `Daily Notes/${today}.md`;
+    
+    // Check if it already exists
+    const existing = this.notes.find(n => n.path === dailyPath);
+    if (existing) {
+      this.selectNote(existing.path);
+    } else {
+      await this.storage.createDirectory('Daily Notes');
+      await this.storage.writeNote(dailyPath, `# Daily Log: ${today} 🗓️\n\n- Write daily highlights here...\n\n#journal`);
+      await this.refreshNotes();
+      this.selectNote(dailyPath);
     }
   }
 
@@ -738,13 +801,11 @@ class AppState {
         }
       }
 
-      if (this.notes.length > 0) {
-        this.selectNote(this.notes[0].path);
-      } else {
-        this.activeNotePath = null;
-        this.activeNoteContent = '';
-        this.activeNoteTitle = '';
-      }
+      // Do NOT select any note by default
+      this.activeNotePath = null;
+      this.activeNoteContent = '';
+      this.activeNoteTitle = '';
+      this.activeTab = 'dashboard';
     } catch (e) {
       console.error('Failed to switch folder', e);
       alert('Failed to switch to folder: ' + e);

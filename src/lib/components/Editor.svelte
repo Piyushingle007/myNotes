@@ -1,10 +1,9 @@
 <script lang="ts">
   import { appState } from '../stores/appState.svelte';
   import { 
-    Save, HelpCircle, Network, ArrowLeft, BookOpen, AlertTriangle, Eye, Edit3, Columns,
-    Bold, Italic, Strikethrough, Code, Highlighter, Heading1, Heading2, Heading3, Heading4,
-    List, ListOrdered, ListTodo, Quote, Terminal, Minus, Table, Link2, Image as ImageIcon, Underline,
-    Indent, Outdent, ChevronLeft
+    Bold, Italic, Strikethrough, Code, Highlighter, Heading1, Heading2, Heading3,
+    List, ListOrdered, ListTodo, Quote, Table, Link2, Image as ImageIcon, Underline,
+    Indent, Outdent, Settings, Eye, HelpCircle, Columns, Sparkles, BookOpen
   } from 'lucide-svelte';
   import { marked } from 'marked';
 
@@ -12,11 +11,89 @@
   let { showGraph = $bindable(false) } = $props();
 
   let autosaveTimer: number | null = null;
+  let focusMode = $state(false);
+  let activeSidebarTab = $state<'outline' | 'preview' | 'comments'>('outline');
+  let showRightSidebar = $state(true);
+
+  // Slash commands state
+  let showSlashMenu = $state(false);
+  let slashQuery = $state('');
+  let slashIndex = $state(0);
+  let slashPosition = $state({ top: 0, left: 0 });
+
+  const slashCommands = [
+    { cmd: '/h1', label: 'Heading 1', desc: 'Large section heading', prefix: '# ' },
+    { cmd: '/h2', label: 'Heading 2', desc: 'Medium section heading', prefix: '## ' },
+    { cmd: '/h3', label: 'Heading 3', desc: 'Small section heading', prefix: '### ' },
+    { cmd: '/todo', label: 'Todo List', desc: 'Task list checkbox', prefix: '- [ ] ' },
+    { cmd: '/bullet', label: 'Bullet List', desc: 'Unordered list', prefix: '- ' },
+    { cmd: '/number', label: 'Numbered List', desc: 'Sequential list', prefix: '1. ' },
+    { cmd: '/code', label: 'Code Block', desc: 'Preformatted code', prefix: '```\n', suffix: '\n```' },
+    { cmd: '/table', label: 'Table', desc: 'Markdown data table', prefix: '\n| Col 1 | Col 2 |\n| --- | --- |\n| Cell 1 | Cell 2 |\n' },
+    { cmd: '/quote', label: 'Quote', desc: 'Blockquote text', prefix: '> ' }
+  ];
+
+  const filteredCommands = $derived(
+    slashCommands.filter(c => c.cmd.toLowerCase().startsWith(slashQuery.toLowerCase()))
+  );
+
+  // Outline generation
+  const outline = $derived.by(() => {
+    const list: Array<{ level: number; text: string; lineIndex: number }> = [];
+    const lines = appState.activeNoteContent.split('\n');
+    lines.forEach((line, idx) => {
+      const match = line.match(/^(#{1,6})\s+(.*)$/);
+      if (match) {
+        const level = match[1].length;
+        const text = match[2].trim();
+        list.push({ level, text, lineIndex: idx });
+      }
+    });
+    return list;
+  });
+
+  // Comments feed mock
+  let commentsList = $state<Array<{ author: string; text: string; date: string }>>([
+    { author: 'Editor AI', text: 'Structure looks solid. Consider adding a summary section.', date: 'Just now' },
+    { author: 'System', text: 'Document initialized successfully.', date: '5 mins ago' }
+  ]);
+  let newCommentText = $state('');
+
+  function handleAddComment() {
+    if (newCommentText.trim()) {
+      commentsList = [...commentsList, {
+        author: 'You',
+        text: newCommentText.trim(),
+        date: 'Just now'
+      }];
+      newCommentText = '';
+    }
+  }
 
   function handleContentInput(e: Event) {
     const target = e.target as HTMLTextAreaElement;
     appState.activeNoteContent = target.value;
     appState.editorDirty = true;
+
+    // Check slash command trigger
+    const start = target.selectionStart;
+    const text = target.value;
+    const lastSlash = text.lastIndexOf('/', start - 1);
+    
+    if (lastSlash !== -1 && lastSlash >= text.lastIndexOf('\n', start - 1)) {
+      showSlashMenu = true;
+      slashQuery = text.slice(lastSlash, start);
+      
+      // Calculate cursor position for float menu
+      const rect = target.getBoundingClientRect();
+      // Simple rough absolute estimate
+      slashPosition = {
+        top: Math.min(rect.bottom - 180, rect.top + 80),
+        left: Math.min(rect.right - 260, rect.left + 150)
+      };
+    } else {
+      showSlashMenu = false;
+    }
 
     // Reset autosave timer
     if (autosaveTimer) clearTimeout(autosaveTimer);
@@ -46,47 +123,16 @@
   });
 
   let readTime = $derived.by(() => {
-    const wpm = 200; // average reading speed
+    const wpm = 200; 
     const mins = Math.ceil(wordCount / wpm);
     return `${mins} min read`;
   });
-
-  function handleSaveClick() {
-    appState.saveActiveNote(true);
-  }
-
-  function handleInsertWikiLink() {
-    const textarea = document.querySelector('.editor-textarea') as HTMLTextAreaElement;
-    if (!textarea) return;
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    const text = textarea.value;
-    const selected = text.slice(start, end) || 'NoteTitle';
-    
-    appState.activeNoteContent = text.slice(0, start) + `[[${selected}]]` + text.slice(end);
-    appState.editorDirty = true;
-    
-    // Set focus back and select text
-    textarea.focus();
-    setTimeout(() => {
-      textarea.setSelectionRange(start + 2, start + 2 + selected.length);
-    }, 0);
-  }
-
-  // View mode state (Edit, Split, Preview)
-  let viewMode = $state<'edit' | 'split' | 'preview'>((localStorage.getItem('mynotes_editor_view_mode') as any) || 'edit');
-
-  function setViewMode(mode: 'edit' | 'split' | 'preview') {
-    viewMode = mode;
-    localStorage.setItem('mynotes_editor_view_mode', mode);
-  }
 
   // Preprocess Markdown & parse with marked
   let previewHtml = $derived.by(() => {
     const md = appState.activeNoteContent;
     if (!md) return '';
     
-    // Preprocess wikilinks: [[Note Title]] or [[Note Title|Display Name]]
     let processed = md.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (match, path, display) => {
       const displayText = display ? display.trim() : path.trim();
       let targetPath = path.trim();
@@ -119,27 +165,7 @@
             resolvedPath = `${folder}/${path}`;
           }
         }
-
-        const noteExists = appState.notes.some(n => n.path.toLowerCase() === resolvedPath.toLowerCase());
-        if (noteExists) {
-          appState.selectNote(resolvedPath);
-        } else {
-          const directMatch = appState.notes.some(n => n.path.toLowerCase() === path.toLowerCase());
-          if (directMatch) {
-            appState.selectNote(path);
-          } else {
-            const filenameMatch = appState.notes.find(n => n.name.toLowerCase() === path.replace(/\.md$/, '').toLowerCase());
-            if (filenameMatch) {
-              appState.selectNote(filenameMatch.path);
-            } else {
-              // Create new note in the active directory folder
-              const folder = appState.activeNotePath && appState.activeNotePath.includes('/')
-                ? appState.activeNotePath.substring(0, appState.activeNotePath.lastIndexOf('/'))
-                : null;
-              appState.createNote(path.replace(/\.md$/, ''), folder);
-            }
-          }
-        }
+        appState.selectNote(resolvedPath);
       }
     }
   }
@@ -161,7 +187,6 @@
     appState.activeNoteContent = beforeText + replacement + afterText;
     appState.editorDirty = true;
     
-    // Refocus and place selection
     setTimeout(() => {
       textarea.focus();
       textarea.setSelectionRange(start + prefix.length, start + prefix.length + selectedText.length);
@@ -190,11 +215,9 @@
     if (lineText.startsWith(prefix)) {
       newLineText = lineText.slice(prefix.length);
     } else {
-      // Remove other heading prefixes if we are adding a heading
       if (prefix.trim().startsWith('#')) {
         newLineText = lineText.replace(/^#+\s*/, '');
       }
-      // Remove other list prefixes if we are adding a list
       if (prefix.trim().startsWith('-') || prefix.trim().match(/^\d+\./)) {
         newLineText = lineText.replace(/^([-*+]|\d+\.)\s*/, '');
       }
@@ -229,18 +252,12 @@
 
     let newLinesText = '';
     if (!outdent) {
-      // Indent: Add 2 spaces to the start of each line
       newLinesText = lines.map(line => '  ' + line).join('\n');
     } else {
-      // Outdent: Remove 2 spaces (or 1 tab/space) from the start of each line
       newLinesText = lines.map(line => {
-        if (line.startsWith('  ')) {
-          return line.slice(2);
-        } else if (line.startsWith('\t')) {
-          return line.slice(1);
-        } else if (line.startsWith(' ')) {
-          return line.slice(1);
-        }
+        if (line.startsWith('  ')) return line.slice(2);
+        if (line.startsWith('\t')) return line.slice(1);
+        if (line.startsWith(' ')) return line.slice(1);
         return line;
       }).join('\n');
     }
@@ -250,7 +267,6 @@
     appState.activeNoteContent = beforeText + newLinesText + afterText;
     appState.editorDirty = true;
 
-    // Restore selection/caret position
     setTimeout(() => {
       textarea.focus();
       const diff = newLinesText.length - linesText.length;
@@ -263,29 +279,59 @@
     }, 0);
   }
 
-  function insertTable() {
-    const tableTemplate = `\n| Column 1 | Column 2 | Column 3 |\n| :--- | :--- | :--- |\n| Row 1 Col 1 | Row 1 Col 2 | Row 1 Col 3 |\n| Row 2 Col 1 | Row 2 Col 2 | Row 2 Col 3 |\n`;
-    wrapSelection('', tableTemplate);
+  function executeSlashCommand(cmd: typeof slashCommands[0]) {
+    const textarea = document.querySelector('.editor-textarea') as HTMLTextAreaElement;
+    if (!textarea) return;
+    
+    const start = textarea.selectionStart;
+    const text = textarea.value;
+    const lastSlash = text.lastIndexOf('/', start - 1);
+    
+    if (lastSlash !== -1) {
+      const beforeText = text.slice(0, lastSlash);
+      const afterText = text.slice(start);
+      
+      const insertText = cmd.prefix + (cmd.suffix || '');
+      appState.activeNoteContent = beforeText + insertText + afterText;
+      appState.editorDirty = true;
+      
+      showSlashMenu = false;
+      setTimeout(() => {
+        textarea.focus();
+        const cursorPosition = lastSlash + cmd.prefix.length;
+        textarea.setSelectionRange(cursorPosition, cursorPosition);
+      }, 0);
+    }
   }
 
-  function insertLink() {
-    const url = prompt('Enter link URL (e.g., https://example.com):');
-    if (url === null) return;
-    const text = prompt('Enter link text (optional):') || 'link';
-    wrapSelection(`[${text}](${url})`, '');
-  }
-
-  function insertImage() {
-    const url = prompt('Enter image URL (e.g., https://example.com/image.png):');
-    if (url === null) return;
-    const alt = prompt('Enter image description (alt text):') || 'image';
-    wrapSelection(`![${alt}](${url})`, '');
-  }
-
-  // Keyboard Shortcuts Handler bound directly to textarea
   function handleKeyDown(e: KeyboardEvent) {
-    const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
-    const isModifier = isMac ? e.metaKey : e.ctrlKey;
+    const textarea = e.currentTarget as HTMLTextAreaElement;
+    const start = textarea.selectionStart;
+    const text = textarea.value;
+
+    // Handle Slash Menu Navigation
+    if (showSlashMenu && filteredCommands.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        slashIndex = (slashIndex + 1) % filteredCommands.length;
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        slashIndex = (slashIndex - 1 + filteredCommands.length) % filteredCommands.length;
+        return;
+      }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        executeSlashCommand(filteredCommands[slashIndex]);
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        showSlashMenu = false;
+        return;
+      }
+    }
 
     // Tab / Shift+Tab for Indent / Outdent
     if (e.key === 'Tab') {
@@ -296,27 +342,25 @@
 
     // List continuation helper on Enter keypress
     if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
-      const textarea = e.currentTarget as HTMLTextAreaElement;
-      const start = textarea.selectionStart;
-      const text = textarea.value;
-
-      // Find current line start and end
       const lastNewline = text.lastIndexOf('\n', start - 1);
       const lineStart = lastNewline === -1 ? 0 : lastNewline + 1;
       const nextNewline = text.indexOf('\n', start);
       const lineEnd = nextNewline === -1 ? text.length : nextNewline;
       const lineText = text.slice(lineStart, lineEnd);
 
-      // Match markdown checklist, bullet list, and numbered list prefixes
       const checkboxMatch = lineText.match(/^(\s*)-\s\[[ xX]\]\s*(.*)$/);
       const bulletMatch = lineText.match(/^(\s*)([-*+])\s*(.*)$/);
       const numberMatch = lineText.match(/^(\s*)(\d+)\.\s*(.*)$/);
 
+      // Check if previous line was a list to decide if we should exit on double Enter
+      const prefixLines = text.slice(0, lineStart).split('\n');
+      const prevLine = prefixLines[prefixLines.length - 2] || '';
+      const isPrevLineList = prevLine.match(/^(\s*)(-\s\[[ xX]\]|[-*+]|\d+\.)/) !== null;
+
       if (checkboxMatch) {
         e.preventDefault();
         const [_, indent, content] = checkboxMatch;
-        if (content.trim() === '') {
-          // Erase checklist prefix if item is empty (exiting list)
+        if (content.trim() === '' && isPrevLineList) {
           const before = text.slice(0, lineStart);
           const after = text.slice(lineEnd);
           appState.activeNoteContent = before + indent + after;
@@ -326,7 +370,6 @@
             textarea.setSelectionRange(lineStart + indent.length, lineStart + indent.length);
           }, 0);
         } else {
-          // Continue checkbox list
           wrapSelection(`\n${indent}- [ ] `, '');
         }
         return;
@@ -335,8 +378,7 @@
       if (numberMatch) {
         e.preventDefault();
         const [_, indent, numStr, content] = numberMatch;
-        if (content.trim() === '') {
-          // Erase numbered prefix if item is empty (exiting list)
+        if (content.trim() === '' && isPrevLineList) {
           const before = text.slice(0, lineStart);
           const after = text.slice(lineEnd);
           appState.activeNoteContent = before + indent + after;
@@ -346,7 +388,6 @@
             textarea.setSelectionRange(lineStart + indent.length, lineStart + indent.length);
           }, 0);
         } else {
-          // Continue numbered list with incremented counter
           const nextNum = parseInt(numStr, 10) + 1;
           wrapSelection(`\n${indent}${nextNum}. `, '');
         }
@@ -356,8 +397,7 @@
       if (bulletMatch) {
         e.preventDefault();
         const [_, indent, bullet, content] = bulletMatch;
-        if (content.trim() === '') {
-          // Erase bullet prefix if item is empty (exiting list)
+        if (content.trim() === '' && isPrevLineList) {
           const before = text.slice(0, lineStart);
           const after = text.slice(lineEnd);
           appState.activeNoteContent = before + indent + after;
@@ -367,967 +407,577 @@
             textarea.setSelectionRange(lineStart + indent.length, lineStart + indent.length);
           }, 0);
         } else {
-          // Continue bullet list
           wrapSelection(`\n${indent}${bullet} `, '');
         }
         return;
       }
     }
-
-    if (isModifier) {
-      if (e.key === 'b' || e.key === 'B') {
-        e.preventDefault();
-        wrapSelection('**', '**');
-      } else if (e.key === 'i' || e.key === 'I') {
-        e.preventDefault();
-        wrapSelection('*', '*');
-      } else if (e.key === 'k' || e.key === 'K') {
-        e.preventDefault();
-        insertLink();
-      } else if (e.key === 'e' || e.key === 'E') {
-        e.preventDefault();
-        wrapSelection('`', '`');
-      } else if (e.key === 'h' || e.key === 'H') {
-        e.preventDefault();
-        wrapSelection('<mark>', '</mark>');
-      } else if (e.shiftKey && (e.key === 'x' || e.key === 'X')) {
-        e.preventDefault();
-        wrapSelection('~~', '~~');
-      } else if (e.altKey && e.key === '1') {
-        e.preventDefault();
-        toggleLinePrefix('# ');
-      } else if (e.altKey && e.key === '2') {
-        e.preventDefault();
-        toggleLinePrefix('## ');
-      } else if (e.altKey && e.key === '3') {
-        e.preventDefault();
-        toggleLinePrefix('### ');
-      } else if (e.altKey && e.key === '4') {
-        e.preventDefault();
-        toggleLinePrefix('#### ');
-      }
-    }
   }
 
-  // Floating Selection Toolbar Logic
-  let floatingToolbarX = $state(0);
-  let floatingToolbarY = $state(0);
-  let showFloatingToolbar = $state(false);
-
-  function handleMouseUp(e: MouseEvent) {
+  // Jump to heading line
+  function jumpToHeading(lineIndex: number) {
     const textarea = document.querySelector('.editor-textarea') as HTMLTextAreaElement;
     if (!textarea) return;
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    
-    if (start !== end) {
-      floatingToolbarX = e.clientX;
-      floatingToolbarY = e.clientY - 45;
-      showFloatingToolbar = true;
-    } else {
-      showFloatingToolbar = false;
+    const lines = appState.activeNoteContent.split('\n');
+    let charIndex = 0;
+    for (let i = 0; i < lineIndex; i++) {
+      charIndex += lines[i].length + 1;
     }
+    textarea.focus();
+    textarea.setSelectionRange(charIndex, charIndex + lines[lineIndex].length);
   }
-  function handleTextareaBlur() {
-    setTimeout(() => {
-      showFloatingToolbar = false;
-    }, 200);
-  }
-
-  // If screen is resized to mobile, force viewMode out of split view
-  $effect(() => {
-    const handleResize = () => {
-      if (window.innerWidth < 768 && viewMode === 'split') {
-        setViewMode('edit');
-      }
-    };
-    window.addEventListener('resize', handleResize);
-    handleResize();
-    return () => window.removeEventListener('resize', handleResize);
-  });
 </script>
 
-<div class="editor-container flex-col">
-  {#if appState.activeNote}
-    <!-- Editor Header Player Controls -->
-    <div class="editor-header flex-row">
-      <div class="header-left flex-row">
-        <!-- Back button (mobile only) -->
-        <button 
-          class="btn-back mobile-only" 
-          onclick={() => {
-            if (appState.editorDirty) appState.saveActiveNote();
-            appState.activeNotePath = null;
-          }}
-          aria-label="Go back to list"
-        >
-          <ChevronLeft size={24} />
-        </button>
+<div class="editor-workspace flex-row" class:focus-mode={focusMode}>
+  <!-- Main Editor Sheet Column -->
+  <div class="editor-main-sheet flex-col flex-grow">
+    <!-- Format Tool Panel (Google Docs / M3 Style) -->
+    <div class="editor-toolbar flex-row">
+      <button onclick={() => toggleLinePrefix('# ')} title="Heading 1" class="btn-tool"><Heading1 size={16} /></button>
+      <button onclick={() => toggleLinePrefix('## ')} title="Heading 2" class="btn-tool"><Heading2 size={16} /></button>
+      <button onclick={() => toggleLinePrefix('### ')} title="Heading 3" class="btn-tool"><Heading3 size={16} /></button>
+      <span class="toolbar-divider"></span>
+      <button onclick={() => wrapSelection('**', '**')} title="Bold" class="btn-tool"><Bold size={16} /></button>
+      <button onclick={() => wrapSelection('*', '*')} title="Italic" class="btn-tool"><Italic size={16} /></button>
+      <button onclick={() => wrapSelection('~~', '~~')} title="Strikethrough" class="btn-tool"><Strikethrough size={16} /></button>
+      <button onclick={() => wrapSelection('`', '`')} title="Inline Code" class="btn-tool"><Code size={16} /></button>
+      <button onclick={() => wrapSelection('<mark>', '</mark>')} title="Highlight" class="btn-tool"><Highlighter size={16} /></button>
+      <span class="toolbar-divider"></span>
+      <button onclick={() => toggleLinePrefix('- ')} title="Bullet List" class="btn-tool"><List size={16} /></button>
+      <button onclick={() => toggleLinePrefix('1. ')} title="Numbered List" class="btn-tool"><ListOrdered size={16} /></button>
+      <button onclick={() => toggleLinePrefix('- [ ] ')} title="Task List" class="btn-tool"><ListTodo size={16} /></button>
+      <button onclick={() => indentSelection(false)} title="Increase Indent (Tab)" class="btn-tool"><Indent size={16} /></button>
+      <button onclick={() => indentSelection(true)} title="Decrease Indent (Shift+Tab)" class="btn-tool"><Outdent size={16} /></button>
+      <span class="toolbar-divider"></span>
+      <button onclick={() => wrapSelection('\n> ', '')} title="Quote" class="btn-tool"><Quote size={16} /></button>
+      <button onclick={() => wrapSelection('\n| Header 1 | Header 2 |\n| --- | --- |\n| Cell 1 | Cell 2 |\n', '')} title="Table" class="btn-tool"><Table size={16} /></button>
+      <button onclick={() => wrapSelection('[', '](https://)')} title="Insert Link" class="btn-tool"><Link2 size={16} /></button>
+      <button onclick={() => wrapSelection('![alt](', ')')} title="Insert Image" class="btn-tool"><ImageIcon size={16} /></button>
+      
+      <span class="toolbar-spacer flex-grow"></span>
 
-        <div class="track-meta flex-col">
-          <span class="now-playing-lbl">NOW EDITING</span>
-          <input 
-            type="text" 
-            value={appState.activeNoteTitle} 
-            class="note-title-input" 
-            readonly
-          />
-        </div>
-      </div>
-
-      <!-- Controls Toolbar -->
-      <div class="controls-toolbar flex-row">
-        <!-- WikiLink Button -->
-        <button 
-          class="btn-control flex-row" 
-          onclick={handleInsertWikiLink} 
-          title="Insert Wiki Link (Ctrl+K)"
-        >
-          <BookOpen size={18} />
-          <span class="btn-label">Link</span>
-        </button>
-
-        <!-- Graph Visualization Toggle -->
-        <button 
-          class="btn-control flex-row" 
-          class:active={showGraph} 
-          onclick={() => showGraph = !showGraph}
-          title="Toggle Note Graph"
-        >
-          <Network size={18} />
-          <span class="btn-label">Visualizer</span>
-        </button>
-
-        <!-- Segmented View Toggle -->
-        <div class="segmented-control flex-row">
-          <button 
-            class="btn-segment" 
-            class:active={viewMode === 'edit'} 
-            onclick={() => setViewMode('edit')}
-            title="Edit Mode"
-          >
-            <Edit3 size={15} />
-          </button>
-          <button 
-            class="btn-segment split-view-btn" 
-            class:active={viewMode === 'split'} 
-            onclick={() => setViewMode('split')}
-            title="Split View"
-          >
-            <Columns size={15} />
-          </button>
-          <button 
-            class="btn-segment" 
-            class:active={viewMode === 'preview'} 
-            onclick={() => setViewMode('preview')}
-            title="Preview Mode"
-          >
-            <Eye size={15} />
-          </button>
-        </div>
-
-        <!-- Circular Play/Save Button -->
-        <button 
-          class="btn-circle btn-circle-primary save-btn" 
-          class:dirty={appState.editorDirty} 
-          onclick={handleSaveClick}
-          title="Save Note (Ctrl+S)"
-          aria-label="Save note"
-        >
-          <Save size={18} />
-        </button>
-      </div>
-    </div>
-
-    <!-- Formatting Toolbar (Phase 1) -->
-    <div class="formatting-toolbar flex-row">
-      <!-- Text formats -->
-      <button onclick={() => wrapSelection('**', '**')} title="Bold (Ctrl+B)" class="btn-tool">
-        <Bold size={15} />
+      <!-- Sidebar & Graph toggles -->
+      <button onclick={() => focusMode = !focusMode} class="btn-tool mode-indicator" class:active={focusMode} title="Toggle Focus Mode">
+        👓 Focus Mode
       </button>
-      <button onclick={() => wrapSelection('*', '*')} title="Italic (Ctrl+I)" class="btn-tool">
-        <Italic size={15} />
+      <button onclick={() => showGraph = !showGraph} class="btn-tool mode-indicator" class:active={showGraph} title="Toggle Graph View">
+        🌐 Graph
       </button>
-      <button onclick={() => wrapSelection('~~', '~~')} title="Strikethrough (Ctrl+Shift+X)" class="btn-tool">
-        <Strikethrough size={15} />
-      </button>
-      <button onclick={() => wrapSelection('<u>', '</u>')} title="Underline" class="btn-tool">
-        <Underline size={15} />
-      </button>
-      <button onclick={() => wrapSelection('`', '`')} title="Inline Code (Ctrl+E)" class="btn-tool">
-        <Code size={15} />
-      </button>
-      <button onclick={() => wrapSelection('<mark>', '</mark>')} title="Highlight (Ctrl+H)" class="btn-tool">
-        <Highlighter size={15} />
-      </button>
-
-      <span class="tool-divider"></span>
-
-      <!-- Headings -->
-      <button onclick={() => toggleLinePrefix('# ')} title="Heading 1 (Ctrl+Alt+1)" class="btn-tool">
-        <Heading1 size={15} />
-      </button>
-      <button onclick={() => toggleLinePrefix('## ')} title="Heading 2 (Ctrl+Alt+2)" class="btn-tool">
-        <Heading2 size={15} />
-      </button>
-      <button onclick={() => toggleLinePrefix('### ')} title="Heading 3 (Ctrl+Alt+3)" class="btn-tool">
-        <Heading3 size={15} />
-      </button>
-
-      <span class="tool-divider"></span>
-
-      <!-- Lists -->
-      <button onclick={() => toggleLinePrefix('- ')} title="Bullet List" class="btn-tool">
-        <List size={15} />
-      </button>
-      <button onclick={() => toggleLinePrefix('1. ')} title="Numbered List" class="btn-tool">
-        <ListOrdered size={15} />
-      </button>
-      <button onclick={() => toggleLinePrefix('- [ ] ')} title="Task List" class="btn-tool">
-        <ListTodo size={15} />
-      </button>
-      <button onclick={() => indentSelection(false)} title="Increase Indent (Tab)" class="btn-tool">
-        <Indent size={15} />
-      </button>
-      <button onclick={() => indentSelection(true)} title="Decrease Indent (Shift+Tab)" class="btn-tool">
-        <Outdent size={15} />
-      </button>
-
-      <span class="tool-divider"></span>
-
-      <!-- Blocks & Elements -->
-      <button onclick={() => toggleLinePrefix('> ')} title="Blockquote" class="btn-tool">
-        <Quote size={15} />
-      </button>
-      <button onclick={() => wrapSelection('```\n', '\n```')} title="Code Block" class="btn-tool">
-        <Terminal size={15} />
-      </button>
-      <button onclick={() => wrapSelection('\n---\n', '')} title="Horizontal Rule" class="btn-tool">
-        <Minus size={15} />
-      </button>
-      <button onclick={insertTable} title="Insert Table" class="btn-tool">
-        <Table size={15} />
-      </button>
-
-      <span class="tool-divider"></span>
-
-      <!-- Media Links -->
-      <button onclick={insertLink} title="Insert Link (Ctrl+K)" class="btn-tool">
-        <Link2 size={15} />
-      </button>
-      <button onclick={insertImage} title="Insert Image" class="btn-tool">
-        <ImageIcon size={15} />
+      <button onclick={() => showRightSidebar = !showRightSidebar} class="btn-tool mode-indicator" class:active={showRightSidebar} title="Toggle Side Panel">
+        📋 Sidebar
       </button>
     </div>
 
-    <!-- Textarea Editing Panel / Preview Panel Workspace -->
-    <div class="editor-body flex-row">
-      {#if viewMode !== 'preview'}
-        <div class="editor-pane">
-          <textarea 
-            class="editor-textarea font-mono" 
-            value={appState.activeNoteContent} 
-            oninput={handleContentInput}
-            onkeydown={handleKeyDown}
-            onmouseup={handleMouseUp}
-            onkeyup={handleMouseUp}
-            onblur={handleTextareaBlur}
-            placeholder="Start writing in markdown..."
-          ></textarea>
-        </div>
-      {/if}
+    <!-- Centered Paper Canvas -->
+    <div class="editor-scroller">
+      <div class="paper-canvas">
+        <textarea 
+          class="editor-textarea" 
+          value={appState.activeNoteContent} 
+          oninput={handleContentInput}
+          onkeydown={handleKeyDown}
+          placeholder="Start writing... Type / for commands."
+        ></textarea>
 
-      {#if viewMode === 'split'}
-        <div class="editor-separator"></div>
-      {/if}
-
-      {#if viewMode !== 'edit'}
-        <div 
-          class="preview-pane markdown-body" 
-          onclick={handlePreviewClick}
-        >
-          {@html previewHtml}
-        </div>
-      {/if}
-    </div>
-
-    <!-- Bottom Player / Status Bar -->
-    <div class="editor-footer flex-row">
-      <div class="stats-panel flex-row">
-        <span class="stat-item">{wordCount} words</span>
-        <span class="stat-divider">|</span>
-        <span class="stat-item">{charCount} characters</span>
-        <span class="stat-divider">|</span>
-        <span class="stat-item">{readTime}</span>
-      </div>
-
-      <div class="save-status flex-row">
-        {#if appState.editorDirty}
-          <span class="status-unsaved flex-row">
-            <span class="status-dot"></span> Unsaved changes
-          </span>
-        {:else}
-          <span class="status-saved flex-row" style="gap: 8px;">
-            <span>Saved locally</span>
-            {#if appState.syncEnabled && appState.googleConnected}
-              <span class="status-divider">|</span>
-              {#if appState.syncStatus === 'syncing'}
-                <span class="status-syncing flex-row" style="color: var(--semantic-info); gap: 4px;">
-                  <span class="status-dot-syncing"></span> Syncing to Drive...
-                </span>
-              {:else if appState.syncStatus === 'error'}
-                <span style="color: var(--semantic-error);">Sync Error</span>
-              {:else}
-                <span style="color: var(--accent);">Synced to Drive</span>
-              {/if}
-            {/if}
-          </span>
+        <!-- Floating Slash command autocomplete menu -->
+        {#if showSlashMenu && filteredCommands.length > 0}
+          <div class="slash-commands-dropdown md3-card-filled" style={`top: ${slashPosition.top}px; left: ${slashPosition.left}px;`}>
+            {#each filteredCommands as cmd, idx}
+              <button 
+                class="slash-item" 
+                class:active={idx === slashIndex}
+                onclick={() => executeSlashCommand(cmd)}
+              >
+                <span class="slash-cmd">{cmd.cmd}</span>
+                <div class="slash-meta">
+                  <span class="slash-label">{cmd.label}</span>
+                  <span class="slash-desc">{cmd.desc}</span>
+                </div>
+              </button>
+            {/each}
+          </div>
         {/if}
       </div>
     </div>
-  {:else}
-    <div class="no-note-selected flex-col">
-      <div class="disc-art">📓</div>
-      <h2 class="no-note-title">No Note Loaded</h2>
-      <p class="no-note-text">Select a track from the playlist or click "Add Note" to create one.</p>
-      <button class="btn-pill btn-pill-primary select-vault-btn" onclick={appState.initSandbox.bind(appState)}>
-        Load Local Sandbox
-      </button>
+
+    <!-- Footer Stats Bar -->
+    <div class="editor-footer-stats flex-row">
+      <span>{wordCount} words</span>
+      <span>{charCount} characters</span>
+      <span>{readTime}</span>
+      {#if appState.editorDirty}
+        <span class="save-indicator dirty">● Unsaved Changes</span>
+      {:else}
+        <span class="save-indicator saved">✓ Saved</span>
+      {/if}
+    </div>
+  </div>
+
+  <!-- Right Collapsible Panel Drawer (Outline, Mock Comments & Realtime Preview) -->
+  {#if showRightSidebar}
+    <div class="editor-right-sidebar flex-col">
+      <div class="sidebar-tabs flex-row">
+        <button 
+          class="sidebar-tab" 
+          class:active={activeSidebarTab === 'outline'} 
+          onclick={() => activeSidebarTab = 'outline'}
+        >
+          Outline
+        </button>
+        <button 
+          class="sidebar-tab" 
+          class:active={activeSidebarTab === 'preview'} 
+          onclick={() => activeSidebarTab = 'preview'}
+        >
+          Preview
+        </button>
+        <button 
+          class="sidebar-tab" 
+          class:active={activeSidebarTab === 'comments'} 
+          onclick={() => activeSidebarTab = 'comments'}
+        >
+          Activity
+        </button>
+      </div>
+
+      <div class="sidebar-content flex-grow">
+        {#if activeSidebarTab === 'outline'}
+          <!-- Document outline -->
+          <div class="outline-pane flex-col">
+            <h4 class="sidebar-header">Document Map</h4>
+            {#if outline.length === 0}
+              <p class="empty-text">No headings found. Add `#` titles to populate the outline navigation.</p>
+            {:else}
+              <div class="outline-list flex-col">
+                {#each outline as head}
+                  <button 
+                    class="outline-item" 
+                    style={`padding-left: ${(head.level - 1) * 12 + 8}px;`}
+                    onclick={() => jumpToHeading(head.lineIndex)}
+                  >
+                    {head.text}
+                  </button>
+                {/each}
+              </div>
+            {/if}
+          </div>
+        {:else if activeSidebarTab === 'preview'}
+          <!-- Realtime HTML renderer -->
+          <div class="html-preview-pane markdown-body" onclick={handlePreviewClick}>
+            {@html previewHtml || '<p class="empty-text">Nothing to preview yet...</p>'}
+          </div>
+        {:else if activeSidebarTab === 'comments'}
+          <!-- Activity & comment mocks -->
+          <div class="comments-pane flex-col">
+            <h4 class="sidebar-header">Review Comments</h4>
+            <div class="comments-list flex-col">
+              {#each commentsList as comm}
+                <div class="comment-card md3-card-filled">
+                  <div class="comm-header flex-row">
+                    <strong class="comm-author">{comm.author}</strong>
+                    <span class="comm-date">{comm.date}</span>
+                  </div>
+                  <p class="comm-text">{comm.text}</p>
+                </div>
+              {/each}
+            </div>
+
+            <!-- Comment input -->
+            <div class="comment-input-row flex-row">
+              <input 
+                type="text" 
+                placeholder="Add audit note..." 
+                bind:value={newCommentText}
+                onkeydown={(e) => e.key === 'Enter' && handleAddComment()}
+                class="comment-input"
+              />
+              <button class="md3-btn" onclick={handleAddComment}>Post</button>
+            </div>
+          </div>
+        {/if}
+      </div>
     </div>
   {/if}
 </div>
 
-{#if showFloatingToolbar}
-  <div 
-    class="floating-selection-toolbar flex-row" 
-    style="left: {floatingToolbarX}px; top: {floatingToolbarY}px;"
-  >
-    <button onclick={() => wrapSelection('**', '**')} title="Bold" class="btn-float-tool">
-      <Bold size={13} />
-    </button>
-    <button onclick={() => wrapSelection('*', '*')} title="Italic" class="btn-float-tool">
-      <Italic size={13} />
-    </button>
-    <button onclick={() => wrapSelection('~~', '~~')} title="Strikethrough" class="btn-float-tool">
-      <Strikethrough size={13} />
-    </button>
-    <button onclick={() => wrapSelection('`', '`')} title="Inline Code" class="btn-float-tool">
-      <Code size={13} />
-    </button>
-    <button onclick={() => wrapSelection('<mark>', '</mark>')} title="Highlight" class="btn-float-tool">
-      <Highlighter size={13} />
-    </button>
-    <button onclick={insertLink} title="Link" class="btn-float-tool">
-      <Link2 size={13} />
-    </button>
-  </div>
-{/if}
-
 <style>
-  .editor-container {
-    flex-grow: 1;
+  .editor-workspace {
+    display: flex;
+    flex-direction: row;
     height: 100%;
-    background-color: var(--bg-base);
+    width: 100%;
     overflow: hidden;
+    background-color: var(--bg-base);
+    transition: var(--transition-standard);
   }
 
-  .flex-col {
+  .editor-main-sheet {
+    height: 100%;
     display: flex;
     flex-direction: column;
+    overflow: hidden;
   }
 
-  .flex-row {
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-  }
-
-  .editor-header {
-    height: 80px;
-    background-color: var(--bg-surface);
+  /* Formatting Toolbar styling */
+  .editor-toolbar {
+    height: 48px;
     border-bottom: 1px solid var(--border-color);
-    padding: 0 24px;
-    justify-content: space-between;
+    background-color: var(--bg-surface);
+    padding: 0 16px;
+    gap: 4px;
     flex-shrink: 0;
+    transition: var(--transition-standard);
   }
 
-  .track-meta {
-    gap: 2px;
-    overflow: hidden;
-    max-width: 50%;
-  }
-
-  .now-playing-lbl {
-    font-size: 10px;
-    font-weight: 700;
-    color: var(--accent);
-    letter-spacing: 1px;
-  }
-
-  .note-title-input {
-    font-size: 20px;
-    font-weight: 800;
-    color: var(--text-primary);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    background: transparent;
-    border: none;
-    outline: none;
-    pointer-events: none; /* read-only */
-  }
-
-  .controls-toolbar {
-    gap: 16px;
-  }
-
-  .btn-control {
-    color: var(--text-secondary);
-    font-weight: 700;
-    gap: 6px;
-    padding: 8px 12px;
-    border-radius: var(--radius-pill);
-    transition: color 0.2s, background-color 0.2s;
-  }
-
-  .btn-control:hover {
-    color: var(--text-primary);
-    background-color: rgba(255, 255, 255, 0.05);
-  }
-
-  .btn-control.active {
-    color: var(--accent);
-    background-color: rgba(30, 215, 96, 0.08);
-  }
-
-  .btn-label {
-    font-size: 12px;
-  }
-
-  .save-btn {
-    box-shadow: var(--shadow-medium);
-  }
-
-  .save-btn.dirty {
-    animation: save-glow 2s infinite ease-in-out;
-  }
-
-  @keyframes save-glow {
-    0%, 100% {
-      box-shadow: 0 0 0 0px rgba(30, 215, 96, 0.4);
-    }
-    50% {
-      box-shadow: 0 0 12px 4px rgba(30, 215, 96, 0.6);
-    }
-  }
-
-  .editor-body {
-    flex-grow: 1;
+  .btn-tool {
+    width: 32px;
+    height: 32px;
+    border-radius: var(--radius-s);
     display: flex;
-    flex-direction: row;
-    overflow: hidden;
-    padding: 16px 24px;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-secondary);
+    transition: var(--transition-fast);
+  }
+
+  .btn-tool:hover {
+    background-color: rgba(120, 120, 120, 0.08);
+    color: var(--text-primary);
+  }
+
+  .btn-tool.active {
+    background-color: var(--primary-container);
+    color: var(--on-primary-container);
+  }
+
+  .toolbar-divider {
+    width: 1px;
+    height: 20px;
+    background-color: var(--border-color);
+    margin: 0 8px;
+  }
+
+  .mode-indicator {
+    width: auto;
+    padding: 0 12px;
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  /* Centered Paper Scroller Layout */
+  .editor-scroller {
+    flex-grow: 1;
+    overflow-y: auto;
+    padding: 40px 20px;
+    display: flex;
+    justify-content: center;
     background-color: var(--bg-base);
+    transition: var(--transition-standard);
+  }
+
+  .paper-canvas {
+    width: 100%;
+    max-width: 800px;
+    min-height: 800px;
+    background-color: var(--bg-surface);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-m);
+    box-shadow: var(--shadow-lvl2);
+    padding: 60px 50px;
+    display: flex;
+    position: relative;
+    box-sizing: border-box;
+    transition: var(--transition-standard);
   }
 
   .editor-textarea {
     width: 100%;
     height: 100%;
     resize: none;
-    font-family: var(--font-mono);
-    font-size: 15px;
-    line-height: 1.6;
-    color: var(--text-primary);
-    background: transparent;
     border: none;
+    background: transparent;
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    font-size: 16px;
+    line-height: 1.8;
     outline: none;
+    box-sizing: border-box;
   }
 
-  .editor-footer {
-    height: 48px;
+  /* Floating slash dropdown */
+  .slash-commands-dropdown {
+    position: fixed;
+    width: 250px;
+    max-height: 280px;
+    overflow-y: auto;
+    border-radius: var(--radius-m);
+    box-shadow: var(--shadow-lvl4);
     background-color: var(--bg-surface);
-    border-top: 1px solid var(--border-color);
-    padding: 0 24px;
-    justify-content: space-between;
-    flex-shrink: 0;
-    color: var(--text-secondary);
-    font-size: 12px;
-  }
-
-  .stats-panel {
-    gap: 8px;
-  }
-
-  .stat-divider {
-    color: var(--text-tertiary);
-  }
-
-  .save-status {
-    gap: 8px;
-    font-weight: 500;
-  }
-
-  .status-unsaved {
-    color: var(--semantic-warning);
-    gap: 6px;
-  }
-
-  .status-dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background-color: var(--semantic-warning);
-    display: inline-block;
-  }
-
-  .status-saved {
-    color: var(--text-tertiary);
-  }
-
-  .status-dot-syncing {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background-color: var(--semantic-info);
-    display: inline-block;
-    animation: sync-pulse 1s infinite alternate;
-  }
-
-  @keyframes sync-pulse {
-    from { opacity: 0.4; }
-    to { opacity: 1; }
-  }
-
-  .no-note-selected {
-    align-items: center;
-    justify-content: center;
-    flex-grow: 1;
-    gap: 16px;
-    text-align: center;
-    padding: 32px;
-  }
-
-  .disc-art {
-    font-size: 64px;
-    margin-bottom: 8px;
-    animation: float 4s ease-in-out infinite;
-  }
-
-  @keyframes float {
-    0%, 100% {
-      transform: translateY(0);
-    }
-    50% {
-      transform: translateY(-10px);
-    }
-  }
-
-  .no-note-title {
-    font-size: 20px;
-    font-weight: 800;
-    color: var(--text-primary);
-  }
-
-  .no-note-text {
-    font-size: 13px;
-    color: var(--text-secondary);
-    max-width: 280px;
-    line-height: 1.5;
-  }
-
-  .select-vault-btn {
-    margin-top: 8px;
-  }
-
-  /* Segmented view controls */
-  .segmented-control {
-    background-color: rgba(255, 255, 255, 0.03);
     border: 1px solid var(--border-color);
-    border-radius: var(--radius-pill);
-    padding: 2px;
+    z-index: 1000;
+    padding: 6px;
+    display: flex;
+    flex-direction: column;
     gap: 2px;
-    flex-shrink: 0;
   }
 
-  .btn-segment {
-    background: transparent;
-    border: none;
-    outline: none;
-    color: var(--text-secondary);
-    width: 30px;
-    height: 30px;
-    border-radius: var(--radius-pill);
+  .slash-item {
     display: flex;
     align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    transition: color 0.2s, background-color 0.2s;
+    padding: 8px 12px;
+    border-radius: var(--radius-s);
+    text-align: left;
+    gap: 12px;
+    transition: var(--transition-fast);
   }
 
-  .btn-segment:hover {
-    color: var(--text-primary);
-    background-color: rgba(255, 255, 255, 0.03);
+  .slash-item:hover, .slash-item.active {
+    background-color: var(--primary-container);
+    color: var(--on-primary-container);
   }
 
-  .btn-segment.active {
-    color: var(--accent);
-    background-color: rgba(255, 255, 255, 0.08);
+  .slash-cmd {
+    font-family: var(--font-mono);
+    font-weight: 700;
+    font-size: 13px;
+    color: var(--primary);
   }
 
-  /* Split and preview panes */
-  .editor-pane {
-    flex: 1;
-    height: 100%;
-    overflow: hidden;
+  .slash-item:hover .slash-cmd, .slash-item.active .slash-cmd {
+    color: var(--on-primary-container);
+  }
+
+  .slash-meta {
     display: flex;
     flex-direction: column;
   }
 
-  .editor-separator {
-    width: 1px;
-    height: 100%;
-    background-color: var(--border-color);
-    margin: 0 16px;
-    flex-shrink: 0;
-  }
-
-  .preview-pane {
-    flex: 1;
-    height: 100%;
-    overflow-y: auto;
-    color: var(--text-primary);
-    line-height: 1.6;
-    font-size: 14px;
-    padding-right: 8px;
-  }
-
-  /* Custom markdown renderer elements styling */
-  .preview-pane :global(h1), .preview-pane :global(h2), .preview-pane :global(h3), .preview-pane :global(h4), .preview-pane :global(h5), .preview-pane :global(h6) {
-    color: var(--text-primary);
-    font-weight: 800;
-    margin-top: 1.5em;
-    margin-bottom: 0.5em;
-    line-height: 1.35;
-  }
-
-  .preview-pane :global(h1) {
-    font-size: 24px;
-    border-bottom: 1px solid var(--border-color);
-    padding-bottom: 8px;
-    margin-top: 0;
-  }
-
-  .preview-pane :global(h2) {
-    font-size: 18px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-    padding-bottom: 6px;
-  }
-
-  .preview-pane :global(h3) {
-    font-size: 15px;
-  }
-
-  .preview-pane :global(p) {
-    margin-top: 0;
-    margin-bottom: 1em;
-    font-size: 13.5px;
-    color: var(--text-secondary);
-  }
-
-  .preview-pane :global(a) {
-    color: var(--accent);
-    text-decoration: none;
-    transition: opacity 0.2s;
-  }
-
-  .preview-pane :global(a:hover) {
-    opacity: 0.8;
-  }
-
-  .preview-pane :global(.wikilink) {
-    color: var(--accent);
-    text-decoration: none;
-    border-bottom: 1px dashed var(--accent);
-    font-weight: 600;
-  }
-
-  .preview-pane :global(ul), .preview-pane :global(ol) {
-    margin-top: 0;
-    margin-bottom: 1em;
-    padding-left: 20px;
-    color: var(--text-secondary);
-    font-size: 13.5px;
-  }
-
-  .preview-pane :global(li) {
-    margin-bottom: 0.25em;
-  }
-
-  .preview-pane :global(code) {
-    font-family: var(--font-mono);
+  .slash-label {
     font-size: 12px;
-    background-color: rgba(255, 255, 255, 0.05);
-    padding: 2px 5px;
-    border-radius: 4px;
-    color: #e2e8f0;
-  }
-
-  .preview-pane :global(pre) {
-    background-color: var(--bg-surface);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-medium);
-    padding: 14px;
-    overflow-x: auto;
-    margin-top: 0;
-    margin-bottom: 1em;
-  }
-
-  .preview-pane :global(pre code) {
-    background-color: transparent;
-    padding: 0;
-    border-radius: 0;
-    color: inherit;
-    font-size: 12.5px;
-    line-height: 1.5;
-  }
-
-  .preview-pane :global(blockquote) {
-    margin: 0 0 1em 0;
-    padding: 4px 0 4px 16px;
-    border-left: 3px solid var(--accent);
-    color: var(--text-secondary);
-    font-style: italic;
-    background-color: rgba(255, 255, 255, 0.01);
-  }
-
-  .preview-pane :global(hr) {
-    height: 1px;
-    background-color: var(--border-color);
-    border: none;
-    margin: 24px 0;
-  }
-
-  .preview-pane :global(table) {
-    width: 100%;
-    border-collapse: collapse;
-    margin-bottom: 1em;
-    font-size: 13px;
-  }
-
-  .preview-pane :global(th), .preview-pane :global(td) {
-    border: 1px solid var(--border-color);
-    padding: 8px 12px;
-  }
-
-  .preview-pane :global(th) {
-    background-color: rgba(255, 255, 255, 0.03);
     font-weight: 700;
     color: var(--text-primary);
   }
 
-  .preview-pane :global(td) {
-    color: var(--text-secondary);
+  .slash-item:hover .slash-label, .slash-item.active .slash-label {
+    color: var(--on-primary-container);
   }
 
-  /* Formatting Toolbar styles */
-  .formatting-toolbar {
-    height: 40px;
+  .slash-desc {
+    font-size: 10px;
+    color: var(--text-tertiary);
+  }
+
+  .slash-item:hover .slash-desc, .slash-item.active .slash-desc {
+    color: rgba(var(--accent-base), 10%, 20%);
+  }
+
+  /* Footer Stats */
+  .editor-footer-stats {
+    height: 32px;
+    border-top: 1px solid var(--border-color);
     background-color: var(--bg-surface);
+    padding: 0 24px;
+    gap: 20px;
+    font-size: 11px;
+    color: var(--text-tertiary);
+    font-weight: 600;
+    flex-shrink: 0;
+  }
+
+  .save-indicator {
+    margin-left: auto;
+    font-weight: 700;
+  }
+
+  .save-indicator.dirty {
+    color: var(--semantic-warning);
+  }
+
+  .save-indicator.saved {
+    color: var(--semantic-success);
+  }
+
+  /* Right Sidebar Drawer styling */
+  .editor-right-sidebar {
+    width: 320px;
+    background-color: var(--bg-surface);
+    border-left: 1px solid var(--border-color);
+    height: 100%;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .sidebar-tabs {
+    height: 48px;
     border-bottom: 1px solid var(--border-color);
-    padding: 0 16px;
-    gap: 4px;
+    background-color: var(--bg-surface-container);
     flex-shrink: 0;
-    overflow-x: auto;
-    display: flex;
-    align-items: center;
   }
 
-  /* Hide scrollbar for Chrome, Safari and Opera */
-  .formatting-toolbar::-webkit-scrollbar {
-    display: none;
-  }
-
-  /* Hide scrollbar for IE, Edge and Firefox */
-  .formatting-toolbar {
-    -ms-overflow-style: none;  /* IE and Edge */
-    scrollbar-width: none;  /* Firefox */
-  }
-
-  .btn-tool {
-    background: transparent;
-    border: none;
-    outline: none;
+  .sidebar-tab {
+    flex: 1;
+    height: 100%;
+    text-align: center;
+    font-size: 12px;
+    font-weight: 700;
     color: var(--text-secondary);
-    width: 28px;
-    height: 28px;
-    border-radius: var(--radius-small);
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    border-bottom: 2px solid transparent;
     cursor: pointer;
-    transition: color 0.2s, background-color 0.2s;
-    flex-shrink: 0;
   }
 
-  .btn-tool:hover {
-    color: var(--text-primary);
-    background-color: rgba(255, 255, 255, 0.05);
+  .sidebar-tab.active {
+    color: var(--primary);
+    border-bottom-color: var(--primary);
   }
 
-  .tool-divider {
-    width: 1px;
-    height: 16px;
-    background-color: var(--border-color);
-    margin: 0 6px;
-    flex-shrink: 0;
+  .sidebar-content {
+    padding: 20px;
+    overflow-y: auto;
   }
 
-  /* Floating Selection Toolbar styles */
-  .floating-selection-toolbar {
-    position: fixed;
-    z-index: 1000;
-    background-color: rgba(18, 18, 18, 0.9);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-pill);
-    padding: 3px;
-    gap: 2px;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
-    transform: translate(-50%, -100%);
-    animation: fade-in 0.15s ease-out;
+  .sidebar-header {
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--text-tertiary);
+    margin-bottom: 16px;
+    font-weight: 700;
   }
 
-  @keyframes fade-in {
-    from { opacity: 0; transform: translate(-50%, -90%); }
-    to { opacity: 1; transform: translate(-50%, -100%); }
+  .empty-text {
+    font-size: 12px;
+    color: var(--text-tertiary);
+    line-height: 1.5;
   }
 
-  .btn-float-tool {
-    background: transparent;
-    border: none;
-    outline: none;
+  /* Outline list mapping */
+  .outline-list {
+    gap: 6px;
+  }
+
+  .outline-item {
+    text-align: left;
+    font-size: 13px;
     color: var(--text-secondary);
-    width: 26px;
-    height: 26px;
-    border-radius: var(--radius-pill);
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    padding: 6px 8px;
+    border-radius: var(--radius-xs);
     cursor: pointer;
-    transition: color 0.15s, background-color 0.15s;
-  }
-
-  .btn-float-tool:hover {
-    color: var(--text-primary);
-    background-color: rgba(255, 255, 255, 0.08);
-  }
-
-  /* Mobile Responsive revamps */
-  .btn-back {
-    background: transparent;
-    border: none;
-    outline: none;
-    color: var(--text-primary);
-    display: none;
-    align-items: center;
-    justify-content: center;
-    width: 36px;
-    height: 36px;
-    border-radius: 50%;
-    cursor: pointer;
-    margin-right: 4px;
-    flex-shrink: 0;
-  }
-
-  .btn-back:hover {
-    background-color: rgba(255, 255, 255, 0.08);
-  }
-
-  .btn-back:active {
-    background-color: rgba(255, 255, 255, 0.15);
-  }
-
-  .header-left {
-    display: flex;
-    flex-direction: row;
-    align-items: center;
+    transition: var(--transition-fast);
+    white-space: nowrap;
     overflow: hidden;
-    flex-grow: 1;
-    max-width: 50%;
-    gap: 8px;
+    text-overflow: ellipsis;
   }
 
-  @media (max-width: 767px) {
-    .mobile-only {
-      display: flex !important;
-    }
+  .outline-item:hover {
+    background-color: var(--bg-surface-container);
+    color: var(--primary);
+  }
 
-    .editor-header {
-      height: 56px;
-      padding: 0 12px;
-    }
+  /* Comments Tab styling */
+  .comments-pane {
+    height: 100%;
+    justify-content: space-between;
+  }
 
-    .track-meta {
-      max-width: 100%;
-    }
+  .comments-list {
+    gap: 12px;
+    overflow-y: auto;
+    flex-grow: 1;
+    margin-bottom: 16px;
+  }
 
-    .now-playing-lbl {
-      font-size: 8px;
-      letter-spacing: 0.5px;
-    }
+  .comment-card {
+    padding: 12px;
+    border-radius: var(--radius-m);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
 
-    .note-title-input {
-      font-size: 14px;
-    }
+  .comm-header {
+    justify-content: space-between;
+    font-size: 11px;
+  }
 
-    .controls-toolbar {
-      gap: 8px;
-    }
+  .comm-author {
+    color: var(--text-primary);
+  }
 
-    .btn-control {
-      padding: 6px;
-      gap: 0;
-    }
+  .comm-date {
+    color: var(--text-tertiary);
+  }
 
-    .btn-control .btn-label {
-      display: none !important;
-    }
+  .comm-text {
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.4;
+  }
 
-    .split-view-btn {
-      display: none !important;
-    }
+  .comment-input-row {
+    gap: 8px;
+    flex-shrink: 0;
+  }
 
-    .editor-body {
-      padding: 12px;
-    }
+  .comment-input {
+    flex-grow: 1;
+    background-color: var(--bg-surface-container);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-s);
+    padding: 8px 12px;
+    font-size: 12px;
+    color: var(--text-primary);
+  }
 
-    .editor-textarea {
-      font-size: 14px;
-    }
+  /* HTML Preview Pane */
+  .html-preview-pane {
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--text-primary);
+  }
 
-    .formatting-toolbar {
-      height: 36px;
-      padding: 0 8px;
-      gap: 2px;
-    }
+  /* Focus Mode animations / fades */
+  .editor-workspace.focus-mode .editor-toolbar,
+  .editor-workspace.focus-mode .editor-footer-stats,
+  .editor-workspace.focus-mode .editor-right-sidebar {
+    opacity: 0.05;
+  }
 
-    .btn-tool {
-      width: 26px;
-      height: 26px;
-    }
+  .editor-workspace.focus-mode .editor-toolbar:hover,
+  .editor-workspace.focus-mode .editor-footer-stats:hover,
+  .editor-workspace.focus-mode .editor-right-sidebar:hover {
+    opacity: 1;
+  }
 
-    .tool-divider {
-      height: 12px;
-      margin: 0 4px;
-    }
+  .editor-workspace.focus-mode .editor-scroller {
+    background-color: var(--bg-surface);
+  }
 
-    .editor-footer {
-      display: none !important;
-    }
+  .editor-workspace.focus-mode .paper-canvas {
+    border-color: transparent;
+    box-shadow: none;
+  }
 
-    .floating-selection-toolbar {
-      display: none !important;
+  @media (max-width: 1000px) {
+    .editor-right-sidebar {
+      display: none;
+    }
+  }
+
+  @media (max-width: 768px) {
+    .paper-canvas {
+      padding: 30px 20px;
+      border-radius: 0;
+      border: none;
+      min-height: 100%;
+    }
+    .editor-scroller {
+      padding: 0;
+    }
+    .editor-toolbar {
+      overflow-x: auto;
+      white-space: nowrap;
+      display: flex;
     }
   }
 </style>
