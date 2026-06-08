@@ -8,8 +8,9 @@
   import { 
     Home, Search, Library, Calendar, ChevronLeft, Plus, 
     FileText, Tag, FolderPlus, Compass, ArrowRight, Settings,
-    X, Cloud, RefreshCw, LogOut
+    X, Cloud, RefreshCw, LogOut, Palette, ChevronRight, Menu
   } from 'lucide-svelte';
+  import ResizeHandle from './ResizeHandle.svelte';
 
   // Responsive state
   let isMobile = $state(false);
@@ -17,6 +18,10 @@
   let mobileSearchInput = $state('');
   let newMobileFolder = $state('');
   let showMobileFolderForm = $state(false);
+  
+  // Custom Sync Folder and Theme Selectors
+  let showFolderPicker = $state(false);
+  let newDriveFolderName = $state('');
 
   // Time-based greeting helper
   let greeting = $derived.by(() => {
@@ -84,7 +89,7 @@
             aria-label="Back"
           >
             <ChevronLeft size={24} />
-            <span class="back-text">Tracks</span>
+            <span class="back-text">Notes</span>
           </button>
           
           <div class="editor-note-meta flex-col">
@@ -129,7 +134,7 @@
               <div class="recent-grid">
                 {#each appState.recentNotes as note}
                   <button class="recent-tile flex-row" onclick={() => appState.selectNote(note.path)}>
-                    <div class="tile-art flex-row">🎵</div>
+                    <div class="tile-art flex-row">📄</div>
                     <span class="tile-title">{note.name}</span>
                   </button>
                 {/each}
@@ -188,7 +193,7 @@
             {#if appState.searchQuery.trim()}
               <!-- Search Results -->
               <div class="search-results flex-col">
-                <span class="section-title">Tracks (Notes)</span>
+                <span class="section-title">Notes</span>
                 {#each appState.filteredNotes as note}
                   <button class="search-result-row flex-row" onclick={() => appState.selectNote(note.path)}>
                     <div class="row-art">📄</div>
@@ -272,7 +277,7 @@
                 class:active={appState.activeNotebook === null}
                 onclick={() => appState.activeNotebook = null}
               >
-                All Playlists
+                All Notebooks
               </button>
               {#each appState.notebooks as notebook}
                 <button 
@@ -308,7 +313,7 @@
               {:else}
                 <div class="empty-lib flex-col">
                   <span>📂</span>
-                  <span class="title">Empty Playlist</span>
+                  <span class="title">Empty Notebook</span>
                 </div>
               {/each}
             </div>
@@ -394,15 +399,23 @@
   <!-- ============================================== -->
   <!-- DESKTOP VIEW                                   -->
   <!-- ============================================== -->
-  <div class="desktop-app flex-row">
+  <div class="desktop-app flex-row" style="position: relative;">
     <!-- Left Sidebar (Notebook / Tag Selection) -->
     <Sidebar />
+
+    {#if !appState.sidebarCollapsed && !appState.notelistCollapsed}
+      <ResizeHandle onResize={(delta) => appState.resizeSidebar(delta)} />
+    {/if}
 
     <!-- Middle Panel (Note list) -->
     <NoteList />
 
+    {#if !appState.notelistCollapsed && !appState.editorCollapsed}
+      <ResizeHandle onResize={(delta) => appState.resizeNotelist(delta)} />
+    {/if}
+
     <!-- Right Panel (Editor) -->
-    <div class="editor-panel flex-row">
+    <div class="editor-panel flex-row" style="display: {appState.editorCollapsed ? 'none' : 'flex'}; min-width: 0;">
       <Editor bind:showGraph={showGraph} />
       
       <!-- Far Right Graph visualizer (Collapsible) -->
@@ -410,6 +423,22 @@
         <GraphView />
       {/if}
     </div>
+
+    {#if appState.sidebarCollapsed && appState.notelistCollapsed && appState.editorCollapsed}
+      <div class="all-collapsed-placeholder flex-col" style="flex-grow: 1; align-items: center; justify-content: center; gap: 16px; color: var(--text-secondary); background-color: var(--bg-base); height: 100%;">
+        <span>All sections are collapsed.</span>
+        <button 
+          class="btn-pill btn-pill-primary" 
+          onclick={() => {
+            appState.setSidebarCollapsed(false);
+            appState.setNotelistCollapsed(false);
+            appState.setEditorCollapsed(false);
+          }}
+        >
+          Restore All Sections
+        </button>
+      </div>
+    {/if}
   </div>
 {/if}
 
@@ -522,8 +551,115 @@
                 <span>Disconnect</span>
               </button>
             </div>
+
+            <!-- Custom Target Folder selection section -->
+            <div class="form-group flex-col" style="margin-top: 16px; border-top: 1px dashed var(--border-color); padding-top: 16px; gap: 8px;">
+              <label class="form-label" style="font-weight: 700; margin-bottom: 2px;">Sync Target Folder</label>
+              <div class="folder-selection-ui flex-col" style="gap: 8px;">
+                <div class="current-folder flex-row" style="justify-content: space-between; background-color: var(--bg-mid-dark); padding: 8px 12px; border-radius: var(--radius-standard); border: 1px solid var(--border-color);">
+                  <div class="flex-col">
+                    <span style="font-size: 10px; color: var(--text-tertiary); text-transform: uppercase;">Active Folder</span>
+                    <span style="font-size: 13px; font-weight: 600; color: var(--text-primary);">
+                      {appState.customDriveFolderName || 'MyNotes (Default)'}
+                    </span>
+                  </div>
+                  
+                  {#if !showFolderPicker}
+                    <button class="btn-pill btn-pill-outline" style="padding: 4px 10px; font-size: 11px;" onclick={() => { showFolderPicker = true; appState.fetchGoogleDriveFolders(); }}>
+                      Change
+                    </button>
+                  {/if}
+                </div>
+
+                {#if showFolderPicker}
+                  <div class="folder-picker-panel flex-col" style="background-color: var(--bg-mid-dark); padding: 12px; border-radius: var(--radius-standard); border: 1px solid var(--border-color); gap: 10px; max-height: 180px; overflow-y: auto;">
+                    <div class="flex-row" style="justify-content: space-between; font-size: 11px; font-weight: 700; color: var(--text-secondary);">
+                      <span>CHOOSE FROM DRIVE</span>
+                      <button onclick={() => showFolderPicker = false} style="color: var(--accent);">Close</button>
+                    </div>
+                    
+                    {#if appState.fetchingFolders}
+                      <div class="flex-row" style="justify-content: center; padding: 12px 0;">
+                        <span class="spinner" style="width: 16px; height: 16px; border-width: 2px;"></span>
+                      </div>
+                    {:else}
+                      <div class="folder-list flex-col" style="gap: 4px;">
+                        <!-- Default Folder Option -->
+                        <button 
+                          class="folder-row flex-row" 
+                          style="width: 100%; text-align: left; padding: 6px 8px; border-radius: var(--radius-subtle); gap: 8px; font-size: 12px; background: none;" 
+                          class:active={!appState.customDriveFolderId}
+                          onclick={() => { appState.setCustomDriveFolder(null, null); showFolderPicker = false; }}
+                        >
+                          <span>📁</span>
+                          <span style="color: {!appState.customDriveFolderId ? 'var(--accent)' : 'var(--text-primary)'};">MyNotes (Default)</span>
+                        </button>
+
+                        {#each appState.googleDriveFolders as folder}
+                          <button 
+                            class="folder-row flex-row" 
+                            style="width: 100%; text-align: left; padding: 6px 8px; border-radius: var(--radius-subtle); gap: 8px; font-size: 12px; background: none;"
+                            class:active={appState.customDriveFolderId === folder.id}
+                            onclick={() => { appState.setCustomDriveFolder(folder.id, folder.name); showFolderPicker = false; }}
+                          >
+                            <span>📁</span>
+                            <span style="color: {appState.customDriveFolderId === folder.id ? 'var(--accent)' : 'var(--text-primary)'};">{folder.name}</span>
+                          </button>
+                        {/each}
+                      </div>
+
+                      <div class="create-folder-inline flex-row" style="gap: 8px; margin-top: 8px; border-top: 1px dashed var(--border-color); padding-top: 8px;">
+                        <input 
+                          type="text" 
+                          placeholder="New folder name..." 
+                          bind:value={newDriveFolderName}
+                          style="flex-grow: 1; background-color: var(--bg-surface); border: 1px solid var(--border-color); padding: 4px 8px; border-radius: var(--radius-subtle); font-size: 12px; color: var(--text-primary);"
+                        />
+                        <button 
+                          class="btn-pill btn-pill-primary" 
+                          style="padding: 4px 8px; font-size: 11px;"
+                          onclick={async () => {
+                            if (newDriveFolderName.trim()) {
+                              await appState.createGoogleDriveFolder(newDriveFolderName.trim());
+                              newDriveFolderName = '';
+                              showFolderPicker = false;
+                            }
+                          }}
+                        >
+                          Create
+                        </button>
+                      </div>
+                    {/if}
+                  </div>
+                {/if}
+              </div>
+            </div>
           </div>
         {/if}
+
+        <!-- Appearance Settings -->
+        <div class="form-group flex-col" style="margin-top: 20px; border-top: 1px solid var(--border-color); padding-top: 20px;">
+          <label class="form-label" style="font-weight: 700; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+            <Palette size={18} class="sync-icon-accent" />
+            <span>Appearance Settings</span>
+          </label>
+          
+          <div class="theme-grid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px;">
+            {#each appState.themes as t}
+              <button 
+                class="theme-chip flex-row" 
+                style="background-color: var(--bg-mid-dark); border: 1px solid {appState.theme === t.id ? 'var(--accent)' : 'var(--border-color)'}; padding: 10px; border-radius: var(--radius-standard); justify-content: space-between; text-align: left; width: 100%;"
+                onclick={() => appState.setTheme(t.id)}
+              >
+                <span style="font-size: 12px; font-weight: 600; color: {appState.theme === t.id ? 'var(--text-primary)' : 'var(--text-secondary)'};">{t.name}</span>
+                <div class="color-preview flex-row" style="gap: 4px;">
+                  <span style="width: 12px; height: 12px; border-radius: 50%; background-color: {t.bg}; border: 1.5px solid rgba(255,255,255,0.2);"></span>
+                  <span style="width: 12px; height: 12px; border-radius: 50%; background-color: {t.accent};"></span>
+                </div>
+              </button>
+            {/each}
+          </div>
+        </div>
       </div>
     </div>
   </div>

@@ -1,13 +1,13 @@
-:root {
-  /* Design Reference Color Tokens */
-  --bg-base: #121212;
-  --bg-surface: #181818;
-  --bg-mid-dark: #1f1f1f;
-  --bg-card-hover: #2a2a2a;
+/* Design Reference Color Tokens - Default Theme: Steel Minimalist */
+:root, :root.theme-steel {
+  --bg-base: #111317;
+  --bg-surface: #181b20;
+  --bg-mid-dark: #22262d;
+  --bg-card-hover: #2d333b;
   
-  --accent: #1ed760;
-  --accent-hover: #1fdf64;
-  --accent-active: #1aa04c;
+  --accent: #00adb5;
+  --accent-hover: #33bbc5;
+  --accent-active: #00818a;
   
   --text-primary: #ffffff;
   --text-secondary: #b3b3b3;
@@ -17,8 +17,8 @@
   --semantic-warning: #ffa42b;
   --semantic-info: #539df5;
   
-  --border-color: #292929;
-  --border-highlight: #4d4d4d;
+  --border-color: #252930;
+  --border-highlight: #3d4450;
   
   --shadow-heavy: rgba(0, 0, 0, 0.5) 0px 8px 24px;
   --shadow-medium: rgba(0, 0, 0, 0.3) 0px 8px 8px;
@@ -34,6 +34,96 @@
   --radius-pill: 500px;
   --radius-full-pill: 9999px;
   --radius-circle: 50%;
+}
+
+/* Nordic Frost Theme */
+:root.theme-nordic {
+  --bg-base: #0f141c;
+  --bg-surface: #161b22;
+  --bg-mid-dark: #21262d;
+  --bg-card-hover: #30363d;
+  
+  --accent: #58a6ff;
+  --accent-hover: #79c0ff;
+  --accent-active: #1f6feb;
+  
+  --border-color: #21262d;
+  --border-highlight: #30363d;
+}
+
+/* Dracula Vampire Theme */
+:root.theme-dracula {
+  --bg-base: #1e1f29;
+  --bg-surface: #282a36;
+  --bg-mid-dark: #343746;
+  --bg-card-hover: #44475a;
+  
+  --accent: #ff79c6;
+  --accent-hover: #ff92df;
+  --accent-active: #bd93f9;
+  
+  --border-color: #343746;
+  --border-highlight: #44475a;
+}
+
+/* Sepia Warmth Theme */
+:root.theme-sepia {
+  --bg-base: #1b1712;
+  --bg-surface: #24201a;
+  --bg-mid-dark: #2d2822;
+  --bg-card-hover: #3b342b;
+  
+  --accent: #d97706;
+  --accent-hover: #f59e0b;
+  --accent-active: #b45309;
+  
+  --border-color: #2d2822;
+  --border-highlight: #3b342b;
+}
+
+/* Emerald Forest Theme */
+:root.theme-emerald {
+  --bg-base: #0a0f0d;
+  --bg-surface: #101714;
+  --bg-mid-dark: #1b2621;
+  --bg-card-hover: #283730;
+  
+  --accent: #10b981;
+  --accent-hover: #34d399;
+  --accent-active: #059669;
+  
+  --border-color: #1b2621;
+  --border-highlight: #283730;
+}
+
+/* Amoled Pitch Black Theme */
+:root.theme-black {
+  --bg-base: #000000;
+  --bg-surface: #0a0a0a;
+  --bg-mid-dark: #121212;
+  --bg-card-hover: #1e1e1e;
+  
+  --accent: #ffffff;
+  --accent-hover: #cccccc;
+  --accent-active: #aaaaaa;
+  
+  --border-color: #1c1c1c;
+  --border-highlight: #2c2c2c;
+}
+
+/* Standard Dark Theme (Spotify-ish) */
+:root.theme-dark {
+  --bg-base: #121212;
+  --bg-surface: #181818;
+  --bg-mid-dark: #1f1f1f;
+  --bg-card-hover: #2a2a2a;
+  
+  --accent: #1ed760;
+  --accent-hover: #1fdf64;
+  --accent-active: #1aa04c;
+  
+  --border-color: #292929;
+  --border-highlight: #4d4d4d;
 }
 
 * {
@@ -210,6 +300,6 @@ a {
 
 /* Selection and Highlighting */
 ::selection {
-  background-color: rgba(30, 215, 96, 0.3);
-  color: var(--text-primary);
+  background-color: var(--accent);
+  color: #000000;
 }

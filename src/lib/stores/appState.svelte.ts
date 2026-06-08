@@ -2,6 +2,8 @@ import { type NoteFile, type StorageAdapter, IndexedDBAdapter, FileSystemAccessA
 import { GoogleDriveSync } from '../sync/GoogleDriveSync';
 import MiniSearch from 'minisearch';
 
+declare const google: any;
+
 export interface SyncMapping {
   id: string;
   lastSyncRemoteTime: number;
@@ -22,7 +24,28 @@ class AppState {
   searchQuery = $state<string>('');
   showSettings = $state<boolean>(false);
   editorDirty = $state<boolean>(false);
-  theme = $state<'dark' | 'black'>('dark');
+  theme = $state<string>(localStorage.getItem('mynotes_theme') || 'steel');
+  customDriveFolderId = $state<string | null>(localStorage.getItem('mynotes_custom_drive_folder_id') || null);
+  customDriveFolderName = $state<string | null>(localStorage.getItem('mynotes_custom_drive_folder_name') || null);
+  googleDriveFolders = $state<any[]>([]);
+  fetchingFolders = $state<boolean>(false);
+
+  // Layout States
+  sidebarWidth = $state<number>(Number(localStorage.getItem('mynotes_sidebar_width')) || 260);
+  sidebarCollapsed = $state<boolean>(localStorage.getItem('mynotes_sidebar_collapsed') === 'true');
+  notelistWidth = $state<number>(Number(localStorage.getItem('mynotes_notelist_width')) || 340);
+  notelistCollapsed = $state<boolean>(localStorage.getItem('mynotes_notelist_collapsed') === 'true');
+  editorCollapsed = $state<boolean>(localStorage.getItem('mynotes_editor_collapsed') === 'true');
+
+  themes = [
+    { id: 'steel', name: 'Steel Minimalist', bg: '#111317', accent: '#00adb5' },
+    { id: 'nordic', name: 'Nordic Frost', bg: '#0f141c', accent: '#58a6ff' },
+    { id: 'dracula', name: 'Dracula Vampire', bg: '#1e1f29', accent: '#ff79c6' },
+    { id: 'sepia', name: 'Sepia Warmth', bg: '#1b1712', accent: '#d97706' },
+    { id: 'emerald', name: 'Emerald Forest', bg: '#0a0f0d', accent: '#10b981' },
+    { id: 'black', name: 'Amoled Black', bg: '#000000', accent: '#ffffff' },
+    { id: 'dark', name: 'Standard Dark', bg: '#121212', accent: '#1ed760' }
+  ];
 
   // Google Drive Sync Reactive States
   googleClientId = $state<string>(localStorage.getItem('mynotes_google_client_id') || '');
@@ -60,7 +83,78 @@ class AppState {
     });
   }
 
+  setTheme(newTheme: string) {
+    this.theme = newTheme;
+    localStorage.setItem('mynotes_theme', newTheme);
+    this.applyThemeClass();
+  }
+
+  applyThemeClass() {
+    if (typeof document !== 'undefined') {
+      const root = document.documentElement;
+      // Remove all theme- classes
+      root.className = root.className.replace(/\btheme-\S+/g, '');
+      root.classList.add(`theme-${this.theme}`);
+    }
+  }
+
+  async setCustomDriveFolder(id: string | null, name: string | null) {
+    this.customDriveFolderId = id;
+    this.customDriveFolderName = name;
+    
+    if (id && name) {
+      localStorage.setItem('mynotes_custom_drive_folder_id', id);
+      localStorage.setItem('mynotes_custom_drive_folder_name', name);
+    } else {
+      localStorage.removeItem('mynotes_custom_drive_folder_id');
+      localStorage.removeItem('mynotes_custom_drive_folder_name');
+    }
+    
+    this.syncService.setFolderId(id);
+    
+    // Clear mappings when switching folder
+    localStorage.removeItem('mynotes_drive_mappings');
+    
+    // Automatically trigger sync if connected
+    if (this.syncEnabled && this.googleConnected) {
+      await this.syncNotes();
+    }
+  }
+
+  async fetchGoogleDriveFolders() {
+    if (!this.googleConnected) return;
+    this.fetchingFolders = true;
+    try {
+      this.googleDriveFolders = await this.syncService.listFolders();
+    } catch (e) {
+      console.error('Failed to fetch Google Drive folders:', e);
+    } finally {
+      this.fetchingFolders = false;
+    }
+  }
+
+  async createGoogleDriveFolder(name: string) {
+    if (!this.googleConnected) return;
+    this.fetchingFolders = true;
+    try {
+      const id = await this.syncService.createFolder(name);
+      await this.setCustomDriveFolder(id, name);
+      await this.fetchGoogleDriveFolders();
+    } catch (e) {
+      console.error('Failed to create Google Drive folder:', e);
+      throw e;
+    } finally {
+      this.fetchingFolders = false;
+    }
+  }
+
   constructor() {
+    const customFolderId = localStorage.getItem('mynotes_custom_drive_folder_id');
+    if (customFolderId) {
+      this.syncService.setFolderId(customFolderId);
+    }
+    this.applyThemeClass();
+
     const token = localStorage.getItem('mynotes_google_access_token');
     const expiry = Number(localStorage.getItem('mynotes_google_token_expiry') || '0');
     
@@ -84,7 +178,7 @@ class AppState {
     }
   }
 
-  notebooks = $derived.by(() => {
+  get notebooks() {
     const list = new Set<string>();
     this.notes.forEach(note => {
       const parts = note.path.split('/');
@@ -96,9 +190,9 @@ class AppState {
       }
     });
     return Array.from(list).sort();
-  });
+  }
 
-  tags = $derived.by(() => {
+  get tags() {
     const map = new Map<string, number>();
     this.notes.forEach(note => {
       const hashTags = this.extractTags(note.content);
@@ -107,9 +201,9 @@ class AppState {
       });
     });
     return Array.from(map.entries()).sort((a, b) => b[1] - a[1]);
-  });
+  }
 
-  filteredNotes = $derived.by(() => {
+  get filteredNotes() {
     let list = this.notes;
 
     if (this.activeNotebook) {
@@ -134,18 +228,18 @@ class AppState {
     }
 
     // Sort by modified date descending
-    return list.sort((a, b) => b.modified - a.modified);
-  });
+    return [...list].sort((a, b) => b.modified - a.modified);
+  }
 
-  recentNotes = $derived.by(() => {
+  get recentNotes() {
     // Return top 6 recently modified notes
     return [...this.notes].sort((a, b) => b.modified - a.modified).slice(0, 6);
-  });
+  }
 
-  activeNote = $derived.by(() => {
+  get activeNote() {
     if (!this.activeNotePath) return null;
     return this.notes.find(n => n.path === this.activeNotePath) || null;
-  });
+  }
 
   // Action methods
   setClientId(clientId: string) {
@@ -450,9 +544,9 @@ class AppState {
     // Seed basic notes if sandbox is empty
     const list = await this.storage.listNotes();
     if (list.length === 0) {
-      await this.storage.writeNote('Welcome.md', '# Welcome to myNotes 🎵\n\nThis is a dark, local-first markdown note-taking app styled like a music player.\n\n### Features\n- **Playlists are Notebooks**: Group your notes inside folders.\n- **Achromatic Design**: Elegant black and gray palette with subtle green accents.\n- **Wikilinks**: Connect pages with `[[Welcome]]` style wiki-links.\n- **Graph View**: Navigate your notes visually.\n\nEnjoy writing in the dark! #notes #welcome');
+      await this.storage.writeNote('Welcome.md', '# Welcome to MyNotes 📓\n\nThis is a clean, local-first markdown note-taking app.\n\n### Features\n- **Notebooks**: Group your notes inside folders.\n- **Multi-color Themes**: Choose between Steel, Nordic, Dracula, and more.\n- **Wikilinks**: Connect pages with `[[Welcome]]` style wiki-links.\n- **Graph View**: Navigate your notes visually.\n\nEnjoy writing! #notes #welcome');
       await this.storage.writeNote('Recipes/Pizza.md', '# Perfect Pizza Dough 🍕\n\nIngredients:\n- 500g Flour\n- 325ml Water\n- 7g Yeast\n- 10g Salt\n\nMix, knead, let rise for 24h. Bake at max temp! #recipes #cooking');
-      await this.storage.writeNote('Daily Notes/2026-06-08.md', '# Daily Log: June 8, 2026 🗓️\n\n- Completed scaffolding myNotes project!\n- Successfully integrated Svelte 5 global stores and IndexedDB fallback storage.\n- Next step: build the canvas force-directed note graph.\n\nFeeling productive! #journal #dev');
+      await this.storage.writeNote('Daily Notes/2026-06-08.md', '# Daily Log: June 8, 2026 🗓️\n\n- Completed scaffolding MyNotes project!\n- Successfully integrated Svelte 5 global stores and IndexedDB fallback storage.\n- Next step: build the canvas force-directed note graph.\n\nFeeling productive! #journal #dev');
     }
     
     await this.refreshNotes();
@@ -530,7 +624,33 @@ class AppState {
       this.activeNoteContent = note.content;
       this.activeNoteTitle = note.name;
       this.editorDirty = false;
+      this.setEditorCollapsed(false); // auto-expand editor on note selection
     }
+  }
+
+  resizeSidebar(delta: number) {
+    this.sidebarWidth = Math.max(180, Math.min(400, this.sidebarWidth + delta));
+    localStorage.setItem('mynotes_sidebar_width', String(this.sidebarWidth));
+  }
+
+  resizeNotelist(delta: number) {
+    this.notelistWidth = Math.max(240, Math.min(500, this.notelistWidth + delta));
+    localStorage.setItem('mynotes_notelist_width', String(this.notelistWidth));
+  }
+
+  setSidebarCollapsed(collapsed: boolean) {
+    this.sidebarCollapsed = collapsed;
+    localStorage.setItem('mynotes_sidebar_collapsed', String(collapsed));
+  }
+
+  setNotelistCollapsed(collapsed: boolean) {
+    this.notelistCollapsed = collapsed;
+    localStorage.setItem('mynotes_notelist_collapsed', String(collapsed));
+  }
+
+  setEditorCollapsed(collapsed: boolean) {
+    this.editorCollapsed = collapsed;
+    localStorage.setItem('mynotes_editor_collapsed', String(collapsed));
   }
 
   async saveActiveNote(immediateSync = false) {

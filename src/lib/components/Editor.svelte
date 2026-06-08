@@ -4,7 +4,7 @@
     Save, HelpCircle, Network, ArrowLeft, BookOpen, AlertTriangle, Eye, Edit3, Columns,
     Bold, Italic, Strikethrough, Code, Highlighter, Heading1, Heading2, Heading3, Heading4,
     List, ListOrdered, ListTodo, Quote, Terminal, Minus, Table, Link2, Image as ImageIcon, Underline,
-    Indent, Outdent 
+    Indent, Outdent, X, Menu, FileText
   } from 'lucide-svelte';
   import { marked } from 'marked';
 
@@ -414,15 +414,21 @@
   let floatingToolbarY = $state(0);
   let showFloatingToolbar = $state(false);
 
-  function handleMouseUp(e: MouseEvent) {
+  function handleMouseUp(e: MouseEvent | KeyboardEvent) {
     const textarea = document.querySelector('.editor-textarea') as HTMLTextAreaElement;
     if (!textarea) return;
     const start = textarea.selectionStart;
     const end = textarea.selectionEnd;
     
     if (start !== end) {
-      floatingToolbarX = e.clientX;
-      floatingToolbarY = e.clientY - 45;
+      if (e instanceof MouseEvent) {
+        floatingToolbarX = e.clientX;
+        floatingToolbarY = e.clientY - 45;
+      } else {
+        const rect = textarea.getBoundingClientRect();
+        floatingToolbarX = rect.left + rect.width / 2;
+        floatingToolbarY = rect.top + 40;
+      }
       showFloatingToolbar = true;
     } else {
       showFloatingToolbar = false;
@@ -436,12 +442,43 @@
   }
 </script>
 
-<div class="editor-container flex-col">
+<div 
+  class="editor-container flex-col" 
+  style="display: {appState.editorCollapsed ? 'none' : 'flex'}; min-width: 0;"
+>
   {#if appState.activeNote}
     <!-- Editor Header Player Controls -->
     <div class="editor-header flex-row">
       <div class="track-meta flex-col">
-        <span class="now-playing-lbl">NOW EDITING</span>
+        <div class="flex-row" style="gap: 8px; align-items: center;">
+          {#if appState.sidebarCollapsed}
+            <button 
+              onclick={() => appState.setSidebarCollapsed(false)} 
+              title="Expand Sidebar"
+              aria-label="Expand sidebar"
+              style="background: transparent; border: none; color: var(--text-secondary); cursor: pointer; padding: 4px; border-radius: 4px; display: flex; align-items: center; justify-content: center; transition: all 0.2s;"
+              onmouseover={(e) => e.currentTarget.style.color = 'var(--text-primary)'}
+              onmouseout={(e) => e.currentTarget.style.color = 'var(--text-secondary)'}
+            >
+              <Menu size={16} />
+            </button>
+          {/if}
+          {#if appState.notelistCollapsed}
+            <button 
+              onclick={() => appState.setNotelistCollapsed(false)} 
+              title="Expand Note List"
+              aria-label="Expand note list"
+              style="background: transparent; border: none; color: var(--text-secondary); cursor: pointer; padding: 4px; border-radius: 4px; display: flex; align-items: center; justify-content: center; transition: all 0.2s;"
+              onmouseover={(e) => e.currentTarget.style.color = 'var(--text-primary)'}
+              onmouseout={(e) => e.currentTarget.style.color = 'var(--text-secondary)'}
+            >
+              <FileText size={16} />
+            </button>
+          {/if}
+          <span class="now-editing-lbl">
+            NOW EDITING {#if appState.vaultName}• {appState.vaultName.toUpperCase()}{/if}
+          </span>
+        </div>
         <input 
           type="text" 
           value={appState.activeNoteTitle} 
@@ -510,6 +547,19 @@
           aria-label="Save note"
         >
           <Save size={18} />
+        </button>
+
+        <!-- Collapse Editor Button -->
+        <button 
+          class="btn-circle btn-circle-outline close-editor-btn" 
+          onclick={() => appState.setEditorCollapsed(true)}
+          title="Close Editor"
+          aria-label="Close editor"
+          style="background: transparent; border: 1px solid var(--border-color); color: var(--text-secondary); cursor: pointer; display: flex; align-items: center; justify-content: center; width: 42px; height: 42px; border-radius: 50%; transition: all 0.2s; margin-left: 8px; flex-shrink: 0;"
+          onmouseover={(e) => { e.currentTarget.style.color = 'var(--text-primary)'; e.currentTarget.style.borderColor = 'var(--text-secondary)'; }}
+          onmouseout={(e) => { e.currentTarget.style.color = 'var(--text-secondary)'; e.currentTarget.style.borderColor = 'var(--border-color)'; }}
+        >
+          <X size={18} />
         </button>
       </div>
     </div>
@@ -648,12 +698,12 @@
               <span class="status-divider">|</span>
               {#if appState.syncStatus === 'syncing'}
                 <span class="status-syncing flex-row" style="color: var(--semantic-info); gap: 4px;">
-                  <span class="status-dot-syncing"></span> Syncing to Drive...
+                  <span class="status-dot-syncing"></span> Syncing to Drive ({appState.customDriveFolderName || 'MyNotes'})
                 </span>
               {:else if appState.syncStatus === 'error'}
                 <span style="color: var(--semantic-error);">Sync Error</span>
               {:else}
-                <span style="color: var(--accent);">Synced to Drive</span>
+                <span style="color: var(--accent);">Synced to Drive ({appState.customDriveFolderName || 'MyNotes'})</span>
               {/if}
             {/if}
           </span>
@@ -661,10 +711,46 @@
       </div>
     </div>
   {:else}
-    <div class="no-note-selected flex-col">
+    <div class="no-note-selected flex-col" style="position: relative; width: 100%; height: 100%;">
+      <div class="flex-row" style="position: absolute; top: 20px; left: 24px; gap: 8px; align-items: center;">
+        {#if appState.sidebarCollapsed}
+          <button 
+            onclick={() => appState.setSidebarCollapsed(false)} 
+            title="Expand Sidebar"
+            aria-label="Expand sidebar"
+            style="background: transparent; border: none; color: var(--text-secondary); cursor: pointer; padding: 6px; border-radius: 50%; display: flex; align-items: center; justify-content: center; transition: background-color 0.2s;"
+            onmouseover={(e) => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.08)'}
+            onmouseout={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+          >
+            <Menu size={18} />
+          </button>
+        {/if}
+        {#if appState.notelistCollapsed}
+          <button 
+            onclick={() => appState.setNotelistCollapsed(false)} 
+            title="Expand Note List"
+            aria-label="Expand note list"
+            style="background: transparent; border: none; color: var(--text-secondary); cursor: pointer; padding: 6px; border-radius: 50%; display: flex; align-items: center; justify-content: center; transition: background-color 0.2s;"
+            onmouseover={(e) => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.08)'}
+            onmouseout={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+          >
+            <FileText size={18} />
+          </button>
+        {/if}
+      </div>
+      <button 
+        class="close-panel-btn flex-row" 
+        onclick={() => appState.setEditorCollapsed(true)} 
+        aria-label="Collapse editor"
+        style="position: absolute; top: 20px; right: 24px; background: transparent; border: none; color: var(--text-secondary); cursor: pointer; padding: 6px; border-radius: 50%; display: flex; align-items: center; justify-content: center; transition: background-color 0.2s;"
+        onmouseover={(e) => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.08)'}
+        onmouseout={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+      >
+        <X size={18} />
+      </button>
       <div class="disc-art">📓</div>
       <h2 class="no-note-title">No Note Loaded</h2>
-      <p class="no-note-text">Select a track from the playlist or click "Add Note" to create one.</p>
+      <p class="no-note-text">Select a note from the list or click "Add Note" to create one.</p>
       <button class="btn-pill btn-pill-primary select-vault-btn" onclick={appState.initSandbox.bind(appState)}>
         Load Local Sandbox
       </button>
@@ -732,7 +818,7 @@
     max-width: 50%;
   }
 
-  .now-playing-lbl {
+  .now-editing-lbl {
     font-size: 10px;
     font-weight: 700;
     color: var(--accent);

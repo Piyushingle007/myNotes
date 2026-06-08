@@ -3,6 +3,7 @@
   import { appState } from './lib/stores/appState.svelte';
   import AppLayout from './lib/components/AppLayout.svelte';
   import { FolderOpen, Play } from 'lucide-svelte';
+  import GoogleLogo from './lib/components/GoogleLogo.svelte';
 
   let initializing = $state(true);
 
@@ -33,7 +34,7 @@
 
 {#if initializing}
   <div class="loader flex-col">
-    <div class="loader-logo">🎵</div>
+    <div class="loader-logo flex-row" style="justify-content: center;"><GoogleLogo size={64} /></div>
     <div class="spinner"></div>
   </div>
 {:else if appState.vaultReady}
@@ -41,9 +42,9 @@
 {:else}
   <div class="welcome-screen flex-col">
     <div class="welcome-content flex-col">
-      <div class="welcome-logo">🎵</div>
-      <h1 class="welcome-title">myNotes</h1>
-      <p class="welcome-sub">Local-first markdown notes. Dark mode, achromatic design, fully offline.</p>
+      <div class="welcome-logo flex-row" style="justify-content: center;"><GoogleLogo size={80} /></div>
+      <h1 class="welcome-title">MyNotes</h1>
+      <p class="welcome-sub">Local-first markdown notes. Beautiful color themes, clean design, fully offline.</p>
       
       <div class="welcome-actions flex-col">
         <button class="btn-pill btn-pill-primary flex-row welcome-btn" onclick={() => appState.initSandbox()}>

@@ -1,6 +1,6 @@
 {
-  "name": "myNotes",
-  "short_name": "myNotes",
+  "name": "MyNotes",
+  "short_name": "MyNotes",
   "description": "Local-first, dark-themed markdown note taking application optimized for mobile.",
   "start_url": "./",
   "display": "standalone",

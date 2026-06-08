@@ -84,11 +84,15 @@ export class GoogleDriveSync {
     return res;
   }
 
-  // Find or create the myNotes directory
+  setFolderId(id: string | null) {
+    this.folderId = id;
+  }
+
+  // Find or create the MyNotes directory
   async getOrCreateSyncFolder(): Promise<string> {
     if (this.folderId) return this.folderId;
 
-    const query = encodeURIComponent("mimeType = 'application/vnd.google-apps.folder' and name = 'myNotes' and trashed = false");
+    const query = encodeURIComponent("mimeType = 'application/vnd.google-apps.folder' and name = 'MyNotes' and trashed = false");
     const searchUrl = `https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name)`;
     
     const res = await this.apiCall(searchUrl);
@@ -107,13 +111,39 @@ export class GoogleDriveSync {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        name: 'myNotes',
+        name: 'MyNotes',
         mimeType: 'application/vnd.google-apps.folder'
       })
     });
     const folder = await createRes.json();
     this.folderId = folder.id;
     return this.folderId!;
+  }
+
+  // List all folders on the user's drive
+  async listFolders(): Promise<DriveFileMeta[]> {
+    const query = encodeURIComponent("mimeType = 'application/vnd.google-apps.folder' and trashed = false");
+    const url = `https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name,modifiedTime)&pageSize=100`;
+    const res = await this.apiCall(url);
+    const data = await res.json();
+    return data.files || [];
+  }
+
+  // Create a new folder
+  async createFolder(name: string): Promise<string> {
+    const createUrl = 'https://www.googleapis.com/drive/v3/files';
+    const createRes = await this.apiCall(createUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        name: name,
+        mimeType: 'application/vnd.google-apps.folder'
+      })
+    });
+    const folder = await createRes.json();
+    return folder.id;
   }
 
   // List all markdown files in sync folder

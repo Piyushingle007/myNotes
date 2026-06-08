@@ -1,0 +1,142 @@
+{
+  "/Users/piyush/Documents/notes app/myNotes/.vscode/extensions.json": {
+    "mtime": 1780900059.2368662,
+    "ast_hash": "200d2e103f19aa20cbc8eb59dd6079b1",
+    "semantic_hash": "200d2e103f19aa20cbc8eb59dd6079b1"
+  },
+  "/Users/piyush/Documents/notes app/myNotes/package.json": {
+    "mtime": 1780909938.7934573,
+    "ast_hash": "2f293791f29c3062072c314d15ad0539",
+    "semantic_hash": "2f293791f29c3062072c314d15ad0539"
+  },
+  "/Users/piyush/Documents/notes app/myNotes/public/manifest.json": {
+    "mtime": 1780906378.2523685,
+    "ast_hash": "cf813ed51a8e2d62d4f5ac7e25abb660",
+    "semantic_hash": "cf813ed51a8e2d62d4f5ac7e25abb660"
+  },
+  "/Users/piyush/Documents/notes app/myNotes/public/sw.js": {
+    "mtime": 1780906371.8619468,
+    "ast_hash": "4314bff077d4d9ab1d7edd32fcbbe8fc",
+    "semantic_hash": "4314bff077d4d9ab1d7edd32fcbbe8fc"
+  },
+  "/Users/piyush/Documents/notes app/myNotes/src/App.svelte": {
+    "mtime": 1780918051.146572,
+    "ast_hash": "580be1f60812a8b6cbe4898445f21722",
+    "semantic_hash": "580be1f60812a8b6cbe4898445f21722"
+  },
+  "/Users/piyush/Documents/notes app/myNotes/src/lib/Counter.svelte": {
+    "mtime": 1780900059.238482,
+    "ast_hash": "017edcf14363a115e5588eeec8a9a0d2",
+    "semantic_hash": "017edcf14363a115e5588eeec8a9a0d2"
+  },
+  "/Users/piyush/Documents/notes app/myNotes/src/lib/components/AppLayout.svelte": {
+    "mtime": 1780918081.830669,
+    "ast_hash": "8eb495e2d127bc13f6fc2dcde7757bb3",
+    "semantic_hash": "8eb495e2d127bc13f6fc2dcde7757bb3"
+  },
+  "/Users/piyush/Documents/notes app/myNotes/src/lib/components/Editor.svelte": {
+    "mtime": 1780918081.8308578,
+    "ast_hash": "ec104d27ba5ae46dfe85db6cc207c930",
+    "semantic_hash": "ec104d27ba5ae46dfe85db6cc207c930"
+  },
+  "/Users/piyush/Documents/notes app/myNotes/src/lib/components/GraphView.svelte": {
+    "mtime": 1780900135.4441216,
+    "ast_hash": "89e0751187f462abf0eb1bfd47884ec4",
+    "semantic_hash": "89e0751187f462abf0eb1bfd47884ec4"
+  },
+  "/Users/piyush/Documents/notes app/myNotes/src/lib/components/NoteList.svelte": {
+    "mtime": 1780900178.047162,
+    "ast_hash": "3fed434cd68ce4c77e09df3182c4aa3a",
+    "semantic_hash": "3fed434cd68ce4c77e09df3182c4aa3a"
+  },
+  "/Users/piyush/Documents/notes app/myNotes/src/lib/components/Sidebar.svelte": {
+    "mtime": 1780918056.701331,
+    "ast_hash": "bbe49d66926e4a0d0291c20427dab325",
+    "semantic_hash": "bbe49d66926e4a0d0291c20427dab325"
+  },
+  "/Users/piyush/Documents/notes app/myNotes/src/lib/storage/StorageAdapter.ts": {
+    "mtime": 1780918056.7017248,
+    "ast_hash": "8a9fb69783c3c85b4c78fc0f87d72d32",
+    "semantic_hash": "8a9fb69783c3c85b4c78fc0f87d72d32"
+  },
+  "/Users/piyush/Documents/notes app/myNotes/src/lib/stores/appState.svelte.ts": {
+    "mtime": 1780918056.701915,
+    "ast_hash": "98880a63f1b9ac3285f67f1e418c3894",
+    "semantic_hash": "98880a63f1b9ac3285f67f1e418c3894"
+  },
+  "/Users/piyush/Documents/notes app/myNotes/src/lib/sync/GoogleDriveSync.ts": {
+    "mtime": 1780918056.7020876,
+    "ast_hash": "e58cad1ffad3fc387c3017a83a90c826",
+    "semantic_hash": "e58cad1ffad3fc387c3017a83a90c826"
+  },
+  "/Users/piyush/Documents/notes app/myNotes/src/main.ts": {
+    "mtime": 1780900059.2385743,
+    "ast_hash": "6754eb730810f7dd7273f4aea2c86474",
+    "semantic_hash": "6754eb730810f7dd7273f4aea2c86474"
+  },
+  "/Users/piyush/Documents/notes app/myNotes/svelte.config.js": {
+    "mtime": 1780900059.2386787,
+    "ast_hash": "c75647575a823f80e9d2e5e8bfb8c8bc",
+    "semantic_hash": "c75647575a823f80e9d2e5e8bfb8c8bc"
+  },
+  "/Users/piyush/Documents/notes app/myNotes/tsconfig.app.json": {
+    "mtime": 1780900059.2387917,
+    "ast_hash": "b51f3b9977100d29d9af6549b087714d",
+    "semantic_hash": "b51f3b9977100d29d9af6549b087714d"
+  },
+  "/Users/piyush/Documents/notes app/myNotes/tsconfig.json": {
+    "mtime": 1780900059.2389464,
+    "ast_hash": "a3d39fa780ebff65444de257f291ce6c",
+    "semantic_hash": "a3d39fa780ebff65444de257f291ce6c"
+  },
+  "/Users/piyush/Documents/notes app/myNotes/tsconfig.node.json": {
+    "mtime": 1780900059.2390726,
+    "ast_hash": "70bdd0a673bcfc0e828080b306e7c680",
+    "semantic_hash": "70bdd0a673bcfc0e828080b306e7c680"
+  },
+  "/Users/piyush/Documents/notes app/myNotes/vite.config.ts": {
+    "mtime": 1780906342.3532605,
+    "ast_hash": "b11c7be649d63a993e674aa242b5eac3",
+    "semantic_hash": "b11c7be649d63a993e674aa242b5eac3"
+  },
+  "/Users/piyush/Documents/notes app/myNotes/.github/workflows/deploy.yml": {
+    "mtime": 1780906347.9798121,
+    "ast_hash": "813d97c2d0491154a3904fca497b9d8b",
+    "semantic_hash": "813d97c2d0491154a3904fca497b9d8b"
+  },
+  "/Users/piyush/Documents/notes app/myNotes/README.md": {
+    "mtime": 1780900059.237018,
+    "ast_hash": "eb84709a4900985d89598dd3e2c25728",
+    "semantic_hash": "eb84709a4900985d89598dd3e2c25728"
+  },
+  "/Users/piyush/Documents/notes app/myNotes/index.html": {
+    "mtime": 1780906374.7572725,
+    "ast_hash": "457bd7367fa47271a4f1c21a0d5dd56a",
+    "semantic_hash": "457bd7367fa47271a4f1c21a0d5dd56a"
+  },
+  "/Users/piyush/Documents/notes app/myNotes/public/favicon.svg": {
+    "mtime": 1780900059.2374556,
+    "ast_hash": "7e840862161341271697daa99a40d76b",
+    "semantic_hash": "7e840862161341271697daa99a40d76b"
+  },
+  "/Users/piyush/Documents/notes app/myNotes/public/icons.svg": {
+    "mtime": 1780900059.2376194,
+    "ast_hash": "3b4fcfcf393eca4d264dca4a4663bc37",
+    "semantic_hash": "3b4fcfcf393eca4d264dca4a4663bc37"
+  },
+  "/Users/piyush/Documents/notes app/myNotes/src/assets/hero.png": {
+    "mtime": 1780900059.2380867,
+    "ast_hash": "aead493361b27e7510691c5d7072dfc1",
+    "semantic_hash": "aead493361b27e7510691c5d7072dfc1"
+  },
+  "/Users/piyush/Documents/notes app/myNotes/src/assets/svelte.svg": {
+    "mtime": 1780900059.238209,
+    "ast_hash": "bf6f61806de2953fe8dfce3cf8040ec3",
+    "semantic_hash": "bf6f61806de2953fe8dfce3cf8040ec3"
+  },
+  "/Users/piyush/Documents/notes app/myNotes/src/assets/vite.svg": {
+    "mtime": 1780900059.238302,
+    "ast_hash": "9960a24288958394ac50e57ff638b036",
+    "semantic_hash": "9960a24288958394ac50e57ff638b036"
+  }
+}

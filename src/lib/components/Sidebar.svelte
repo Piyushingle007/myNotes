@@ -1,6 +1,7 @@
 <script lang="ts">
   import { appState } from '../stores/appState.svelte';
-  import { Folder, Plus, Trash2, Tag, Settings, Library, Moon, Sun, FolderOpen } from 'lucide-svelte';
+  import { Folder, Plus, Trash2, Tag, Settings, Library, Palette, FolderOpen, X, ChevronRight, FileText } from 'lucide-svelte';
+  import GoogleLogo from './GoogleLogo.svelte';
 
   let newNotebookName = $state('');
   let showCreateInput = $state(false);
@@ -31,25 +32,59 @@
   }
 
   function toggleTheme() {
-    appState.theme = appState.theme === 'dark' ? 'black' : 'dark';
-    const root = document.documentElement;
-    if (appState.theme === 'black') {
-      root.style.setProperty('--bg-base', '#000000');
-      root.style.setProperty('--bg-surface', '#0a0a0a');
-      root.style.setProperty('--bg-mid-dark', '#121212');
-    } else {
-      root.style.setProperty('--bg-base', '#121212');
-      root.style.setProperty('--bg-surface', '#181818');
-      root.style.setProperty('--bg-mid-dark', '#1f1f1f');
-    }
+    const themeIds = appState.themes.map(t => t.id);
+    const currentIndex = themeIds.indexOf(appState.theme);
+    const nextIndex = (currentIndex + 1) % themeIds.length;
+    appState.setTheme(themeIds[nextIndex]);
   }
 </script>
 
-<div class="sidebar flex-col">
+<div 
+  class="sidebar flex-col" 
+  style="width: {appState.sidebarCollapsed ? 0 : appState.sidebarWidth}px; display: {appState.sidebarCollapsed ? 'none' : 'flex'}; overflow: hidden; flex-shrink: 0;"
+>
   <!-- Logo Section -->
-  <div class="logo-section flex-row">
-    <div class="logo-icon">🎵</div>
-    <span class="logo-text">myNotes</span>
+  <div class="logo-section flex-row" style="justify-content: space-between; width: 100%;">
+    <div class="flex-row" style="gap: 12px;">
+      <GoogleLogo size={24} />
+      <span class="logo-text">MyNotes</span>
+    </div>
+    <div class="flex-row" style="gap: 8px; align-items: center;">
+      {#if appState.notelistCollapsed}
+        <button 
+          onclick={() => appState.setNotelistCollapsed(false)} 
+          title="Expand Note List"
+          aria-label="Expand note list"
+          style="background: transparent; border: none; color: var(--text-secondary); cursor: pointer; padding: 4px; border-radius: 4px; display: flex; align-items: center; justify-content: center; transition: all 0.2s;"
+          onmouseover={(e) => e.currentTarget.style.color = 'var(--text-primary)'}
+          onmouseout={(e) => e.currentTarget.style.color = 'var(--text-secondary)'}
+        >
+          <FileText size={16} />
+        </button>
+      {/if}
+      {#if appState.editorCollapsed}
+        <button 
+          onclick={() => appState.setEditorCollapsed(false)} 
+          title="Expand Editor"
+          aria-label="Expand editor"
+          style="background: transparent; border: none; color: var(--text-secondary); cursor: pointer; padding: 4px; border-radius: 4px; display: flex; align-items: center; justify-content: center; transition: all 0.2s;"
+          onmouseover={(e) => e.currentTarget.style.color = 'var(--text-primary)'}
+          onmouseout={(e) => e.currentTarget.style.color = 'var(--text-secondary)'}
+        >
+          <ChevronRight size={16} />
+        </button>
+      {/if}
+      <button 
+        class="close-panel-btn flex-row" 
+        onclick={() => appState.setSidebarCollapsed(true)} 
+        aria-label="Collapse sidebar"
+        style="background: transparent; border: none; color: var(--text-secondary); cursor: pointer; padding: 4px; border-radius: 50%; display: flex; align-items: center; justify-content: center; transition: background-color 0.2s;"
+        onmouseover={(e) => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.08)'}
+        onmouseout={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+      >
+        <X size={16} />
+      </button>
+    </div>
   </div>
 
   <!-- Main Library Section -->
@@ -148,13 +183,8 @@
     </button>
     
     <button class="footer-btn flex-row" onclick={toggleTheme}>
-      {#if appState.theme === 'dark'}
-        <Moon size={16} />
-        <span>Amoled Black Theme</span>
-      {:else}
-        <Sun size={16} />
-        <span>Standard Dark Theme</span>
-      {/if}
+      <Palette size={16} />
+      <span>Theme: {appState.themes.find(t => t.id === appState.theme)?.name || appState.theme}</span>
     </button>
 
     <button class="footer-btn flex-row" onclick={() => appState.showSettings = true}>
@@ -165,13 +195,16 @@
     <div class="vault-info flex-col">
       <span class="info-label">Active Directory</span>
       <span class="info-value">{appState.vaultName || 'Unknown'}</span>
+      {#if appState.googleConnected && appState.syncEnabled}
+        <span class="info-label" style="margin-top: 6px;">Drive Sync Folder</span>
+        <span class="info-value">☁️ {appState.customDriveFolderName || 'MyNotes'}</span>
+      {/if}
     </div>
   </div>
 </div>
 
 <style>
   .sidebar {
-    width: 260px;
     background-color: #000000;
     height: 100%;
     padding: 16px 8px;

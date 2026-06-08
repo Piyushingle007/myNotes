@@ -1,6 +1,6 @@
 <script lang="ts">
   import { appState } from '../stores/appState.svelte';
-  import { FileText, Plus, Trash2, Search, Clock, CalendarDays } from 'lucide-svelte';
+  import { FileText, Plus, Trash2, Search, Clock, CalendarDays, X, Menu } from 'lucide-svelte';
 
   let searchInput = $state('');
   
@@ -45,10 +45,45 @@
   }
 </script>
 
-<div class="note-list flex-col">
+<div 
+  class="note-list flex-col" 
+  style="width: {appState.notelistCollapsed ? 0 : appState.notelistWidth}px; display: {appState.notelistCollapsed ? 'none' : 'flex'}; overflow: hidden; flex-shrink: 0;"
+>
   <!-- Top Playlist Header -->
-  <div class="list-header flex-col">
-    <div class="meta-label">PLAYLIST</div>
+  <div class="list-header flex-col" style="position: relative;">
+    <div class="flex-row" style="justify-content: space-between; align-items: center; width: 100%;">
+      <div class="flex-row" style="gap: 8px; align-items: center;">
+        {#if appState.sidebarCollapsed}
+          <button 
+            onclick={() => appState.setSidebarCollapsed(false)} 
+            title="Expand Sidebar"
+            aria-label="Expand sidebar"
+            style="background: transparent; border: none; color: var(--text-secondary); cursor: pointer; padding: 4px; border-radius: 4px; display: flex; align-items: center; justify-content: center; transition: all 0.2s;"
+            onmouseover={(e) => e.currentTarget.style.color = 'var(--text-primary)'}
+            onmouseout={(e) => e.currentTarget.style.color = 'var(--text-secondary)'}
+          >
+            <Menu size={16} />
+          </button>
+        {/if}
+        <div class="meta-label">
+          {#if appState.vaultName}
+            DIRECTORY: {appState.vaultName.toUpperCase()}
+          {:else}
+            NOTEBOOK
+          {/if}
+        </div>
+      </div>
+      <button 
+        class="close-panel-btn flex-row" 
+        onclick={() => appState.setNotelistCollapsed(true)} 
+        aria-label="Collapse note list"
+        style="background: transparent; border: none; color: var(--text-secondary); cursor: pointer; padding: 4px; border-radius: 50%; display: flex; align-items: center; justify-content: center; transition: background-color 0.2s;"
+        onmouseover={(e) => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.08)'}
+        onmouseout={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+      >
+        <X size={16} />
+      </button>
+    </div>
     <h1 class="list-title">
       {#if appState.activeNotebook}
         {appState.activeNotebook}
@@ -65,12 +100,26 @@
         {#if appState.activeNotebook || appState.activeTag}
           <button class="clear-btn" onclick={clearFilters}>• Clear Filter</button>
         {/if}
+        {#if appState.googleConnected && appState.syncEnabled}
+          • ☁️ {appState.customDriveFolderName || 'MyNotes'}
+        {/if}
       </span>
       
-      <button class="btn-pill btn-pill-primary add-note-btn" onclick={handleCreateNote}>
-        <Plus size={16} />
-        <span>Add Note</span>
-      </button>
+      <div class="flex-row" style="gap: 8px; align-items: center;">
+        {#if appState.editorCollapsed}
+          <button 
+            class="btn-pill btn-pill-outline" 
+            style="font-size: 11px; padding: 6px 12px; height: 32px;" 
+            onclick={() => appState.setEditorCollapsed(false)}
+          >
+            Show Editor
+          </button>
+        {/if}
+        <button class="btn-pill btn-pill-primary add-note-btn" onclick={handleCreateNote}>
+          <Plus size={16} />
+          <span>Add Note</span>
+        </button>
+      </div>
     </div>
   </div>
 
@@ -80,7 +129,7 @@
       <Search size={16} class="search-icon" />
       <input 
         type="text" 
-        placeholder="Search tracks (notes)..." 
+        placeholder="Search notes..." 
         bind:value={searchInput}
         class="search-input"
       />
@@ -136,9 +185,9 @@
       </div>
     {:else}
       <div class="empty-state flex-col">
-        <span class="empty-icon">🎵</span>
+        <span class="empty-icon">📄</span>
         <span class="empty-title">Your library is empty</span>
-        <span class="empty-subtitle">Click "Add Note" to record your first song.</span>
+        <span class="empty-subtitle">Click "Add Note" to write your first note.</span>
       </div>
     {/each}
   </div>
@@ -146,7 +195,6 @@
 
 <style>
   .note-list {
-    width: 340px;
     background-color: var(--bg-base);
     height: 100%;
     padding: 20px 12px 12px;
