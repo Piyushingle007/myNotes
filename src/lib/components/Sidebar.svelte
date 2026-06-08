@@ -97,6 +97,35 @@
     </div>
   </div>
 
+  <!-- Favorites Section -->
+  <div class="section-container flex-col starred-container" style="flex: 0.6; margin-bottom: 12px; max-height: 200px;">
+    <div class="section-header flex-row">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" class="sec-icon" style="color: var(--accent); margin-right: 8px;"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>
+      <span class="section-title">Favorites</span>
+    </div>
+    
+    <div class="list-scroll">
+      {#each appState.notes.filter(n => appState.favorites.includes(n.path)) as note}
+        <div 
+          class="nav-item flex-row" 
+          class:active={appState.activeNotePath === note.path}
+          role="button"
+          tabindex="0"
+          onclick={() => appState.selectNote(note.path)}
+          onkeydown={(e) => e.key === 'Enter' && appState.selectNote(note.path)}
+          style="padding: 6px 8px; gap: 8px;"
+        >
+          <div class="playlist-art" style="width: 28px; height: 28px; font-size: 14px;">⭐</div>
+          <div class="nav-text flex-col">
+            <span class="title" style="font-size: 12px;">{note.name}</span>
+          </div>
+        </div>
+      {:else}
+        <span class="empty-text">No favorite notes</span>
+      {/each}
+    </div>
+  </div>
+
   <!-- Main Library Section -->
   <div class="section-container flex-col">
     <div class="section-header flex-row">
@@ -275,6 +304,10 @@
 
   .daily-container {
     flex: 0.8;
+  }
+
+  .starred-container {
+    flex: 0.6;
   }
 
   .section-header {

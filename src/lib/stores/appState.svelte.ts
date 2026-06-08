@@ -20,6 +20,7 @@ class AppState {
   activeNoteTitle = $state<string>('');
   activeNotebook = $state<string | null>(null);
   activeTab = $state<'home' | 'search' | 'library' | 'daily'>('home');
+  favorites = $state<string[]>(JSON.parse(localStorage.getItem('mynotes_favorites') || '[]'));
   searchQuery = $state<string>('');
   showSettings = $state<boolean>(false);
   editorDirty = $state<boolean>(false);
@@ -812,6 +813,62 @@ class AppState {
     }
   }
 
+  toggleFavorite(path: string) {
+    if (this.favorites.includes(path)) {
+      this.favorites = this.favorites.filter(p => p !== path);
+    } else {
+      this.favorites = [...this.favorites, path];
+    }
+    localStorage.setItem('mynotes_favorites', JSON.stringify(this.favorites));
+  }
+
+  async renameNote(oldPath: string, newTitle: string) {
+    const cleanTitle = newTitle.trim();
+    if (!cleanTitle) return;
+
+    // Compute new relative path
+    const parts = oldPath.split('/');
+    parts[parts.length - 1] = `${cleanTitle}.md`;
+    const newPath = parts.join('/');
+
+    if (newPath === oldPath) return;
+
+    // Check if new path already exists
+    if (this.notes.some(n => n.path === newPath)) {
+      alert('A note with this name already exists.');
+      return;
+    }
+
+    try {
+      // Perform storage rename
+      await this.storage.renameNote(oldPath, newPath);
+
+      // Update favorites path if it was favorited
+      if (this.favorites.includes(oldPath)) {
+        this.favorites = this.favorites.map(p => p === oldPath ? newPath : p);
+        localStorage.setItem('mynotes_favorites', JSON.stringify(this.favorites));
+      }
+
+      // Update drive mappings if sync is enabled
+      const mappings = JSON.parse(localStorage.getItem('mynotes_drive_mappings') || '{}');
+      if (mappings[oldPath]) {
+        mappings[newPath] = mappings[oldPath];
+        delete mappings[oldPath];
+        localStorage.setItem('mynotes_drive_mappings', JSON.stringify(mappings));
+      }
+
+      await this.refreshNotes();
+      this.selectNote(newPath);
+
+      // Trigger sync
+      if (this.syncEnabled && this.googleConnected) {
+        this.syncNotes();
+      }
+    } catch (e) {
+      console.error('Failed to rename note:', e);
+      alert('Failed to rename note file.');
+    }
+  }
 
 }
 
