@@ -589,7 +589,6 @@
   .mobile-app {
     width: 100vw;
     height: 100vh;
-    height: 100dvh;
     background-color: #000000;
     overflow: hidden;
     position: relative;
@@ -993,7 +992,6 @@
   .mobile-editor-container {
     width: 100vw;
     height: 100vh;
-    height: 100dvh;
     background-color: var(--bg-base);
     z-index: 50;
     position: absolute;
@@ -1017,7 +1015,6 @@
     left: 0;
     width: 100vw;
     height: 100vh;
-    height: 100dvh;
     background-color: rgba(0, 0, 0, 0.85);
     backdrop-filter: blur(12px);
     z-index: 1000;
