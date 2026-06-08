@@ -44,21 +44,42 @@ class AppState {
     idField: 'path'
   });
 
+  private async waitForGoogleSDK(timeoutMs = 5000): Promise<void> {
+    if (typeof google !== 'undefined') return;
+    return new Promise((resolve, reject) => {
+      const start = Date.now();
+      const interval = setInterval(() => {
+        if (typeof google !== 'undefined') {
+          clearInterval(interval);
+          resolve();
+        } else if (Date.now() - start > timeoutMs) {
+          clearInterval(interval);
+          reject(new Error('Google Identity Services SDK failed to load.'));
+        }
+      }, 100);
+    });
+  }
+
   constructor() {
-    const token = sessionStorage.getItem('mynotes_google_access_token');
-    const expiry = Number(sessionStorage.getItem('mynotes_google_token_expiry') || '0');
+    const token = localStorage.getItem('mynotes_google_access_token');
+    const expiry = Number(localStorage.getItem('mynotes_google_token_expiry') || '0');
     
     if (token && Date.now() < expiry) {
-      console.log('Restoring Google Drive token from sessionStorage...');
+      console.log('Restoring Google Drive token from localStorage...');
       this.syncService.setAccessToken(token);
       this.googleConnected = true;
-      this.syncService.getUserEmail().then(email => {
-        this.googleUserEmail = email;
-      }).catch(e => {
-        console.warn('Failed to refresh user email using restored token:', e);
-        if (e.message === 'UNAUTHORIZED' || (e.message && e.message.includes('401'))) {
-          this.disconnectGoogleDrive();
-        }
+      // Wait for Google SDK to load before validating the token and fetching user email
+      this.waitForGoogleSDK(5000).then(() => {
+        this.syncService.getUserEmail().then(email => {
+          this.googleUserEmail = email;
+        }).catch(e => {
+          console.warn('Failed to refresh user email using restored token:', e);
+          if (e.message === 'UNAUTHORIZED' || (e.message && e.message.includes('401'))) {
+            this.disconnectGoogleDrive();
+          }
+        });
+      }).catch(err => {
+        console.warn('Google SDK load failed during token restore:', err);
       });
     }
   }
@@ -139,6 +160,13 @@ class AppState {
   }
 
   async connectGoogleDrive() {
+    try {
+      await this.waitForGoogleSDK(5000);
+    } catch (e) {
+      this.syncStatus = 'error';
+      throw e;
+    }
+
     return new Promise<void>((resolve, reject) => {
       if (!this.googleClientId) {
         return reject(new Error('Please set your Google OAuth Client ID first.'));
@@ -147,8 +175,8 @@ class AppState {
       this.syncService.login(
         async (token) => {
           try {
-            sessionStorage.setItem('mynotes_google_access_token', token);
-            sessionStorage.setItem('mynotes_google_token_expiry', String(Date.now() + 3500 * 1000));
+            localStorage.setItem('mynotes_google_access_token', token);
+            localStorage.setItem('mynotes_google_token_expiry', String(Date.now() + 3500 * 1000));
             
             this.googleUserEmail = await this.syncService.getUserEmail();
             this.setSyncEnabled(true);
@@ -173,8 +201,8 @@ class AppState {
 
   async disconnectGoogleDrive() {
     this.syncService.clearToken();
-    sessionStorage.removeItem('mynotes_google_access_token');
-    sessionStorage.removeItem('mynotes_google_token_expiry');
+    localStorage.removeItem('mynotes_google_access_token');
+    localStorage.removeItem('mynotes_google_token_expiry');
     this.googleConnected = false;
     this.googleUserEmail = null;
     this.setSyncEnabled(false);
@@ -186,11 +214,21 @@ class AppState {
     
     console.log('Attempting silent Google Drive reconnection...');
     this.syncStatus = 'syncing';
+
+    try {
+      await this.waitForGoogleSDK(5000);
+    } catch (e) {
+      console.warn('Google SDK not loaded for silent auto-connect:', e);
+      this.googleConnected = false;
+      this.syncStatus = 'error';
+      return;
+    }
+
     this.syncService.login(
       async (token) => {
         try {
-          sessionStorage.setItem('mynotes_google_access_token', token);
-          sessionStorage.setItem('mynotes_google_token_expiry', String(Date.now() + 3500 * 1000));
+          localStorage.setItem('mynotes_google_access_token', token);
+          localStorage.setItem('mynotes_google_token_expiry', String(Date.now() + 3500 * 1000));
           
           this.googleUserEmail = await this.syncService.getUserEmail();
           this.googleConnected = true;
@@ -398,8 +436,8 @@ class AppState {
         this.googleConnected = false;
         this.googleUserEmail = null;
         this.syncService.clearToken();
-        sessionStorage.removeItem('mynotes_google_access_token');
-        sessionStorage.removeItem('mynotes_google_token_expiry');
+        localStorage.removeItem('mynotes_google_access_token');
+        localStorage.removeItem('mynotes_google_token_expiry');
       }
     }
   }
