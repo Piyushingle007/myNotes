@@ -12,6 +12,7 @@
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^7.1.2",
     "@tsconfig/svelte": "^5.0.8",
+    "@types/jszip": "^3.4.0",
     "@types/node": "^24.12.3",
     "svelte": "^5.55.5",
     "svelte-check": "^4.4.8",
@@ -19,14 +20,11 @@
     "vite": "^8.0.12"
   },
   "dependencies": {
-    "@types/marked": "^5.0.2",
-    "lucide-svelte": "^1.0.1",
-    "marked": "^18.0.5",
-    "minisearch": "^7.2.0",
     "@tiptap/core": "^3.19.0",
     "@tiptap/extension-code-block-lowlight": "^3.19.0",
     "@tiptap/extension-color": "^3.19.0",
     "@tiptap/extension-details": "^3.19.0",
+    "@tiptap/extension-font-family": "^3.26.0",
     "@tiptap/extension-highlight": "^3.19.0",
     "@tiptap/extension-image": "^3.19.0",
     "@tiptap/extension-link": "^3.19.0",
@@ -45,15 +43,23 @@
     "@tiptap/extension-underline": "^3.19.0",
     "@tiptap/pm": "^3.19.0",
     "@tiptap/starter-kit": "^3.19.0",
+    "@tiptap/suggestion": "^3.26.0",
     "@types/katex": "^0.16.8",
     "@types/markdown-it": "^14.1.2",
+    "@types/marked": "^5.0.2",
+    "jszip": "^3.10.1",
     "katex": "^0.16.28",
     "lowlight": "^3.3.0",
+    "lucide-svelte": "^1.0.1",
     "markdown-it": "^14.1.0",
     "markdown-it-mark": "^4.0.0",
     "markdown-it-sub": "^2.0.0",
     "markdown-it-sup": "^2.0.0",
     "markdown-it-task-lists": "^2.1.1",
-    "mermaid": "^11.14.0"
+    "marked": "^18.0.5",
+    "markmap-lib": "^0.18.12",
+    "markmap-view": "^0.18.12",
+    "mermaid": "^11.14.0",
+    "minisearch": "^7.2.0"
   }
 }

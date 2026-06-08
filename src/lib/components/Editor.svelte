@@ -19,6 +19,7 @@
 	import Superscript from '@tiptap/extension-superscript';
 	import { Color } from '@tiptap/extension-color';
 	import { TextStyle } from '@tiptap/extension-text-style';
+	import FontFamily from '@tiptap/extension-font-family';
 	import { CodeBlockLowlight } from '@tiptap/extension-code-block-lowlight';
 	import { Details, DetailsSummary, DetailsContent } from '@tiptap/extension-details';
 	import TextAlign from '@tiptap/extension-text-align';
@@ -37,6 +38,36 @@
 	import { appState } from '../stores/appState.svelte';
 	import { debounce } from '../utils/debounce';
 	import GraphView from './GraphView.svelte';
+
+	const FontSize = Extension.create({
+		name: 'fontSize',
+		addOptions() {
+			return {
+				types: ['textStyle'],
+			};
+		},
+		addGlobalAttributes() {
+			return [
+				{
+					types: this.options.types,
+					attributes: {
+						fontSize: {
+							default: null,
+							parseHTML: element => element.style.fontSize?.replace(/['"]+/g, ''),
+							renderHTML: attributes => {
+								if (!attributes.fontSize) {
+									return {};
+								}
+								return {
+									style: `font-size: ${attributes.fontSize}`,
+								};
+							},
+						},
+					},
+				},
+			];
+		},
+	});
 
 	// Types
 	interface VersionEntry {
@@ -345,12 +376,207 @@
 	let strippedTitle = '';
 	let strippedHeadingPrefix = '';
 
+	const standardFonts = [
+		{ name: 'Sans-Serif', value: 'var(--font-sans)' },
+		{ name: 'Serif', value: 'Georgia, Cambria, "Times New Roman", Times, serif' },
+		{ name: 'Monospace', value: 'var(--font-mono)' },
+		{ name: 'Dyslexic', value: '"OpenDyslexic", "Comic Sans MS", cursive' },
+		{ name: 'Handwritten', value: '"Caveat", "Dancing Script", "Pacifico", cursive' }
+	];
+
 	let headingDropdown = $state(false);
 	let colorDropdown = $state(false);
 	let highlightDropdown = $state(false);
 	let alignDropdown = $state(false);
 	let insertDropdown = $state(false);
 	let tablePickerOpen = $state(false);
+	let fontDropdown = $state(false);
+
+	let customFonts = $state<Array<{ name: string; value: string }>>([]);
+	let newFontInput = $state('');
+	let customTextColorInput = $state('#000000');
+	let customHighlightColorInput = $state('#ffff00');
+	let recentTextColors = $state<string[]>([]);
+	let recentHighlightColors = $state<string[]>([]);
+
+	// Save/load recents and custom fonts
+	$effect(() => {
+		try {
+			const savedFonts = localStorage.getItem('mynotes_custom_fonts');
+			if (savedFonts) {
+				customFonts = JSON.parse(savedFonts);
+			}
+			const savedRecentText = localStorage.getItem('mynotes_recent_text_colors');
+			if (savedRecentText) {
+				recentTextColors = JSON.parse(savedRecentText);
+			}
+			const savedRecentHighlight = localStorage.getItem('mynotes_recent_highlight_colors');
+			if (savedRecentHighlight) {
+				recentHighlightColors = JSON.parse(savedRecentHighlight);
+			}
+		} catch (e) {
+			console.error('Failed to load settings from localStorage:', e);
+		}
+	});
+
+	function saveCustomFonts() {
+		try {
+			localStorage.setItem('mynotes_custom_fonts', JSON.stringify(customFonts));
+		} catch (e) {
+			console.error('Failed to save custom fonts:', e);
+		}
+	}
+
+	function addCustomFont() {
+		const name = newFontInput.trim();
+		if (!name) return;
+		if (
+			standardFonts.some(f => f.name.toLowerCase() === name.toLowerCase()) ||
+			customFonts.some(f => f.name.toLowerCase() === name.toLowerCase())
+		) {
+			newFontInput = '';
+			return;
+		}
+		customFonts = [...customFonts, { name, value: name }];
+		saveCustomFonts();
+		newFontInput = '';
+	}
+
+	function removeCustomFont(name: string) {
+		customFonts = customFonts.filter(f => f.name !== name);
+		saveCustomFonts();
+	}
+
+	function saveRecentColors(type: 'text' | 'highlight') {
+		try {
+			if (type === 'text') {
+				localStorage.setItem('mynotes_recent_text_colors', JSON.stringify(recentTextColors));
+			} else {
+				localStorage.setItem('mynotes_recent_highlight_colors', JSON.stringify(recentHighlightColors));
+			}
+		} catch (e) {
+			console.error('Failed to save recent colors:', e);
+		}
+	}
+
+	function addRecentColor(color: string, type: 'text' | 'highlight') {
+		if (!color) return;
+		if (type === 'text') {
+			recentTextColors = [color, ...recentTextColors.filter(c => c !== color)].slice(0, 5);
+			saveRecentColors('text');
+		} else {
+			recentHighlightColors = [color, ...recentHighlightColors.filter(c => c !== color)].slice(0, 5);
+			saveRecentColors('highlight');
+		}
+	}
+
+	function applyCustomTextColor(color: string) {
+		if (!color.startsWith('#')) {
+			if (/^[0-9a-fA-F]{3,6}$/.test(color)) {
+				color = '#' + color;
+			} else {
+				return;
+			}
+		}
+		setTextColor(color);
+		addRecentColor(color, 'text');
+	}
+
+	function applyCustomHighlightColor(color: string) {
+		if (!color.startsWith('#') && !color.startsWith('rgba') && !color.startsWith('rgb')) {
+			if (/^[0-9a-fA-F]{3,6}$/.test(color)) {
+				color = '#' + color;
+			} else {
+				return;
+			}
+		}
+		setHighlightColor(color);
+		addRecentColor(color, 'highlight');
+	}
+
+	function setFontFamily(fontValue: string) {
+		if (!editor) return;
+		if (fontValue === '') {
+			editor.chain().focus().unsetFontFamily().run();
+		} else {
+			editor.chain().focus().setFontFamily(fontValue).run();
+		}
+		fontDropdown = false;
+	}
+
+	let allFonts = $derived([...standardFonts, ...customFonts]);
+
+	let activeFontLabel = $derived.by(() => {
+		if (!editorState || !editor) return 'Font';
+		const currentFont = editor.getAttributes('textStyle').fontFamily;
+		if (!currentFont) return 'Default Font';
+		const found = allFonts.find(f => f.value === currentFont || f.name === currentFont);
+		return found ? found.name : currentFont;
+	});
+
+	// Font Size states
+	let fontSizeDropdown = $state(false);
+	let customSizes = $state<string[]>([]);
+	let newSizeInput = $state('');
+	const standardSizes = ['12px', '14px', '16px', '18px', '20px', '24px', '30px', '36px', '48px'];
+	let allSizes = $derived([...standardSizes, ...customSizes]);
+
+	// Load custom sizes
+	$effect(() => {
+		if (typeof window !== 'undefined') {
+			const savedSizes = localStorage.getItem('mynotes_custom_sizes');
+			if (savedSizes) {
+				try {
+					customSizes = JSON.parse(savedSizes);
+				} catch (e) {
+					console.error('Failed to parse custom sizes:', e);
+				}
+			}
+		}
+	});
+
+	function saveCustomSizes() {
+		if (typeof window !== 'undefined') {
+			try {
+				localStorage.setItem('mynotes_custom_sizes', JSON.stringify(customSizes));
+			} catch (e) {
+				console.error('Failed to save custom sizes:', e);
+			}
+		}
+	}
+
+	function addCustomSize() {
+		const size = newSizeInput.trim();
+		if (!size) return;
+		if (standardSizes.includes(size) || customSizes.includes(size)) {
+			newSizeInput = '';
+			return;
+		}
+		customSizes = [...customSizes, size];
+		saveCustomSizes();
+		newSizeInput = '';
+	}
+
+	function removeCustomSize(size: string) {
+		customSizes = customSizes.filter(s => s !== size);
+		saveCustomSizes();
+	}
+
+	function setFontSize(sizeValue: string) {
+		if (!editor) return;
+		if (sizeValue === '') {
+			editor.chain().focus().setMark('textStyle', { fontSize: null }).removeEmptyTextStyle().run();
+		} else {
+			editor.chain().focus().setMark('textStyle', { fontSize: sizeValue }).run();
+		}
+		fontSizeDropdown = false;
+	}
+
+	let activeSizeLabel = $derived.by(() => {
+		if (!editorState || !editor) return '14px';
+		const currentSize = editor.getAttributes('textStyle').fontSize;
+		return currentSize ? currentSize : '14px';
+	});
 
 	function closeAllDropdowns() {
 		headingDropdown = false;
@@ -359,9 +585,11 @@
 		alignDropdown = false;
 		insertDropdown = false;
 		tablePickerOpen = false;
+		fontDropdown = false;
+		fontSizeDropdown = false;
 	}
 
-	let anyDropdownOpen = $derived(headingDropdown || colorDropdown || highlightDropdown || alignDropdown || insertDropdown || tablePickerOpen);
+	let anyDropdownOpen = $derived(headingDropdown || colorDropdown || highlightDropdown || alignDropdown || insertDropdown || tablePickerOpen || fontDropdown || fontSizeDropdown);
 	let editorState = $state(0);
 	let editorStateRaf = 0; // RAF handle for batching toolbar updates
 
@@ -434,9 +662,12 @@
 
 	interface SlashCommand {
 		label: string;
+		description?: string;
 		aliases: string[];
 		icon: string;
 		action: () => void;
+		category: 'insert' | 'text' | 'utility';
+		badge?: string;
 	}
 
 	function insertTimestamp(kind: 'date' | 'time' | 'datetime') {
@@ -451,36 +682,262 @@
 
 	function getSlashCommands(): SlashCommand[] {
 		return [
-			{ label: 'Heading 1', aliases: ['h1', 'heading1', 'title'], icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12h8M4 4v16M12 4v16M17 12l3-2v8"/></svg>', action: () => editor?.chain().focus().toggleHeading({ level: 1 }).run() },
-			{ label: 'Heading 2', aliases: ['h2', 'heading2', 'subtitle'], icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12h8M4 4v16M12 4v16"/><path d="M21 18h-4c0-4 4-3 4-6 0-1.5-2-2.5-4-1"/></svg>', action: () => editor?.chain().focus().toggleHeading({ level: 2 }).run() },
-			{ label: 'Heading 3', aliases: ['h3', 'heading3'], icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12h8M4 4v16M12 4v16"/><path d="M17.5 10.5c1.7-1 3.5 0 3.5 1.5a2 2 0 01-2 2m2 0a2 2 0 01-2 2c-1.5 0-3.5 0-3.5-1.5"/></svg>', action: () => editor?.chain().focus().toggleHeading({ level: 3 }).run() },
-			{ label: 'Bullet List', aliases: ['ul', 'unordered', 'bullets', 'list'], icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><circle cx="3" cy="6" r="1" fill="currentColor"/><circle cx="3" cy="12" r="1" fill="currentColor"/><circle cx="3" cy="18" r="1" fill="currentColor"/></svg>', action: () => editor?.chain().focus().toggleBulletList().run() },
-			{ label: 'Numbered List', aliases: ['ol', 'ordered', 'number'], icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="10" y1="6" x2="21" y2="6"/><line x1="10" y1="12" x2="21" y2="12"/><line x1="10" y1="18" x2="21" y2="18"/><text x="1" y="9" font-size="8" fill="currentColor" stroke="none">1</text><text x="1" y="15" font-size="8" fill="currentColor" stroke="none">2</text><text x="1" y="21" font-size="8" fill="currentColor" stroke="none">3</text></svg>', action: () => editor?.chain().focus().toggleOrderedList().run() },
-			{ label: 'Task List', aliases: ['checklist', 'checkbox', 'todo', 'check'], icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="6" height="6" rx="1"/><path d="M5 8l1.5 1.5L9 7"/><line x1="13" y1="8" x2="21" y2="8"/><rect x="3" y="14" width="6" height="6" rx="1"/><line x1="13" y1="17" x2="21" y2="17"/></svg>', action: () => editor?.chain().focus().toggleTaskList().run() },
-			{ label: 'Code Block', aliases: ['code', 'codeblock', 'pre', 'snippet'], icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>', action: () => editor?.chain().focus().toggleCodeBlock().run() },
-			{ label: 'Blockquote', aliases: ['quote', 'blockquote', 'citation'], icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21c3 0 7-1 7-8V5c0-1.25-.756-2.017-2-2H4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2 1 0 1 0 1 1v1c0 1-1 2-2 2s-1 .008-1 1.031V20c0 1 0 1 1 1z"/><path d="M15 21c3 0 7-1 7-8V5c0-1.25-.757-2.017-2-2h-4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2h.75c0 2.25.25 4-2.75 4v3c0 1 0 1 1 1z"/></svg>', action: () => editor?.chain().focus().toggleBlockquote().run() },
-			{ label: 'Collapsible Section', aliases: ['details', 'accordion', 'collapse', 'toggle', 'summary'], icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><polyline points="10 8 14 12 10 16"/></svg>', action: () => insertDetails() },
-			{ label: 'Table', aliases: ['table', 'grid'], icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg>', action: () => { slashTablePicker = true; slashTableHover = { rows: 0, cols: 0 }; } },
-			{ label: 'Horizontal Rule', aliases: ['hr', 'divider', 'line', 'separator', 'rule'], icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="2" y1="12" x2="22" y2="12"/></svg>', action: () => editor?.chain().focus().setHorizontalRule().run() },
-			{ label: 'Page Break', aliases: ['pagebreak', 'page', 'break', 'newpage', 'print'], icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="2" y1="9" x2="22" y2="9" stroke-dasharray="4 2"/><line x1="2" y1="15" x2="22" y2="15" stroke-dasharray="4 2"/><path d="M6 5v4M18 5v4M6 15v4M18 15v4"/></svg>', action: () => editor?.chain().focus().insertContent({ type: 'pageBreak' }).run() },
-			{ label: 'Math Block', aliases: ['math', 'latex', 'equation', 'formula', 'tex', 'katex'], icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h6l4 14h6"/><path d="M7 19l10-14"/></svg>', action: () => openMathInsert('block') },
-			{ label: 'Math Inline', aliases: ['mathinline', 'inline-math', 'imath', 'inlinemath'], icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8h2l3 8h2"/><path d="M8 12l8-4"/></svg>', action: () => openMathInsert('inline') },
-			{ label: 'Date', aliases: ['date', 'today', 'day'], icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>', action: () => insertTimestamp('date') },
-			{ label: 'Time', aliases: ['time', 'clock'], icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>', action: () => insertTimestamp('time') },
-			{ label: 'Date & Time', aliases: ['datetime', 'now', 'timestamp', 'stamp'], icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 7.5V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h6"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="16" y1="2" x2="16" y2="6"/><circle cx="18" cy="17" r="4"/><path d="M18 15.5v1.5l1 1"/></svg>', action: () => insertTimestamp('datetime') },
-			{ label: 'Color', aliases: ['color', 'colour', 'hex', 'rgb', 'swatch', 'palette'], icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>', action: () => { slashColorPicker = true; } },
+			// ═══ CATEGORY: INSERT ═══
+			{
+				label: 'Table',
+				description: 'Insert a pre-formatted 3x3 table',
+				aliases: ['table', 'grid'],
+				icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg>',
+				action: () => editor?.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(),
+				category: 'insert'
+			},
+			{
+				label: 'Checklist',
+				description: 'Insert an interactive task list item',
+				aliases: ['checklist', 'checkbox', 'todo', 'check', 'task'],
+				icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="6" height="6" rx="1"/><path d="M5 8l1.5 1.5L9 7"/><line x1="13" y1="8" x2="21" y2="8"/><rect x="3" y="14" width="6" height="6" rx="1"/><line x1="13" y1="17" x2="21" y2="17"/></svg>',
+				action: () => editor?.chain().focus().toggleTaskList().run(),
+				category: 'insert'
+			},
+			{
+				label: 'Bullet List',
+				description: 'Start a bulleted list',
+				aliases: ['ul', 'unordered', 'bullets', 'list', 'bullet'],
+				icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><circle cx="3" cy="6" r="1" fill="currentColor"/><circle cx="3" cy="12" r="1" fill="currentColor"/><circle cx="3" cy="18" r="1" fill="currentColor"/></svg>',
+				action: () => editor?.chain().focus().toggleBulletList().run(),
+				category: 'insert'
+			},
+			{
+				label: 'Numbered List',
+				description: 'Start a numbered list',
+				aliases: ['ol', 'ordered', 'number', 'list'],
+				icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="10" y1="6" x2="21" y2="6"/><line x1="10" y1="12" x2="21" y2="12"/><line x1="10" y1="18" x2="21" y2="18"/><text x="1" y="9" font-size="8" fill="currentColor" stroke="none">1</text><text x="1" y="15" font-size="8" fill="currentColor" stroke="none">2</text><text x="1" y="21" font-size="8" fill="currentColor" stroke="none">3</text></svg>',
+				action: () => editor?.chain().focus().toggleOrderedList().run(),
+				category: 'insert'
+			},
+			{
+				label: 'Blockquote',
+				description: 'Insert a quote section',
+				aliases: ['quote', 'blockquote', 'citation'],
+				icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21c3 0 7-1 7-8V5c0-1.25-.756-2.017-2-2H4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2 1 0 1 0 1 1v1c0 1-1 2-2 2s-1 .008-1 1.031V20c0 1 0 1 1 1z"/><path d="M15 21c3 0 7-1 7-8V5c0-1.25-.757-2.017-2-2h-4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2h.75c0 2.25.25 4-2.75 4v3c0 1 0 1 1 1z"/></svg>',
+				action: () => editor?.chain().focus().toggleBlockquote().run(),
+				category: 'insert'
+			},
+			{
+				label: 'Callout Box',
+				description: 'Insert a highlighted alert box',
+				aliases: ['callout', 'box', 'alert', 'note', 'tip', 'warning'],
+				icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="9" y1="9" x2="15" y2="9"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/></svg>',
+				action: () => editor?.chain().focus().insertContent({ type: 'callout', attrs: { type: 'note' }, content: [{ type: 'paragraph' }] }).run(),
+				category: 'insert',
+				badge: 'New'
+			},
+			{
+				label: 'Code Block',
+				description: 'Insert a syntax-highlighted code block',
+				aliases: ['code', 'codeblock', 'pre', 'snippet'],
+				icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>',
+				action: () => editor?.chain().focus().toggleCodeBlock().run(),
+				category: 'insert'
+			},
+			{
+				label: 'Collapsible Section',
+				description: 'Insert a collapsible details block',
+				aliases: ['details', 'accordion', 'collapse', 'toggle', 'summary'],
+				icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><polyline points="10 8 14 12 10 16"/></svg>',
+				action: () => insertDetails(),
+				category: 'insert',
+				badge: 'New'
+			},
+			{
+				label: 'Horizontal Rule',
+				description: 'Insert a divider line',
+				aliases: ['hr', 'divider', 'line', 'separator', 'rule'],
+				icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="2" y1="12" x2="22" y2="12"/></svg>',
+				action: () => editor?.chain().focus().setHorizontalRule().run(),
+				category: 'insert'
+			},
+			{
+				label: 'Page Break',
+				description: 'Insert a printed page break',
+				aliases: ['pagebreak', 'page', 'break', 'newpage', 'print'],
+				icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="2" y1="9" x2="22" y2="9" stroke-dasharray="4 2"/><line x1="2" y1="15" x2="22" y2="15" stroke-dasharray="4 2"/><path d="M6 5v4M18 5v4M6 15v4M18 15v4"/></svg>',
+				action: () => editor?.chain().focus().insertContent({ type: 'pageBreak' }).run(),
+				category: 'insert'
+			},
+			{
+				label: 'Math Block',
+				description: 'Insert a LaTeX formula block',
+				aliases: ['math', 'latex', 'equation', 'formula', 'tex', 'katex'],
+				icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h6l4 14h6"/><path d="M7 19l10-14"/></svg>',
+				action: () => openMathInsert('block'),
+				category: 'insert'
+			},
+			{
+				label: 'Math Inline',
+				description: 'Insert a LaTeX inline formula',
+				aliases: ['mathinline', 'inline-math', 'imath', 'inlinemath'],
+				icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8h2l3 8h2"/><path d="M8 12l8-4"/></svg>',
+				action: () => openMathInsert('inline'),
+				category: 'insert'
+			},
+
+			// ═══ CATEGORY: TEXT ═══
+			{
+				label: 'Heading 1',
+				description: 'Large heading',
+				aliases: ['h1', 'heading1', 'title', 'large'],
+				icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12h8M4 4v16M12 4v16M17 12l3-2v8"/></svg>',
+				action: () => editor?.chain().focus().toggleHeading({ level: 1 }).run(),
+				category: 'text'
+			},
+			{
+				label: 'Heading 2',
+				description: 'Medium heading',
+				aliases: ['h2', 'heading2', 'subtitle', 'medium'],
+				icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12h8M4 4v16M12 4v16"/><path d="M21 18h-4c0-4 4-3 4-6 0-1.5-2-2.5-4-1"/></svg>',
+				action: () => editor?.chain().focus().toggleHeading({ level: 2 }).run(),
+				category: 'text'
+			},
+			{
+				label: 'Heading 3',
+				description: 'Small heading',
+				aliases: ['h3', 'heading3', 'small'],
+				icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12h8M4 4v16M12 4v16"/><path d="M17.5 10.5c1.7-1 3.5 0 3.5 1.5a2 2 0 01-2 2m2 0a2 2 0 01-2 2c-1.5 0-3.5 0-3.5-1.5"/></svg>',
+				action: () => editor?.chain().focus().toggleHeading({ level: 3 }).run(),
+				category: 'text'
+			},
+			{
+				label: 'Text',
+				description: 'Normal text',
+				aliases: ['text', 'p', 'paragraph', 'normal'],
+				icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7V4h16v3M9 20h6M12 4v16"/></svg>',
+				action: () => editor?.chain().focus().setParagraph().run(),
+				category: 'text'
+			},
+
+			// ═══ CATEGORY: UTILITY ═══
+			{
+				label: 'Date',
+				description: 'Insert today\'s date',
+				aliases: ['date', 'today', 'day'],
+				icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>',
+				action: () => insertTimestamp('date'),
+				category: 'utility'
+			},
+			{
+				label: 'Time',
+				description: 'Insert current time',
+				aliases: ['time', 'clock'],
+				icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
+				action: () => insertTimestamp('time'),
+				category: 'utility'
+			},
+			{
+				label: 'Date & Time',
+				description: 'Insert current date & time',
+				aliases: ['datetime', 'now', 'timestamp', 'stamp'],
+				icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 7.5V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h6"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="16" y1="2" x2="16" y2="6"/><circle cx="18" cy="17" r="4"/><path d="M18 15.5v1.5l1 1"/></svg>',
+				action: () => insertTimestamp('datetime'),
+				category: 'utility'
+			},
+			{
+				label: 'Color',
+				description: 'Insert colored text',
+				aliases: ['color', 'colour', 'hex', 'rgb', 'swatch', 'palette'],
+				icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>',
+				action: () => { slashColorPicker = true; },
+				category: 'utility'
+			}
 		];
 	}
 
+	let allFontsList = $derived([
+		{ name: 'Default Font', value: '' },
+		...allFonts
+	]);
+
+	let allSizesList = $derived([
+		{ name: 'Default Size', value: '' },
+		...allSizes.map(s => ({ name: s, value: s }))
+	]);
+
 	let slashFiltered = $derived.by(() => {
-		const commands = getSlashCommands();
-		if (!slashMenu) return commands;
-		const q = slashMenu.query.toLowerCase();
-		if (!q) return commands;
-		return commands.filter(cmd =>
+		// Get all potential font items
+		const fontItems = allFontsList.map(f => ({
+			type: 'font' as const,
+			label: f.name,
+			value: f.value,
+			action: () => {
+				setFontFamily(f.value);
+				closeSlashMenu();
+			}
+		}));
+
+		// Get all potential size items
+		const sizeItems = allSizesList.map(s => ({
+			type: 'size' as const,
+			label: s.name,
+			value: s.value,
+			action: () => {
+				setFontSize(s.value);
+				closeSlashMenu();
+			}
+		}));
+
+		// Get all potential command items
+		const commandItems = getSlashCommands().map(cmd => ({
+			type: 'command' as const,
+			label: cmd.label,
+			description: cmd.description,
+			aliases: cmd.aliases,
+			icon: cmd.icon,
+			action: cmd.action,
+			category: cmd.category,
+			badge: cmd.badge
+		}));
+
+		if (!slashMenu) {
+			return {
+				fonts: fontItems,
+				sizes: sizeItems,
+				commands: commandItems,
+				flatList: [...fontItems, ...sizeItems, ...commandItems]
+			};
+		}
+
+		const q = slashMenu.query.toLowerCase().trim();
+		if (!q) {
+			return {
+				fonts: fontItems,
+				sizes: sizeItems,
+				commands: commandItems,
+				flatList: [...fontItems, ...sizeItems, ...commandItems]
+			};
+		}
+
+		// Filter fonts
+		const filteredFonts = fontItems.filter(f => 
+			f.label.toLowerCase().includes(q)
+		);
+
+		// Filter sizes
+		const filteredSizes = sizeItems.filter(s => 
+			s.label.toLowerCase().includes(q)
+		);
+
+		// Filter commands
+		const filteredCommands = commandItems.filter(cmd =>
 			cmd.label.toLowerCase().includes(q) ||
 			cmd.aliases.some(a => a.includes(q))
 		);
+
+		return {
+			fonts: filteredFonts,
+			sizes: filteredSizes,
+			commands: filteredCommands,
+			flatList: [...filteredFonts, ...filteredSizes, ...filteredCommands]
+		};
 	});
 	let titleInput = $state<HTMLInputElement>(null!);
 	let linkModal = $state(false);
@@ -869,6 +1326,31 @@
 		},
 	});
 
+	const Callout = TiptapNode.create({
+		name: 'callout',
+		group: 'block',
+		content: 'block+',
+		defining: true,
+		addAttributes() {
+			return {
+				type: {
+					default: 'note',
+					parseHTML: (el: HTMLElement) => el.getAttribute('data-callout-type') || 'note',
+					renderHTML: (attrs) => ({ 'data-callout-type': attrs.type }),
+				},
+			};
+		},
+		parseHTML() {
+			return [{
+				tag: 'div[data-type="callout"]',
+			}];
+		},
+		renderHTML({ HTMLAttributes }) {
+			const type = HTMLAttributes['data-callout-type'] || HTMLAttributes.type || 'note';
+			return ['div', { 'data-type': 'callout', 'data-callout-type': type, class: `callout callout-${type}` }, 0];
+		},
+	});
+
 	const MermaidRenderer = Extension.create({
 		name: 'mermaidRendererOptIn',
 		addProseMirrorPlugins() {
@@ -1148,10 +1630,17 @@
 	});
 
 	let codeLangDropdown = $state<{ pos: number; x: number; y: number; current: string } | null>(null);
+	let codeLangSearchQuery = $state('');
+	let filteredCodeLanguages = $derived.by(() => {
+		const q = codeLangSearchQuery.trim().toLowerCase();
+		if (!q) return codeLanguages;
+		return codeLanguages.filter(lang => lang.toLowerCase().includes(q));
+	});
 
 	function openCodeLangDropdown(pos: number, current: string, triggerEl: HTMLElement) {
 		const rect = triggerEl.getBoundingClientRect();
 		codeLangDropdown = { pos, x: rect.right, y: rect.bottom + 4, current };
+		codeLangSearchQuery = '';
 	}
 
 	function selectCodeLang(lang: string) {
@@ -1359,7 +1848,7 @@
 								if (!pre) return false;
 								// Check if click is in the top-right corner (language button area)
 								const rect = pre.getBoundingClientRect();
-								if (event.clientX < rect.right - 70 || event.clientY > rect.top + 30) return false;
+								if (event.clientX < rect.right - 100 || event.clientY > rect.top + 36) return false;
 								// Find the code block position
 								const pos = view.posAtDOM(pre, 0);
 								const resolved = view.state.doc.resolve(pos);
@@ -1397,20 +1886,11 @@
 	});
 
 	function executeSlashCommand(index: number) {
-		const items = slashFiltered;
+		const items = slashFiltered.flatList;
 		if (index < 0 || index >= items.length || !slashMenu || !editor) return;
 		const cmd = items[index];
-		// Table opens a sub-picker instead of closing
-		if (cmd.label === 'Table') {
-			slashTablePicker = true;
-			slashTableHover = { rows: 0, cols: 0 };
-			slashSelectedIndex = 0;
-			// Delete slash text after setting flag so onTransaction doesn't close menu
-			editor.chain().focus().deleteRange({ from: slashMenu.from, to: slashMenu.to }).run();
-			return;
-		}
 		// Color opens a sub-picker too
-		if (cmd.label === 'Color') {
+		if (cmd.type === 'command' && cmd.label === 'Color') {
 			slashColorPicker = true;
 			slashSelectedIndex = 0;
 			editor.chain().focus().deleteRange({ from: slashMenu.from, to: slashMenu.to }).run();
@@ -1454,7 +1934,7 @@
 		if (!slashMenu || slashSelectedIndex < 0) return;
 		slashSelectedIndex; // track
 		tick().then(() => {
-			document.querySelector('.slash-menu .slash-menu-item.selected')?.scrollIntoView({ block: 'nearest' });
+			document.querySelector('.slash-menu .selected')?.scrollIntoView({ block: 'nearest' });
 		});
 	});
 
@@ -1584,16 +2064,16 @@
 							}
 							if (event.key === 'ArrowDown') {
 								event.preventDefault();
-								slashSelectedIndex = (slashSelectedIndex + 1) % Math.max(1, slashFiltered.length);
+								slashSelectedIndex = (slashSelectedIndex + 1) % Math.max(1, slashFiltered.flatList.length);
 								return true;
 							}
 							if (event.key === 'ArrowUp') {
 								event.preventDefault();
-								slashSelectedIndex = (slashSelectedIndex - 1 + slashFiltered.length) % Math.max(1, slashFiltered.length);
+								slashSelectedIndex = (slashSelectedIndex - 1 + slashFiltered.flatList.length) % Math.max(1, slashFiltered.flatList.length);
 								return true;
 							}
 							if (event.key === 'Enter' || event.key === 'Tab') {
-								if (slashFiltered.length > 0) {
+								if (slashFiltered.flatList.length > 0) {
 									event.preventDefault();
 									executeSlashCommand(slashSelectedIndex);
 									return true;
@@ -2042,6 +2522,8 @@
 		{ name: 'Orange', value: 'rgba(240, 170, 90, 0.25)', swatch: '#e8a050' },
 		{ name: 'Cyan', value: 'rgba(80, 210, 230, 0.22)', swatch: '#50cce0' },
 	];
+
+
 
 	const cellColors = [
 		{ name: 'None', value: '' },
@@ -2576,7 +3058,15 @@
 						}
 						case 'textStyle': {
 							const c = mark.attrs?.color;
-							if (c) text = `<span style="color: ${c}">${text}</span>`;
+							const f = mark.attrs?.fontFamily;
+							const s = mark.attrs?.fontSize;
+							const styleParts = [];
+							if (c) styleParts.push(`color: ${c}`);
+							if (f) styleParts.push(`font-family: ${f.replace(/"/g, '&quot;')}`);
+							if (s) styleParts.push(`font-size: ${s}`);
+							if (styleParts.length > 0) {
+								text = `<span style="${styleParts.join('; ')}">${text}</span>`;
+							}
 							break;
 						}
 						case 'link': text = `[${text}](${mark.attrs.href})`; break;
@@ -2841,6 +3331,17 @@
 
 	function htmlToMarkdown(html: string): string {
 		let md = html;
+		// Preserve styled spans and marks
+		const styledSpans: string[] = [];
+		md = md.replace(/<span style=["']([^"']*)["']>(.*?)<\/span>/gi, (match) => {
+			styledSpans.push(match);
+			return `%%STYLESPAN_${styledSpans.length - 1}%%`;
+		});
+		const styledMarks: string[] = [];
+		md = md.replace(/<mark data-color=["']([^"']*)["']>(.*?)<\/mark>/gi, (match) => {
+			styledMarks.push(match);
+			return `%%STYLEMARK_${styledMarks.length - 1}%%`;
+		});
 		// Code blocks MUST be converted before inline code to avoid corruption
 		md = md.replace(/<pre><code[^>]*class="language-(\w+)"[^>]*>([\s\S]*?)<\/code><\/pre>/gi, (_, lang, code) => {
 			const stripped = code.replace(/<[^>]+>/g, '');
@@ -2927,6 +3428,15 @@
 		md = md.replace(/<li[^>]*data-checked="false"[^>]*>(.*?)<\/li>/gi, '- [ ] $1\n');
 		md = md.replace(/<p[^>]*>(.*?)<\/p>/gi, '$1\n\n');
 		md = md.replace(/<br\s*\/?>/gi, '\n');
+
+		// Convert callout blocks to blockquotes
+		md = md.replace(/<div[^>]*data-type="callout"[^>]*data-callout-type="([^"]*)"[^>]*>([\s\S]*?)<\/div>/gi, (_, type: string, inner: string) => {
+			const typeUpper = type.toUpperCase();
+			const lines = inner.trim().split('\n');
+			const prefixed = lines.map((line: string) => line.trim() ? `> ${line}` : '>').join('\n');
+			return `> [!${typeUpper}]\n` + prefixed + '\n\n';
+		});
+
 		md = md.replace(/<[^>]+>/g, '');
 		md = md.replace(/&amp;/g, '&');
 		md = md.replace(/&lt;/g, '<');
@@ -2945,6 +3455,13 @@
 		// Restore details/accordion blocks
 		detailsBlocks.forEach((block, i) => {
 			md = md.replace(`%%DETAILS_${i}%%`, '\n' + block + '\n');
+		});
+		// Restore styled spans and marks
+		styledSpans.forEach((span, i) => {
+			md = md.replace(`%%STYLESPAN_${i}%%`, span);
+		});
+		styledMarks.forEach((mark, i) => {
+			md = md.replace(`%%STYLEMARK_${i}%%`, mark);
 		});
 		return md.trim() + '\n';
 	}
@@ -3065,6 +3582,12 @@
 
 		// Run markdown-it (single-pass parser - handles headings, bold, italic, strike, code, blockquote, lists, links, images, hr, tables, raw HTML)
 		let html = mdit.render(src);
+
+		// Post-process: convert blockquote alerts to callout blocks
+		html = html.replace(/<blockquote>\s*<p>\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\](?:\s*<br\s*\/?>)?\s*([\s\S]*?)<\/blockquote>/gi, (_, type, innerContent) => {
+			const typeLower = type.toLowerCase();
+			return `<div data-type="callout" data-callout-type="${typeLower}" class="callout callout-${typeLower}"><p>${innerContent}</div>`;
+		});
 
 		// Post-process: convert image gap markers into empty paragraphs for ProseMirror
 		html = html.replace(/<div data-img-gap><\/div>\n?/g, '<p></p>\n');
@@ -3202,6 +3725,8 @@
 				Subscript,
 				Superscript,
 				TextStyle,
+				FontFamily,
+				FontSize,
 				Color,
 				CodeBlockLowlight.configure({ lowlight, enableTabIndentation: true, defaultLanguage: 'text' }),
 				CodeBlockLanguageSelect,
@@ -3210,6 +3735,7 @@
 				MathBlock,
 				MathInline,
 				PageBreak,
+				Callout,
 				Details.configure({ persist: true, HTMLAttributes: { class: 'editor-details' } }),
 				DetailsSummary,
 				DetailsContent,
@@ -5030,7 +5556,7 @@
 
 				<!-- Heading dropdown -->
 				<div class="fmt-dropdown-wrap">
-					<button class="fmt-btn" class:active={(editorState >= 0 && editor?.isActive('heading'))} onclick={(e) => { e.stopPropagation(); headingDropdown = !headingDropdown; colorDropdown = false; highlightDropdown = false; tablePickerOpen = false; alignDropdown = false; insertDropdown = false; }} title="Heading">
+					<button class="fmt-btn" class:active={(editorState >= 0 && editor?.isActive('heading'))} onclick={(e) => { e.stopPropagation(); headingDropdown = !headingDropdown; colorDropdown = false; highlightDropdown = false; tablePickerOpen = false; alignDropdown = false; insertDropdown = false; fontDropdown = false; }} title="Heading">
 						<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 12h12"/><path d="M6 20V4"/><path d="M18 20V4"/></svg>
 					</button>
 					{#if headingDropdown}
@@ -5041,6 +5567,88 @@
 							<button class:active={(editorState >= 0 && editor?.isActive('heading', { level: 3 }))} onclick={() => { editor?.chain().focus().toggleHeading({ level: 3 }).run(); headingDropdown = false; }}>Heading 3</button>
 							<button class:active={(editorState >= 0 && editor?.isActive('heading', { level: 4 }))} onclick={() => { editor?.chain().focus().toggleHeading({ level: 4 }).run(); headingDropdown = false; }}>Heading 4</button>
 							<button class:active={(editorState >= 0 && editor?.isActive('paragraph'))} onclick={() => { editor?.chain().focus().setParagraph().run(); headingDropdown = false; }}>Paragraph</button>
+						</div>
+					{/if}
+				</div>
+
+				<div class="fmt-sep"></div>
+
+				<!-- Font Family dropdown -->
+				<div class="fmt-dropdown-wrap">
+					<button class="fmt-btn font-select-btn" onclick={(e) => { e.stopPropagation(); fontDropdown = !fontDropdown; fontSizeDropdown = false; headingDropdown = false; colorDropdown = false; highlightDropdown = false; tablePickerOpen = false; alignDropdown = false; insertDropdown = false; }} title="Font Family">
+						<span class="font-label">{activeFontLabel}</span>
+						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+					</button>
+					{#if fontDropdown}
+						<!-- svelte-ignore a11y_no_static_element_interactions -->
+						<div class="fmt-dropdown font-dropdown-list" onclick={(e) => e.stopPropagation()}>
+							<div class="font-options-container">
+								<button class:active={!editor?.getAttributes('textStyle').fontFamily} onclick={() => setFontFamily('')} style="font-family: inherit;">
+									Default Font
+								</button>
+								{#each allFonts as font}
+									<div class="font-option-row">
+										<button class:active={editor?.getAttributes('textStyle').fontFamily === font.value} onclick={() => setFontFamily(font.value)} style="font-family: {font.value};">
+											{font.name}
+										</button>
+										{#if customFonts.some(f => f.name === font.name)}
+											<button class="font-delete-btn" onclick={() => removeCustomFont(font.name)} title="Remove custom font">
+												<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--text-tertiary)" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+											</button>
+										{/if}
+									</div>
+								{/each}
+							</div>
+
+							<div class="dropdown-divider"></div>
+
+							<div class="add-font-section">
+								<span class="section-title">Add Custom Font</span>
+								<div class="add-font-inputs">
+									<input type="text" class="font-input" placeholder="e.g. Roboto" bind:value={newFontInput} onkeydown={(e) => { if (e.key === 'Enter') addCustomFont(); }} />
+									<button class="apply-btn" onclick={addCustomFont}>Add</button>
+								</div>
+							</div>
+						</div>
+					{/if}
+				</div>
+
+				<!-- Font Size dropdown -->
+				<div class="fmt-dropdown-wrap">
+					<button class="fmt-btn font-select-btn" onclick={(e) => { e.stopPropagation(); fontSizeDropdown = !fontSizeDropdown; fontDropdown = false; headingDropdown = false; colorDropdown = false; highlightDropdown = false; tablePickerOpen = false; alignDropdown = false; insertDropdown = false; }} title="Font Size">
+						<span class="font-label">{activeSizeLabel}</span>
+						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+					</button>
+					{#if fontSizeDropdown}
+						<!-- svelte-ignore a11y_no_static_element_interactions -->
+						<div class="fmt-dropdown font-dropdown-list" onclick={(e) => e.stopPropagation()}>
+							<div class="font-options-container">
+								<button class:active={!editor?.getAttributes('textStyle').fontSize} onclick={() => setFontSize('')}>
+									Default Size
+								</button>
+								{#each allSizes as size}
+									<div class="font-option-row">
+										<button class:active={editor?.getAttributes('textStyle').fontSize === size} onclick={() => setFontSize(size)}>
+											{size}
+										</button>
+										{#if customSizes.includes(size)}
+											<button class="font-delete-btn" onclick={() => removeCustomSize(size)} title="Remove custom size">
+												<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--text-tertiary)" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+											</button>
+										{/if}
+									</div>
+								{/each}
+							</div>
+
+							<div class="dropdown-divider"></div>
+
+							<div class="add-font-section">
+								<span class="section-title">Add Custom Size</span>
+								<div class="add-font-inputs">
+									<input type="text" class="font-input" placeholder="e.g. 15px" bind:value={newSizeInput} onkeydown={(e) => { if (e.key === 'Enter') addCustomSize(); }} />
+									<button class="apply-btn" onclick={addCustomSize}>Add</button>
+								</div>
+							</div>
 						</div>
 					{/if}
 				</div>
@@ -5063,20 +5671,52 @@
 
 				<!-- Text color -->
 				<div class="fmt-dropdown-wrap">
-					<button class="fmt-btn" onclick={(e) => { e.stopPropagation(); colorDropdown = !colorDropdown; headingDropdown = false; highlightDropdown = false; tablePickerOpen = false; alignDropdown = false; insertDropdown = false; }} title="Text Color">
+					<button class="fmt-btn" onclick={(e) => { e.stopPropagation(); colorDropdown = !colorDropdown; headingDropdown = false; highlightDropdown = false; tablePickerOpen = false; alignDropdown = false; insertDropdown = false; fontDropdown = false; }} title="Text Color">
 						<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16"/><path d="m6 16 6-12 6 12"/><path d="M8 12h8"/></svg>
 						<span class="color-indicator" style="background: {editor?.getAttributes('textStyle').color || 'var(--accent)'}"></span>
 					</button>
 					{#if colorDropdown}
 						<!-- svelte-ignore a11y_no_static_element_interactions -->
-						<div class="fmt-dropdown color-grid-dropdown" onclick={(e) => e.stopPropagation()}>
-							{#each textColors as color}
-								<button class="color-swatch" title={color.name} onclick={() => setTextColor(color.value)} style="background: {color.value || 'var(--text-primary)'}">
-									{#if (color.value === '' && !editor?.getAttributes('textStyle').color) || editor?.getAttributes('textStyle').color === color.value}
-										<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
-									{/if}
-								</button>
-							{/each}
+						<div class="fmt-dropdown color-picker-dropdown" onclick={(e) => e.stopPropagation()}>
+							<div class="color-grid">
+								{#each textColors as color}
+									<button class="color-swatch" title={color.name} onclick={() => setTextColor(color.value)} style="background: {color.value || 'var(--text-primary)'}">
+										{#if (color.value === '' && !editor?.getAttributes('textStyle').color) || editor?.getAttributes('textStyle').color === color.value}
+											<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+										{/if}
+									</button>
+								{/each}
+							</div>
+
+							<div class="dropdown-divider"></div>
+
+							<div class="custom-color-section">
+								<span class="section-title">Custom</span>
+								<div class="custom-color-inputs">
+									<label class="native-picker-label">
+										<input type="color" bind:value={customTextColorInput} oninput={() => applyCustomTextColor(customTextColorInput)} />
+										<span class="picker-preview" style="background: {customTextColorInput}"></span>
+									</label>
+									<input type="text" class="hex-input" placeholder="#000000" bind:value={customTextColorInput} onkeydown={(e) => { if (e.key === 'Enter') applyCustomTextColor(customTextColorInput); }} />
+									<button class="apply-btn" onclick={() => applyCustomTextColor(customTextColorInput)}>Apply</button>
+								</div>
+							</div>
+
+							{#if recentTextColors.length > 0}
+								<div class="dropdown-divider"></div>
+								<div class="recent-colors-section">
+									<span class="section-title">Recent</span>
+									<div class="recent-swatches">
+										{#each recentTextColors as color}
+											<button class="color-swatch recent-swatch" title={color} onclick={() => setTextColor(color)} style="background: {color}">
+												{#if editor?.getAttributes('textStyle').color === color}
+													<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+												{/if}
+											</button>
+										{/each}
+									</div>
+								</div>
+							{/if}
 						</div>
 					{/if}
 				</div>
@@ -5168,27 +5808,59 @@
 
 				<!-- Highlight -->
 				<div class="fmt-dropdown-wrap">
-					<button class="fmt-btn" class:active={(editorState >= 0 && editor?.isActive('highlight'))} onclick={(e) => { e.stopPropagation(); highlightDropdown = !highlightDropdown; headingDropdown = false; colorDropdown = false; tablePickerOpen = false; alignDropdown = false; insertDropdown = false; }} title={`Highlight (${modKey}+Shift+H)`}>
+					<button class="fmt-btn" class:active={(editorState >= 0 && editor?.isActive('highlight'))} onclick={(e) => { e.stopPropagation(); highlightDropdown = !highlightDropdown; headingDropdown = false; colorDropdown = false; tablePickerOpen = false; alignDropdown = false; insertDropdown = false; fontDropdown = false; }} title={`Highlight (${modKey}+Shift+H)`}>
 						<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 11-6 6v3h9l3-3"/><path d="m22 12-4.6 4.6a2 2 0 01-2.8 0l-5.2-5.2a2 2 0 010-2.8L14 4"/></svg>
 						<span class="color-indicator" style="background: {editor?.getAttributes('highlight').color || 'var(--accent)'}"></span>
 					</button>
 					{#if highlightDropdown}
 						<!-- svelte-ignore a11y_no_static_element_interactions -->
-						<div class="fmt-dropdown color-grid-dropdown" onclick={(e) => e.stopPropagation()}>
-							{#each highlightColors as color}
-								<button class="color-swatch" title={color.name} onclick={() => setHighlightColor(color.value)} style="background: {color.swatch}">
-									{#if editor?.isActive('highlight', { color: color.value })}
-										<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+						<div class="fmt-dropdown color-picker-dropdown" onclick={(e) => e.stopPropagation()}>
+							<div class="color-grid">
+								{#each highlightColors as color}
+									<button class="color-swatch" title={color.name} onclick={() => setHighlightColor(color.value)} style="background: {color.swatch}">
+										{#if editor?.isActive('highlight', { color: color.value })}
+											<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+										{/if}
+									</button>
+								{/each}
+								<button class="color-swatch" title="Remove highlight" onclick={() => setHighlightColor('')} style="background: var(--bg-tertiary);">
+									{#if !editor?.isActive('highlight')}
+										<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--text-primary)" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+									{:else}
+										<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--text-tertiary)" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
 									{/if}
 								</button>
-							{/each}
-							<button class="color-swatch" title="Remove highlight" onclick={() => setHighlightColor('')} style="background: var(--bg-tertiary);">
-								{#if !editor?.isActive('highlight')}
-									<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--text-primary)" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
-								{:else}
-									<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--text-tertiary)" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-								{/if}
-							</button>
+							</div>
+
+							<div class="dropdown-divider"></div>
+
+							<div class="custom-color-section">
+								<span class="section-title">Custom</span>
+								<div class="custom-color-inputs">
+									<label class="native-picker-label">
+										<input type="color" bind:value={customHighlightColorInput} oninput={() => applyCustomHighlightColor(customHighlightColorInput)} />
+										<span class="picker-preview" style="background: {customHighlightColorInput}"></span>
+									</label>
+									<input type="text" class="hex-input" placeholder="#ffff00" bind:value={customHighlightColorInput} onkeydown={(e) => { if (e.key === 'Enter') applyCustomHighlightColor(customHighlightColorInput); }} />
+									<button class="apply-btn" onclick={() => applyCustomHighlightColor(customHighlightColorInput)}>Apply</button>
+								</div>
+							</div>
+
+							{#if recentHighlightColors.length > 0}
+								<div class="dropdown-divider"></div>
+								<div class="recent-colors-section">
+									<span class="section-title">Recent</span>
+									<div class="recent-swatches">
+										{#each recentHighlightColors as color}
+											<button class="color-swatch recent-swatch" title={color} onclick={() => setHighlightColor(color)} style="background: {color}">
+												{#if editor?.isActive('highlight', { color: color })}
+													<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+												{/if}
+											</button>
+										{/each}
+									</div>
+								</div>
+							{/if}
 						</div>
 					{/if}
 				</div>
@@ -5655,18 +6327,39 @@
 	<div class="code-lang-overlay" onclick={closeCodeLangDropdown}>
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<div class="code-lang-dropdown" style="left: {codeLangDropdown.x}px; top: {codeLangDropdown.y}px" onclick={(e) => e.stopPropagation()}>
-			<button
-				class="code-lang-option"
-				class:active={codeLangDropdown.current === ''}
-				onclick={() => selectCodeLang('')}
-			>auto</button>
-			{#each codeLanguages as lang}
+			<div class="code-lang-search-wrapper">
+				<input
+					type="text"
+					class="code-lang-search"
+					placeholder="Search language..."
+					bind:value={codeLangSearchQuery}
+					onkeydown={(e) => {
+						if (e.key === 'Escape') {
+							closeCodeLangDropdown();
+						} else if (e.key === 'Enter') {
+							e.preventDefault();
+							if (filteredCodeLanguages.length > 0) {
+								selectCodeLang(filteredCodeLanguages[0]);
+							}
+						}
+					}}
+					autofocus
+				/>
+			</div>
+			<div class="code-lang-options-list">
 				<button
 					class="code-lang-option"
-					class:active={codeLangDropdown.current === lang}
-					onclick={() => selectCodeLang(lang)}
-				>{lang}</button>
-			{/each}
+					class:active={codeLangDropdown.current === ''}
+					onclick={() => selectCodeLang('')}
+				>Plain Text (auto)</button>
+				{#each filteredCodeLanguages as lang}
+					<button
+						class="code-lang-option"
+						class:active={codeLangDropdown.current === lang}
+						onclick={() => selectCodeLang(lang)}
+					>{lang}</button>
+				{/each}
+			</div>
 		</div>
 	</div>
 {/if}
@@ -5716,18 +6409,77 @@
 						<button class="slash-color-insert" onmousedown={(e) => { e.preventDefault(); insertColor(slashColorHex); }}>Insert</button>
 					</div>
 				</div>
-			{:else if slashFiltered.length === 0}
+			{:else if slashFiltered.flatList.length === 0}
 				<div class="slash-menu-empty">No matching commands</div>
 			{:else}
-				{#each slashFiltered as cmd, i}
+				{#if slashFiltered.fonts.length > 0}
+					<div class="slash-menu-category-header">Font Family</div>
+					<div class="slash-font-picker-section" class:has-scroller={slashFiltered.fonts.length > 3}>
+						{#each slashFiltered.fonts as font, idx}
+							<button
+								class="slash-font-item"
+								class:selected={idx === slashSelectedIndex}
+								onmouseenter={() => slashSelectedIndex = idx}
+								onmousedown={(e) => { e.preventDefault(); executeSlashCommand(idx); }}
+								style="font-family: {font.value || 'inherit'};"
+							>
+								{font.label}
+							</button>
+						{/each}
+					</div>
+					{#if slashFiltered.sizes.length > 0 || slashFiltered.commands.length > 0}
+						<div class="slash-menu-category-divider"></div>
+					{/if}
+				{/if}
+
+				{#if slashFiltered.sizes.length > 0}
+					<div class="slash-menu-category-header">Font Size</div>
+					<div class="slash-size-picker-section" class:has-scroller={slashFiltered.sizes.length > 3}>
+						{#each slashFiltered.sizes as size, idx}
+							{@const globalIdx = slashFiltered.fonts.length + idx}
+							<button
+								class="slash-size-item"
+								class:selected={globalIdx === slashSelectedIndex}
+								onmouseenter={() => slashSelectedIndex = globalIdx}
+								onmousedown={(e) => { e.preventDefault(); executeSlashCommand(globalIdx); }}
+							>
+								{size.label}
+							</button>
+						{/each}
+					</div>
+					{#if slashFiltered.commands.length > 0}
+						<div class="slash-menu-category-divider"></div>
+					{/if}
+				{/if}
+
+				{#each slashFiltered.commands as cmd, i}
+					{@const globalIdx = slashFiltered.fonts.length + slashFiltered.sizes.length + i}
+					{#if i === 0 || cmd.category !== slashFiltered.commands[i - 1].category}
+						{#if i > 0 || (i === 0 && (slashFiltered.fonts.length > 0 || slashFiltered.sizes.length > 0))}
+							<div class="slash-menu-category-divider"></div>
+						{/if}
+						<div class="slash-menu-category-header">
+							{cmd.category === 'insert' ? 'Insert Blocks' : cmd.category === 'text' ? 'Text Styles' : 'Utilities'}
+						</div>
+					{/if}
 					<button
 						class="slash-menu-item"
-						class:selected={i === slashSelectedIndex}
-						onmouseenter={() => slashSelectedIndex = i}
-						onmousedown={(e) => { e.preventDefault(); executeSlashCommand(i); }}
+						class:selected={globalIdx === slashSelectedIndex}
+						onmouseenter={() => slashSelectedIndex = globalIdx}
+						onmousedown={(e) => { e.preventDefault(); executeSlashCommand(globalIdx); }}
 					>
 						<span class="slash-menu-icon">{@html cmd.icon}</span>
-						<span class="slash-menu-label">{cmd.label}</span>
+						<div class="slash-menu-details">
+							<div class="slash-menu-details-row">
+								<span class="slash-menu-label">{cmd.label}</span>
+								{#if cmd.badge}
+									<span class="slash-menu-badge">{cmd.badge}</span>
+								{/if}
+							</div>
+							{#if cmd.description}
+								<span class="slash-menu-desc">{cmd.description}</span>
+							{/if}
+						</div>
 					</button>
 				{/each}
 			{/if}
@@ -6325,6 +7077,246 @@
 		transform: scale(1.15);
 	}
 
+	/* ═══ Custom Color Picker & Font Selector Dropdown Styles ═══ */
+	.color-picker-dropdown {
+		padding: 10px;
+		width: 180px;
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+	}
+
+	.color-picker-dropdown .color-grid {
+		display: grid;
+		grid-template-columns: repeat(4, 1fr);
+		gap: 6px;
+	}
+
+	.color-picker-dropdown .color-swatch {
+		width: 28px;
+		height: 28px;
+		border-radius: 6px;
+		border: 1px solid var(--border-color);
+		cursor: pointer;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 0;
+		min-width: 0;
+		transition: transform 0.15s ease, border-color 0.15s ease;
+	}
+
+	.color-picker-dropdown .color-swatch:hover {
+		transform: scale(1.15);
+		border-color: var(--accent);
+	}
+
+	.dropdown-divider {
+		height: 1px;
+		background: var(--border-color);
+		margin: 4px 0;
+	}
+
+	.custom-color-section, .recent-colors-section {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+	}
+
+	.section-title {
+		font-size: 10px;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		color: var(--text-tertiary);
+		font-weight: 600;
+	}
+
+	.custom-color-inputs {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		height: 28px;
+	}
+
+	.native-picker-label {
+		position: relative;
+		display: block;
+		width: 28px;
+		height: 28px;
+		border-radius: 6px;
+		border: 1px solid var(--border-color);
+		cursor: pointer;
+		overflow: hidden;
+		flex-shrink: 0;
+	}
+
+	.native-picker-label input[type="color"] {
+		position: absolute;
+		top: 0;
+		left: 0;
+		width: 100%;
+		height: 100%;
+		opacity: 0;
+		cursor: pointer;
+		padding: 0;
+		margin: 0;
+		border: none;
+	}
+
+	.picker-preview {
+		display: block;
+		width: 100%;
+		height: 100%;
+		border-radius: 4px;
+	}
+
+	.hex-input {
+		flex: 1;
+		width: 100%;
+		height: 100%;
+		background: var(--bg-secondary);
+		border: 1px solid var(--border-color);
+		border-radius: 6px;
+		color: var(--text-primary);
+		font-family: var(--font-mono);
+		font-size: 11px;
+		padding: 0 6px;
+		min-width: 0;
+		outline: none;
+		transition: border-color 0.15s ease;
+	}
+
+	.hex-input:focus {
+		border-color: var(--accent);
+	}
+
+	.apply-btn {
+		height: 100%;
+		padding: 0 8px !important;
+		background: var(--accent) !important;
+		color: white !important;
+		font-size: 11px !important;
+		font-weight: 500;
+		border-radius: 6px !important;
+		border: none;
+		cursor: pointer;
+		width: auto !important;
+		text-align: center !important;
+		display: flex !important;
+		align-items: center;
+		justify-content: center;
+		flex-shrink: 0;
+		transition: background 0.15s ease;
+	}
+
+	.apply-btn:hover {
+		background: var(--accent-hover) !important;
+	}
+
+	.recent-swatches {
+		display: flex;
+		gap: 6px;
+		flex-wrap: wrap;
+	}
+
+	.recent-swatches .recent-swatch {
+		width: 24px !important;
+		height: 24px !important;
+	}
+
+	.font-select-btn {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		padding: 0 8px;
+		height: 28px;
+		min-width: 80px;
+		max-width: 120px;
+		justify-content: space-between;
+	}
+
+	.font-select-btn .font-label {
+		font-size: 13px;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.font-dropdown-list {
+		min-width: 180px;
+		padding: 8px;
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+	}
+
+	.font-options-container {
+		display: flex;
+		flex-direction: column;
+		max-height: 200px;
+		overflow-y: auto;
+		gap: 2px;
+	}
+
+	.font-option-row {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		width: 100%;
+	}
+
+	.font-option-row button {
+		flex: 1;
+		text-align: left;
+	}
+
+	.font-delete-btn {
+		width: 24px !important;
+		height: 24px !important;
+		padding: 0 !important;
+		display: flex !important;
+		align-items: center;
+		justify-content: center;
+		flex-shrink: 0;
+		border-radius: 4px;
+		cursor: pointer;
+	}
+
+	.font-delete-btn:hover {
+		background: var(--bg-hover) !important;
+	}
+
+	.add-font-section {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+	}
+
+	.add-font-inputs {
+		display: flex;
+		gap: 6px;
+		height: 28px;
+	}
+
+	.font-input {
+		flex: 1;
+		width: 100%;
+		height: 100%;
+		background: var(--bg-secondary);
+		border: 1px solid var(--border-color);
+		border-radius: 6px;
+		color: var(--text-primary);
+		font-size: 11px;
+		padding: 0 6px;
+		min-width: 0;
+		outline: none;
+		transition: border-color 0.15s ease;
+	}
+
+	.font-input:focus {
+		border-color: var(--accent);
+	}
+
 	.insert-dropdown {
 		min-width: 180px;
 	}
@@ -6768,11 +7760,14 @@
 	}
 
 	:global(.tiptap-wrapper .tiptap pre) {
-		background: color-mix(in srgb, var(--accent) 8%, var(--bg-tertiary));
+		background: var(--bg-surface);
+		border: 1px solid var(--border-highlight);
 		border-radius: 8px;
-		padding: 16px;
-		margin: 1em 0;
+		padding: 38px 16px 16px 16px;
+		margin: 1.5em 0;
 		position: relative;
+		overflow: hidden;
+		box-shadow: var(--shadow-medium, 0 4px 12px rgba(0, 0, 0, 0.15));
 	}
 
 	:global(.tiptap-wrapper .tiptap pre code) {
@@ -6784,29 +7779,54 @@
 		line-height: 1.5;
 	}
 
-	:global(.tiptap-wrapper .tiptap pre)::after {
-		content: attr(data-language);
+	/* Terminal window header bar */
+	:global(.tiptap-wrapper .tiptap pre)::before {
+		content: "";
 		position: absolute;
-		top: 6px;
-		right: 6px;
-		padding: 2px 6px;
-		border-radius: 4px;
-		background: transparent;
-		color: var(--text-tertiary);
-		font-size: 11px;
-		font-family: 'JetBrains Mono', 'Fira Code', monospace;
-		cursor: pointer;
-		opacity: 0;
-		pointer-events: none;
+		top: 0;
+		left: 0;
+		right: 0;
+		height: 30px;
+		background-color: var(--bg-mid-dark);
+		border-bottom: 1px solid var(--border-highlight);
+		/* Three window control dots (red, yellow, green) */
+		background-image: 
+			radial-gradient(circle 3px at 16px 15px, #ff5f56 100%, transparent 100%),
+			radial-gradient(circle 3px at 28px 15px, #ffbd2e 100%, transparent 100%),
+			radial-gradient(circle 3px at 40px 15px, #27c93f 100%, transparent 100%);
 		z-index: 1;
+		pointer-events: none;
+	}
+
+	:global(.tiptap-wrapper .tiptap pre)::after {
+		content: attr(data-language) ' ▾';
+		position: absolute;
+		top: 4px;
+		right: 8px;
+		padding: 2px 8px;
+		border-radius: 4px;
+		background: var(--bg-surface);
+		border: 1px solid var(--border-highlight);
+		color: var(--text-secondary);
+		font-size: 11px;
+		font-family: var(--font-sans, sans-serif);
+		cursor: pointer;
+		opacity: 0.9;
+		pointer-events: auto;
+		z-index: 10;
+		text-transform: capitalize;
+		transition: background-color 0.15s, border-color 0.15s, opacity 0.15s;
 	}
 
 	:global(.tiptap-wrapper .tiptap pre[data-language=""])::after {
-		content: '•••';
+		content: 'Plain Text ▾';
 	}
 
 	:global(.tiptap-wrapper .tiptap pre:hover)::after {
-		opacity: 0.7;
+		opacity: 1;
+		background: var(--bg-card-hover);
+		border-color: var(--accent);
+		color: var(--text-primary);
 	}
 
 	/* Syntax highlighting - light mode */
@@ -7139,21 +8159,51 @@
 		border-radius: 8px;
 		box-shadow: var(--shadow-lg);
 		padding: 4px;
-		max-height: 280px;
-		overflow-y: auto;
-		min-width: 130px;
+		max-height: 320px;
+		display: flex;
+		flex-direction: column;
+		min-width: 200px;
 		z-index: 2001;
 	}
 
-	.code-lang-dropdown::-webkit-scrollbar {
+	.code-lang-search-wrapper {
+		padding: 6px;
+		border-bottom: 1px solid var(--border-color);
+		margin-bottom: 4px;
+	}
+
+	.code-lang-search {
+		width: 100%;
+		box-sizing: border-box;
+		padding: 6px 10px;
+		border: 1px solid var(--border-color);
+		border-radius: 6px;
+		background: var(--bg-secondary);
+		color: var(--text-primary);
+		font-size: 13px;
+		outline: none;
+		transition: border-color 0.15s;
+	}
+
+	.code-lang-search:focus {
+		border-color: var(--accent);
+	}
+
+	.code-lang-options-list {
+		flex: 1;
+		overflow-y: auto;
+		max-height: 240px;
+	}
+
+	.code-lang-options-list::-webkit-scrollbar {
 		width: 5px;
 	}
 
-	.code-lang-dropdown::-webkit-scrollbar-track {
+	.code-lang-options-list::-webkit-scrollbar-track {
 		background: transparent;
 	}
 
-	.code-lang-dropdown::-webkit-scrollbar-thumb {
+	.code-lang-options-list::-webkit-scrollbar-thumb {
 		background: var(--border-color);
 		border-radius: 3px;
 	}
@@ -8257,44 +9307,62 @@
 
 	.slash-menu {
 		position: fixed;
-		background: var(--bg-primary);
-		border: 1px solid var(--border-color);
+		background: #1e1e1e;
+		border: 1px solid #2d2d2d;
 		border-radius: 10px;
-		box-shadow: var(--shadow-lg);
-		padding: 4px;
-		min-width: 220px;
-		max-height: 300px;
+		box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+		padding: 6px 4px;
+		min-width: 280px;
+		max-height: 360px;
 		overflow-y: auto;
 		z-index: 1501;
 	}
 
 	.slash-menu::-webkit-scrollbar {
-		width: 4px;
+		width: 6px;
 	}
 
 	.slash-menu::-webkit-scrollbar-thumb {
-		background: var(--text-tertiary);
-		border-radius: 2px;
+		background: #444;
+		border-radius: 3px;
+	}
+
+	.slash-menu-category-divider {
+		height: 1px;
+		background: #2d2d2d;
+		margin: 6px 4px;
+	}
+
+	.slash-menu-category-header {
+		font-size: 10px;
+		text-transform: uppercase;
+		letter-spacing: 0.08em;
+		color: #666666;
+		font-weight: 700;
+		padding: 8px 12px 4px 12px;
 	}
 
 	.slash-menu-item {
 		display: flex;
 		align-items: center;
-		gap: 10px;
-		width: 100%;
-		padding: 8px 12px;
+		gap: 12px;
+		width: calc(100% - 8px);
+		margin: 0 4px;
+		padding: 8px 10px;
 		border: none;
 		background: none;
-		color: var(--text-primary);
+		color: #e0e0e0;
 		font-size: 13px;
 		cursor: pointer;
 		border-radius: 6px;
 		text-align: left;
+		transition: background 0.15s ease;
 	}
 
 	.slash-menu-item:hover,
 	.slash-menu-item.selected {
-		background: var(--bg-hover);
+		background: #2d2d2d;
+		color: #ffffff;
 	}
 
 	.slash-menu-icon {
@@ -8304,20 +9372,231 @@
 		width: 28px;
 		height: 28px;
 		border-radius: 6px;
-		background: color-mix(in srgb, var(--accent) 12%, transparent);
-		color: var(--accent);
+		background: #2b2b2b;
+		color: #aaaaaa;
 		flex-shrink: 0;
 	}
 
-	.slash-menu-label {
+	.slash-menu-item:hover .slash-menu-icon,
+	.slash-menu-item.selected .slash-menu-icon {
+		background: #3a3a3a;
+		color: #ffffff;
+	}
+
+	.slash-menu-details {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
 		flex: 1;
+		min-width: 0;
+	}
+
+	.slash-menu-details-row {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+
+	.slash-menu-label {
+		font-weight: 500;
+		font-size: 13px;
+		color: #e0e0e0;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.slash-menu-item:hover .slash-menu-label,
+	.slash-menu-item.selected .slash-menu-label {
+		color: #ffffff;
+	}
+
+	.slash-menu-badge {
+		background: rgba(59, 130, 246, 0.15);
+		color: #60a5fa;
+		border: 1px solid rgba(59, 130, 246, 0.3);
+		border-radius: 4px;
+		padding: 1px 5px;
+		font-size: 9px;
+		font-weight: 600;
+		line-height: 1;
+		text-transform: uppercase;
+		letter-spacing: 0.02em;
+	}
+
+	.slash-menu-desc {
+		font-size: 11px;
+		color: #777777;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.slash-menu-item:hover .slash-menu-desc,
+	.slash-menu-item.selected .slash-menu-desc {
+		color: #999999;
 	}
 
 	.slash-menu-empty {
-		padding: 12px 16px;
-		color: var(--text-tertiary);
+		padding: 16px;
+		color: #666666;
 		font-size: 13px;
 		text-align: center;
+	}
+
+	.slash-font-picker-section {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		padding: 4px;
+		margin: 0 4px;
+	}
+
+	.slash-font-picker-section.has-scroller {
+		max-height: 106px;
+		overflow-y: auto;
+	}
+
+	.slash-font-picker-section::-webkit-scrollbar {
+		width: 4px;
+	}
+
+	.slash-font-picker-section::-webkit-scrollbar-thumb {
+		background: #444;
+		border-radius: 2px;
+	}
+
+	.slash-font-item {
+		display: block;
+		width: 100%;
+		padding: 8px 12px;
+		border: none;
+		background: none;
+		color: #e0e0e0;
+		font-size: 13px;
+		cursor: pointer;
+		border-radius: 6px;
+		text-align: left;
+		transition: background 0.15s ease, color 0.15s ease;
+	}
+
+	.slash-font-item:hover,
+	.slash-font-item.selected {
+		background: #2d2d2d;
+		color: #ffffff;
+	}
+
+	.slash-size-picker-section {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		padding: 4px;
+		margin: 0 4px;
+	}
+
+	.slash-size-picker-section.has-scroller {
+		max-height: 106px;
+		overflow-y: auto;
+	}
+
+	.slash-size-picker-section::-webkit-scrollbar {
+		width: 4px;
+	}
+
+	.slash-size-picker-section::-webkit-scrollbar-thumb {
+		background: #444;
+		border-radius: 2px;
+	}
+
+	.slash-size-item {
+		display: block;
+		width: 100%;
+		padding: 8px 12px;
+		border: none;
+		background: none;
+		color: #e0e0e0;
+		font-size: 13px;
+		cursor: pointer;
+		border-radius: 6px;
+		text-align: left;
+		transition: background 0.15s ease, color 0.15s ease;
+	}
+
+	.slash-size-item:hover,
+	.slash-size-item.selected {
+		background: #2d2d2d;
+		color: #ffffff;
+	}
+
+	/* Callout block styling */
+	:global(.tiptap-wrapper .tiptap [data-type="callout"]) {
+		margin: 1.25em 0;
+		padding: 14px 16px 14px 18px;
+		border-left: 4px solid var(--accent);
+		border-radius: 0 8px 8px 0;
+		background: var(--bg-secondary);
+	}
+
+	:global(.tiptap-wrapper .tiptap [data-type="callout"]::before) {
+		display: block;
+		font-weight: 700;
+		font-size: 11px;
+		margin-bottom: 6px;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+	}
+
+	:global(.tiptap-wrapper .tiptap [data-type="callout"] > p:first-of-type) {
+		margin-top: 0;
+	}
+
+	:global(.tiptap-wrapper .tiptap [data-type="callout"] > p:last-of-type) {
+		margin-bottom: 0;
+	}
+
+	:global(.tiptap-wrapper .tiptap [data-type="callout"].callout-note) {
+		border-color: #3b82f6;
+		background: rgba(59, 130, 246, 0.07);
+	}
+	:global(.tiptap-wrapper .tiptap [data-type="callout"].callout-note::before) {
+		content: "ℹ️ NOTE";
+		color: #3b82f6;
+	}
+
+	:global(.tiptap-wrapper .tiptap [data-type="callout"].callout-tip) {
+		border-color: #10b981;
+		background: rgba(16, 185, 129, 0.07);
+	}
+	:global(.tiptap-wrapper .tiptap [data-type="callout"].callout-tip::before) {
+		content: "💡 TIP";
+		color: #10b981;
+	}
+
+	:global(.tiptap-wrapper .tiptap [data-type="callout"].callout-important) {
+		border-color: #8b5cf6;
+		background: rgba(139, 92, 246, 0.07);
+	}
+	:global(.tiptap-wrapper .tiptap [data-type="callout"].callout-important::before) {
+		content: "🔥 IMPORTANT";
+		color: #8b5cf6;
+	}
+
+	:global(.tiptap-wrapper .tiptap [data-type="callout"].callout-warning) {
+		border-color: #f59e0b;
+		background: rgba(245, 158, 11, 0.07);
+	}
+	:global(.tiptap-wrapper .tiptap [data-type="callout"].callout-warning::before) {
+		content: "⚠️ WARNING";
+		color: #f59e0b;
+	}
+
+	:global(.tiptap-wrapper .tiptap [data-type="callout"].callout-caution) {
+		border-color: #ef4444;
+		background: rgba(239, 68, 68, 0.07);
+	}
+	:global(.tiptap-wrapper .tiptap [data-type="callout"].callout-caution::before) {
+		content: "🚫 CAUTION";
+		color: #ef4444;
 	}
 
 	.slash-table-picker {
