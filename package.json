@@ -19,7 +19,9 @@
     "vite": "^8.0.12"
   },
   "dependencies": {
+    "@types/marked": "^5.0.2",
     "lucide-svelte": "^1.0.1",
+    "marked": "^18.0.5",
     "minisearch": "^7.2.0"
   }
 }

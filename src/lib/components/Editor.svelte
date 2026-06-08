@@ -1,6 +1,7 @@
 <script lang="ts">
   import { appState } from '../stores/appState.svelte';
-  import { Save, HelpCircle, Network, ArrowLeft, BookOpen, AlertTriangle } from 'lucide-svelte';
+  import { Save, HelpCircle, Network, ArrowLeft, BookOpen, AlertTriangle, Eye, Edit3, Columns } from 'lucide-svelte';
+  import { marked } from 'marked';
 
   // State to track if graph view is toggled open on the right
   let { showGraph = $bindable(false) } = $props();
@@ -66,6 +67,77 @@
       textarea.setSelectionRange(start + 2, start + 2 + selected.length);
     }, 0);
   }
+
+  // View mode state (Edit, Split, Preview)
+  let viewMode = $state<'edit' | 'split' | 'preview'>((localStorage.getItem('mynotes_editor_view_mode') as any) || 'edit');
+
+  function setViewMode(mode: 'edit' | 'split' | 'preview') {
+    viewMode = mode;
+    localStorage.setItem('mynotes_editor_view_mode', mode);
+  }
+
+  // Preprocess Markdown & parse with marked
+  let previewHtml = $derived.by(() => {
+    const md = appState.activeNoteContent;
+    if (!md) return '';
+    
+    // Preprocess wikilinks: [[Note Title]] or [[Note Title|Display Name]]
+    let processed = md.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (match, path, display) => {
+      const displayText = display ? display.trim() : path.trim();
+      let targetPath = path.trim();
+      if (!targetPath.endsWith('.md')) {
+        targetPath += '.md';
+      }
+      return `<a href="#" class="wikilink" data-path="${encodeURIComponent(targetPath)}">${displayText}</a>`;
+    });
+
+    try {
+      return marked.parse(processed, { async: false }) as string;
+    } catch (e) {
+      console.error('Failed to parse Markdown:', e);
+      return `<p style="color: var(--semantic-error);">Error rendering preview: ${e}</p>`;
+    }
+  });
+
+  // Wikilink click navigation handler
+  function handlePreviewClick(e: MouseEvent) {
+    const target = e.target as HTMLElement;
+    const wikilink = target.closest('.wikilink') as HTMLElement;
+    if (wikilink) {
+      e.preventDefault();
+      const path = decodeURIComponent(wikilink.getAttribute('data-path') || '');
+      if (path) {
+        let resolvedPath = path;
+        if (appState.activeNotePath && appState.activeNotePath.includes('/')) {
+          const folder = appState.activeNotePath.substring(0, appState.activeNotePath.lastIndexOf('/'));
+          if (!path.startsWith('/')) {
+            resolvedPath = `${folder}/${path}`;
+          }
+        }
+
+        const noteExists = appState.notes.some(n => n.path.toLowerCase() === resolvedPath.toLowerCase());
+        if (noteExists) {
+          appState.selectNote(resolvedPath);
+        } else {
+          const directMatch = appState.notes.some(n => n.path.toLowerCase() === path.toLowerCase());
+          if (directMatch) {
+            appState.selectNote(path);
+          } else {
+            const filenameMatch = appState.notes.find(n => n.name.toLowerCase() === path.replace(/\.md$/, '').toLowerCase());
+            if (filenameMatch) {
+              appState.selectNote(filenameMatch.path);
+            } else {
+              // Create new note in the active directory folder
+              const folder = appState.activeNotePath && appState.activeNotePath.includes('/')
+                ? appState.activeNotePath.substring(0, appState.activeNotePath.lastIndexOf('/'))
+                : null;
+              appState.createNote(path.replace(/\.md$/, ''), folder);
+            }
+          }
+        }
+      }
+    }
+  }
 </script>
 
 <div class="editor-container flex-col">
@@ -105,6 +177,34 @@
           <span class="btn-label">Visualizer</span>
         </button>
 
+        <!-- Segmented View Toggle -->
+        <div class="segmented-control flex-row">
+          <button 
+            class="btn-segment" 
+            class:active={viewMode === 'edit'} 
+            onclick={() => setViewMode('edit')}
+            title="Edit Mode"
+          >
+            <Edit3 size={15} />
+          </button>
+          <button 
+            class="btn-segment" 
+            class:active={viewMode === 'split'} 
+            onclick={() => setViewMode('split')}
+            title="Split View"
+          >
+            <Columns size={15} />
+          </button>
+          <button 
+            class="btn-segment" 
+            class:active={viewMode === 'preview'} 
+            onclick={() => setViewMode('preview')}
+            title="Preview Mode"
+          >
+            <Eye size={15} />
+          </button>
+        </div>
+
         <!-- Circular Play/Save Button -->
         <button 
           class="btn-circle btn-circle-primary save-btn" 
@@ -118,14 +218,31 @@
       </div>
     </div>
 
-    <!-- Textarea Editing Panel -->
-    <div class="editor-body">
-      <textarea 
-        class="editor-textarea font-mono" 
-        value={appState.activeNoteContent} 
-        oninput={handleContentInput}
-        placeholder="Start writing in markdown..."
-      ></textarea>
+    <!-- Textarea Editing Panel / Preview Panel Workspace -->
+    <div class="editor-body flex-row">
+      {#if viewMode !== 'preview'}
+        <div class="editor-pane">
+          <textarea 
+            class="editor-textarea font-mono" 
+            value={appState.activeNoteContent} 
+            oninput={handleContentInput}
+            placeholder="Start writing in markdown..."
+          ></textarea>
+        </div>
+      {/if}
+
+      {#if viewMode === 'split'}
+        <div class="editor-separator"></div>
+      {/if}
+
+      {#if viewMode !== 'edit'}
+        <div 
+          class="preview-pane markdown-body" 
+          onclick={handlePreviewClick}
+        >
+          {@html previewHtml}
+        </div>
+      {/if}
     </div>
 
     <!-- Bottom Player / Status Bar -->
@@ -274,6 +391,8 @@
 
   .editor-body {
     flex-grow: 1;
+    display: flex;
+    flex-direction: row;
     overflow: hidden;
     padding: 16px 24px;
     background-color: var(--bg-base);
@@ -386,5 +505,195 @@
 
   .select-vault-btn {
     margin-top: 8px;
+  }
+
+  /* Segmented view controls */
+  .segmented-control {
+    background-color: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-pill);
+    padding: 2px;
+    gap: 2px;
+    flex-shrink: 0;
+  }
+
+  .btn-segment {
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--text-secondary);
+    width: 30px;
+    height: 30px;
+    border-radius: var(--radius-pill);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: color 0.2s, background-color 0.2s;
+  }
+
+  .btn-segment:hover {
+    color: var(--text-primary);
+    background-color: rgba(255, 255, 255, 0.03);
+  }
+
+  .btn-segment.active {
+    color: var(--accent);
+    background-color: rgba(255, 255, 255, 0.08);
+  }
+
+  /* Split and preview panes */
+  .editor-pane {
+    flex: 1;
+    height: 100%;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .editor-separator {
+    width: 1px;
+    height: 100%;
+    background-color: var(--border-color);
+    margin: 0 16px;
+    flex-shrink: 0;
+  }
+
+  .preview-pane {
+    flex: 1;
+    height: 100%;
+    overflow-y: auto;
+    color: var(--text-primary);
+    line-height: 1.6;
+    font-size: 14px;
+    padding-right: 8px;
+  }
+
+  /* Custom markdown renderer elements styling */
+  .preview-pane :global(h1), .preview-pane :global(h2), .preview-pane :global(h3), .preview-pane :global(h4), .preview-pane :global(h5), .preview-pane :global(h6) {
+    color: var(--text-primary);
+    font-weight: 800;
+    margin-top: 1.5em;
+    margin-bottom: 0.5em;
+    line-height: 1.35;
+  }
+
+  .preview-pane :global(h1) {
+    font-size: 24px;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 8px;
+    margin-top: 0;
+  }
+
+  .preview-pane :global(h2) {
+    font-size: 18px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    padding-bottom: 6px;
+  }
+
+  .preview-pane :global(h3) {
+    font-size: 15px;
+  }
+
+  .preview-pane :global(p) {
+    margin-top: 0;
+    margin-bottom: 1em;
+    font-size: 13.5px;
+    color: var(--text-secondary);
+  }
+
+  .preview-pane :global(a) {
+    color: var(--accent);
+    text-decoration: none;
+    transition: opacity 0.2s;
+  }
+
+  .preview-pane :global(a:hover) {
+    opacity: 0.8;
+  }
+
+  .preview-pane :global(.wikilink) {
+    color: var(--accent);
+    text-decoration: none;
+    border-bottom: 1px dashed var(--accent);
+    font-weight: 600;
+  }
+
+  .preview-pane :global(ul), .preview-pane :global(ol) {
+    margin-top: 0;
+    margin-bottom: 1em;
+    padding-left: 20px;
+    color: var(--text-secondary);
+    font-size: 13.5px;
+  }
+
+  .preview-pane :global(li) {
+    margin-bottom: 0.25em;
+  }
+
+  .preview-pane :global(code) {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    background-color: rgba(255, 255, 255, 0.05);
+    padding: 2px 5px;
+    border-radius: 4px;
+    color: #e2e8f0;
+  }
+
+  .preview-pane :global(pre) {
+    background-color: var(--bg-surface);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-medium);
+    padding: 14px;
+    overflow-x: auto;
+    margin-top: 0;
+    margin-bottom: 1em;
+  }
+
+  .preview-pane :global(pre code) {
+    background-color: transparent;
+    padding: 0;
+    border-radius: 0;
+    color: inherit;
+    font-size: 12.5px;
+    line-height: 1.5;
+  }
+
+  .preview-pane :global(blockquote) {
+    margin: 0 0 1em 0;
+    padding: 4px 0 4px 16px;
+    border-left: 3px solid var(--accent);
+    color: var(--text-secondary);
+    font-style: italic;
+    background-color: rgba(255, 255, 255, 0.01);
+  }
+
+  .preview-pane :global(hr) {
+    height: 1px;
+    background-color: var(--border-color);
+    border: none;
+    margin: 24px 0;
+  }
+
+  .preview-pane :global(table) {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 1em;
+    font-size: 13px;
+  }
+
+  .preview-pane :global(th), .preview-pane :global(td) {
+    border: 1px solid var(--border-color);
+    padding: 8px 12px;
+  }
+
+  .preview-pane :global(th) {
+    background-color: rgba(255, 255, 255, 0.03);
+    font-weight: 700;
+    color: var(--text-primary);
+  }
+
+  .preview-pane :global(td) {
+    color: var(--text-secondary);
   }
 </style>
