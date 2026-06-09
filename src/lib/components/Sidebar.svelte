@@ -490,4 +490,10 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+
+  @media (max-width: 768px) {
+    .item-delete-btn {
+      opacity: 1;
+    }
+  }
 </style>

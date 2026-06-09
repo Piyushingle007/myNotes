@@ -731,6 +731,62 @@
   </div>
 {/if}
 
+<!-- Toast Notifications Container -->
+<div class="toast-container flex-col">
+  {#each appState.toasts as toast (toast.id)}
+    <div class="toast-item {toast.type} flex-row" class:loading={toast.loading}>
+      <div class="toast-icon-wrapper flex-row">
+        {#if toast.loading}
+          <svg class="toast-spinner spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="2" x2="12" y2="6"></line>
+            <line x1="12" y1="18" x2="12" y2="22"></line>
+            <line x1="4.93" y1="4.93" x2="8.46" y2="8.46"></line>
+            <line x1="15.54" y1="15.54" x2="19.07" y2="19.07"></line>
+            <line x1="2" y1="12" x2="6" y2="12"></line>
+            <line x1="18" y1="12" x2="22" y2="12"></line>
+            <line x1="4.93" y1="19.07" x2="8.46" y2="15.54"></line>
+            <line x1="15.54" y1="8.46" x2="19.07" y2="4.93"></line>
+          </svg>
+        {:else if toast.type === 'success'}
+          <svg class="toast-icon success" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="20 6 9 17 4 12"></polyline>
+          </svg>
+        {:else if toast.type === 'error'}
+          <svg class="toast-icon error" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="15" y1="9" x2="9" y2="15"></line>
+            <line x1="9" y1="9" x2="15" y2="15"></line>
+          </svg>
+        {:else if toast.type === 'warning'}
+          <svg class="toast-icon warning" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+            <line x1="12" y1="9" x2="12" y2="13"></line>
+            <line x1="12" y1="17" x2="12.01" y2="17"></line>
+          </svg>
+        {:else}
+          <svg class="toast-icon info" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="16" x2="12" y2="12"></line>
+            <line x1="12" y1="8" x2="12.01" y2="8"></line>
+          </svg>
+        {/if}
+      </div>
+      <div class="toast-body flex-col">
+        {#if toast.title}
+          <span class="toast-title">{toast.title}</span>
+        {/if}
+        <span class="toast-message">{toast.message}</span>
+      </div>
+      <button class="toast-close-btn flex-row" onclick={() => appState.dismissToast(toast.id)} aria-label="Close notification">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </button>
+    </div>
+  {/each}
+</div>
+
 <style>
   .flex-col {
     display: flex;
@@ -1488,5 +1544,150 @@
 
   @keyframes sync-spin {
     to { transform: rotate(360deg); }
+  }
+
+  /* ============================================== */
+  /* Toast Notification System Styles               */
+  /* ============================================== */
+  .toast-container {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    z-index: 99999;
+    gap: 10px;
+    max-width: 380px;
+    width: calc(100vw - 48px);
+    pointer-events: none;
+  }
+
+  .toast-item {
+    pointer-events: auto;
+    background: rgba(18, 20, 24, 0.85);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: var(--radius-standard, 10px);
+    padding: 12px 16px;
+    box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.5);
+    color: var(--text-primary, #ffffff);
+    gap: 12px;
+    align-items: flex-start;
+    animation: toast-slide-in 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    transition: opacity 0.25s, transform 0.25s, border-color 0.25s;
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* Success Theme */
+  .toast-item.success {
+    border-left: 4px solid #10b981;
+    background: rgba(10, 25, 20, 0.88);
+  }
+  .toast-icon.success {
+    color: #10b981;
+  }
+
+  /* Error Theme */
+  .toast-item.error {
+    border-left: 4px solid #ef4444;
+    background: rgba(30, 15, 15, 0.88);
+  }
+  .toast-icon.error {
+    color: #ef4444;
+  }
+
+  /* Warning Theme */
+  .toast-item.warning {
+    border-left: 4px solid #f59e0b;
+    background: rgba(30, 24, 15, 0.88);
+  }
+  .toast-icon.warning {
+    color: #f59e0b;
+  }
+
+  /* Info Theme */
+  .toast-item.info {
+    border-left: 4px solid var(--accent, #38bdf8);
+    background: rgba(15, 22, 30, 0.88);
+  }
+  .toast-icon.info {
+    color: var(--accent, #38bdf8);
+  }
+
+  /* Loading State Spinner */
+  .toast-item.loading {
+    border-left: 4px solid var(--accent, #38bdf8);
+  }
+  .toast-spinner {
+    color: var(--accent, #38bdf8);
+  }
+
+  .toast-icon-wrapper {
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+
+  .toast-body {
+    flex-grow: 1;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  .toast-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-primary);
+  }
+
+  .toast-message {
+    font-size: 13px;
+    line-height: 1.4;
+    color: var(--text-secondary, #a1a1aa);
+    word-break: break-word;
+  }
+
+  .toast-close-btn {
+    background: transparent;
+    border: none;
+    padding: 4px;
+    margin: -4px;
+    color: var(--text-secondary);
+    opacity: 0.5;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: opacity 0.2s, background-color 0.2s;
+    flex-shrink: 0;
+  }
+
+  .toast-close-btn:hover {
+    opacity: 1;
+    background-color: rgba(255, 255, 255, 0.05);
+    color: var(--text-primary);
+  }
+
+  @keyframes toast-slide-in {
+    from {
+      opacity: 0;
+      transform: translateY(12px) scale(0.96);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+
+  /* Responsive Rules for Mobile viewports */
+  @media (max-width: 768px) {
+    .toast-container {
+      bottom: 74px; /* offset for mobile bottom navigation tab bar */
+      right: 16px;
+      left: 16px;
+      max-width: none;
+      width: calc(100% - 32px);
+    }
+    .toast-item {
+      width: 100%;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+    }
   }
 </style>

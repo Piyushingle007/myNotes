@@ -454,4 +454,10 @@
     color: var(--text-secondary);
     max-width: 200px;
   }
+
+  @media (max-width: 768px) {
+    .row-delete-btn {
+      opacity: 1;
+    }
+  }
 </style>

@@ -401,6 +401,15 @@
 		}
 	}
 
+	async function handleDeleteActiveNote() {
+		if (!$activeNotePath) return;
+		if (confirm('Are you sure you want to delete this note?')) {
+			const path = $activeNotePath;
+			$activeNotePath = null;
+			await appState.deleteNote(path);
+		}
+	}
+
 	$effect(() => {
 		if (typeof window !== 'undefined') {
 			const handleKeyDown = (e: KeyboardEvent) => {
@@ -5211,6 +5220,18 @@
 							</svg>
 						</button>
 					</div>
+
+					<!-- Mobile Delete Note Button -->
+					<button
+						class="icon-btn delete-btn"
+						style="padding: 6px; flex-shrink: 0; color: var(--semantic-error, #ff4d4d); margin-left: 4px;"
+						onclick={handleDeleteActiveNote}
+						title="Delete Note"
+					>
+						<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+							<polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>
+						</svg>
+					</button>
 				{/if}
 			</div>
 			{#if !isMobile}
@@ -5326,6 +5347,18 @@
 					</svg>
 				</button>
 				{/if}
+				<!-- Desktop Delete Note Button -->
+				<button
+					class="icon-btn delete-btn"
+					onclick={handleDeleteActiveNote}
+					title="Delete Note"
+					style="color: var(--semantic-error, #ff4d4d);"
+				>
+					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+						<polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>
+					</svg>
+				</button>
+
 				<button
 					class="icon-btn"
 					class:active={$sourceMode}

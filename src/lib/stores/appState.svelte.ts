@@ -10,6 +10,15 @@ export interface SyncMapping {
   lastSyncLocalTime: number;
 }
 
+export interface Toast {
+  id: string;
+  message: string;
+  type: 'success' | 'info' | 'error' | 'warning';
+  title?: string;
+  loading?: boolean;
+  duration?: number;
+}
+
 class AppState {
   // Reactive states
   vaultName = $state<string | null>(null);
@@ -86,6 +95,39 @@ class AppState {
   syncEnabled = $state<boolean>(localStorage.getItem('mynotes_sync_enabled') === 'true');
   editorViewMode = $state<'edit' | 'split' | 'preview'>((localStorage.getItem('mynotes_editor_view_mode') as any) || 'edit');
   driveMappings = $state<Record<string, SyncMapping>>({});
+  toasts = $state<Toast[]>([]);
+
+  showToast(message: string, type: 'success' | 'info' | 'error' | 'warning' = 'info', duration = 4000, title?: string, loading = false): string {
+    const id = Math.random().toString(36).substring(2, 9);
+    const newToast: Toast = { id, message, type, title, loading, duration };
+    this.toasts = [...this.toasts, newToast];
+
+    if (duration > 0 && !loading) {
+      setTimeout(() => {
+        this.dismissToast(id);
+      }, duration);
+    }
+    return id;
+  }
+
+  updateToast(id: string, updates: Partial<Omit<Toast, 'id'>>) {
+    this.toasts = this.toasts.map(t => {
+      if (t.id === id) {
+        const updated = { ...t, ...updates };
+        if (t.loading && !updated.loading && updated.duration && updated.duration > 0) {
+          setTimeout(() => {
+            this.dismissToast(id);
+          }, updated.duration);
+        }
+        return updated;
+      }
+      return t;
+    });
+  }
+
+  dismissToast(id: string) {
+    this.toasts = this.toasts.filter(t => t.id !== id);
+  }
 
   isNoteSynced(notePath: string | null): boolean {
     if (!notePath) return true;
@@ -422,6 +464,9 @@ class AppState {
   async syncNotes() {
     if (!this.syncEnabled || !this.googleConnected || !this.syncService) return;
 
+    let remoteDeletionsCount = 0;
+    let remoteDeletionsFailedCount = 0;
+
     this.syncStatus = 'syncing';
     try {
       console.log('--- STARTING GOOGLE DRIVE SYNC CYCLE ---');
@@ -532,7 +577,13 @@ class AppState {
         } else {
           if (remoteId) {
             console.log('  Note was deleted on Google Drive. Deleting locally...');
-            await this.storage.deleteNote(note.path);
+            const noteName = note.path.split('/').pop()?.replace(/\.md$/, '') || note.path;
+            try {
+              await this.storage.deleteNote(note.path);
+              this.showToast(`Deleted note "${noteName}" locally to match Google Drive deletion.`, 'info', 4000);
+            } catch (err) {
+              console.error(`Failed to delete local note ${note.path}:`, err);
+            }
           } else {
             console.log('  New local note found. Uploading to Google Drive...');
             const uploadRes = await uploadNoteToDrive(note.path, `${note.name}.md`, note.content);
@@ -569,8 +620,10 @@ class AppState {
           console.log(`Note ${oldLocalPath} was deleted locally. Deleting remote file ${remote.path} (ID: ${remote.id}) on Drive...`);
           try {
             await this.syncService.deleteFile(remote.id);
+            remoteDeletionsCount++;
           } catch (e) {
             console.error(`Failed to delete remote file ${remote.id}:`, e);
+            remoteDeletionsFailedCount++;
           }
         } else {
           // This is a brand new remote file from another client. Download it.
@@ -596,6 +649,14 @@ class AppState {
       localStorage.setItem('mynotes_last_synced', String(this.lastSyncedTime));
       this.syncStatus = 'idle';
       console.log('--- SYNC CYCLE COMPLETED SUCCESSFULLY ---');
+
+      if (remoteDeletionsCount > 0 || remoteDeletionsFailedCount > 0) {
+        if (remoteDeletionsFailedCount === 0) {
+          this.showToast(`Successfully synced deletions to Google Drive (${remoteDeletionsCount} file(s) removed).`, 'success', 4000);
+        } else {
+          this.showToast(`Synced deletions to Google Drive: ${remoteDeletionsCount} file(s) removed, ${remoteDeletionsFailedCount} failed.`, 'warning', 5000);
+        }
+      }
     } catch (e: any) {
       console.error('--- SYNC CYCLE FAILED ---', e);
       this.syncStatus = 'error';
@@ -798,33 +859,62 @@ class AppState {
   }
 
   async deleteNote(path: string) {
+    const noteName = path.split('/').pop()?.replace(/\.md$/, '') || path;
+    
     // Read mapping before deleting note to enable deleting on Drive
     const mappings = JSON.parse(localStorage.getItem('mynotes_drive_mappings') || '{}');
-    const remoteId = mappings[path];
+    const mapEntry = mappings[path];
+    const remoteId = mapEntry ? (typeof mapEntry === 'string' ? mapEntry : mapEntry.id) : undefined;
 
-    await this.storage.deleteNote(path);
-    await this.refreshNotes();
-    
-    if (this.activeNotePath === path) {
-      if (this.notes.length > 0) {
-        this.selectNote(this.notes[0].path);
-      } else {
-        this.activeNotePath = null;
-        this.activeNoteContent = '';
-        this.activeNoteTitle = '';
+    try {
+      await this.storage.deleteNote(path);
+      await this.refreshNotes();
+      
+      this.showToast(`Deleted note "${noteName}" locally.`, 'success', 3000);
+      
+      if (this.activeNotePath === path) {
+        if (this.notes.length > 0) {
+          this.selectNote(this.notes[0].path);
+        } else {
+          this.activeNotePath = null;
+          this.activeNoteContent = '';
+          this.activeNoteTitle = '';
+        }
       }
+    } catch (err) {
+      console.error('Local delete failed', err);
+      this.showToast(`Failed to delete note "${noteName}" locally.`, 'error', 4000);
+      return;
     }
 
     // Trigger remote deletion & update mappings
-    if (this.syncEnabled && this.googleConnected && this.syncService && remoteId) {
-      try {
-        await this.syncService.deleteFile(remoteId);
-        const activeMappings = { ...mappings };
-        delete activeMappings[path];
-        localStorage.setItem('mynotes_drive_mappings', JSON.stringify(activeMappings));
-        this.driveMappings = activeMappings;
-      } catch (e) {
-        console.error('Remote delete failed', e);
+    if (this.syncEnabled && this.googleConnected && this.syncService) {
+      if (remoteId) {
+        const toastId = this.showToast(`Syncing deletion of "${noteName}" to Google Drive...`, 'info', 0, undefined, true);
+        try {
+          await this.syncService.deleteFile(remoteId);
+          const activeMappings = { ...mappings };
+          delete activeMappings[path];
+          localStorage.setItem('mynotes_drive_mappings', JSON.stringify(activeMappings));
+          this.driveMappings = activeMappings;
+          
+          this.updateToast(toastId, {
+            message: `Deleted "${noteName}" from Google Drive.`,
+            type: 'success',
+            loading: false,
+            duration: 3000
+          });
+        } catch (e) {
+          console.error('Remote delete failed', e);
+          this.updateToast(toastId, {
+            message: `Could not delete "${noteName}" from Google Drive. Will retry on next sync.`,
+            type: 'warning',
+            loading: false,
+            duration: 4000
+          });
+        }
+      } else {
+        this.showToast(`Note "${noteName}" was not synced to Google Drive (no remote file to delete).`, 'info', 3000);
       }
     }
   }
@@ -844,14 +934,24 @@ class AppState {
   }
 
   async deleteNotebook(path: string) {
-    await this.storage.deleteDirectory(path);
-    await this.refreshNotes();
-    if (this.activeNotebook === path) {
-      this.activeNotebook = null;
+    const notebookName = path.split('/').pop() || path;
+    try {
+      await this.storage.deleteDirectory(path);
+      await this.refreshNotes();
+      this.showToast(`Deleted notebook "${notebookName}" locally.`, 'success', 3000);
+      
+      if (this.activeNotebook === path) {
+        this.activeNotebook = null;
+      }
+    } catch (err) {
+      console.error('Local notebook delete failed', err);
+      this.showToast(`Failed to delete notebook "${notebookName}" locally.`, 'error', 4000);
+      return;
     }
 
     // Trigger auto background sync (which handles cascading deletions based on drive mappings)
     if (this.syncEnabled && this.googleConnected) {
+      this.showToast(`Syncing notebook deletion to Google Drive...`, 'info', 3000);
       this.syncNotes();
     }
   }
