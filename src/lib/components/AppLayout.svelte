@@ -90,19 +90,21 @@
           </button>
           
           <!-- Note title / state placeholder -->
-          <span style="font-size: 14px; font-weight: 700; color: var(--text-primary); text-overflow: ellipsis; overflow: hidden; white-space: nowrap; max-width: 55%;">
-            {appState.activeNoteTitle || 'Editing Note'}
+          <span style="font-size: 14px; font-weight: 700; color: var(--text-primary); text-overflow: ellipsis; overflow: hidden; white-space: nowrap; max-width: 42%;">
+            {appState.activeNoteTitle || 'Note'}
           </span>
           
-          <!-- Save / Close Toolbar -->
-          <button 
-            class="save-icon-btn" 
-            class:dirty={appState.editorDirty}
-            onclick={() => appState.saveActiveNote()}
-            aria-label="Save note"
-          >
-            Save
-          </button>
+          <!-- Save / View Toggle / Close Toolbar -->
+          <div class="flex-row" style="gap: 8px;">
+            <button 
+              class="save-icon-btn" 
+              class:dirty={appState.editorDirty}
+              onclick={() => appState.saveActiveNote()}
+              aria-label="Save note"
+            >
+              Save
+            </button>
+          </div>
         </div>
         <div class="mobile-editor-wrapper">
           <Editor />
@@ -404,6 +406,7 @@
               </div>
             </div>
           </div>
+
         {/if}
       </div>
 
@@ -458,6 +461,8 @@
           <Calendar size={22} />
           <span>Daily</span>
         </button>
+
+
       </div>
     {/if}
   </div>

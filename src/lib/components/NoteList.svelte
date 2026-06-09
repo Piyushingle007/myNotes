@@ -114,10 +114,10 @@
             Show Editor
           </button>
         {/if}
-        <button class="btn-pill btn-pill-primary add-note-btn" onclick={handleCreateNote}>
-          <Plus size={16} />
-          <span>Add Note</span>
-        </button>
+          <button class="btn-pill btn-pill-primary add-note-btn" onclick={handleCreateNote}>
+            <Plus size={16} />
+            <span>Add Note</span>
+          </button>
       </div>
     </div>
   </div>
@@ -173,13 +173,13 @@
         </div>
 
         <div class="col-actions">
-          <button 
-            class="row-delete-btn" 
-            onclick={(e) => handleDeleteNote(note.path, e)}
-            aria-label="Delete note"
-          >
-            <Trash2 size={16} />
-          </button>
+            <button 
+              class="row-delete-btn" 
+              onclick={(e) => handleDeleteNote(note.path, e)}
+              aria-label="Delete note"
+            >
+              <Trash2 size={16} />
+            </button>
         </div>
       </div>
     {:else}

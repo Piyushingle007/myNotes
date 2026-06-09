@@ -226,6 +226,8 @@
 	const sourceMode = writable<boolean>(localStorage.getItem('mynotes_editor_source_mode') === 'true');
 	const focusMode = writable<boolean>(false);
 	const readOnly = writable<boolean>(false);
+	let savedSelection: { from: number; to: number } | null = null;
+	let savedScrollTop: number | null = null;
 	const quickAccessPaths = writable<string[]>([]);
 	const notes = writable<any[]>([]);
 	const navHistory = (() => {
@@ -350,6 +352,67 @@
 			return () => {
 				vv.removeEventListener('resize', updateHeight);
 				vv.removeEventListener('scroll', updateHeight);
+			};
+		}
+	});
+
+	function toggleReadMode() {
+		const newReadOnly = !$readOnly;
+		const editorBody = editorElement?.closest('.editor-body') as HTMLElement | null;
+
+		if (newReadOnly) {
+			// Switch Edit -> Read Mode
+			if (editor) {
+				const { from, to } = editor.state.selection;
+				savedSelection = { from, to };
+				if (editorBody) {
+					savedScrollTop = editorBody.scrollTop;
+				}
+				if ($editorDirty) {
+					forceSave();
+				}
+				ignoreNextUpdate = true; // Ignore update transaction triggered by setEditable
+				editor.setEditable(false);
+			}
+			$readOnly = true;
+		} else {
+			// Switch Read -> Edit Mode
+			if (editor) {
+				ignoreNextUpdate = true; // Ignore update transaction triggered by setEditable
+				editor.setEditable(true);
+			}
+			$readOnly = false;
+
+			tick().then(() => {
+				if (editor) {
+					editor.commands.focus();
+					if (savedSelection) {
+						editor.commands.setTextSelection(savedSelection);
+					}
+					if (savedScrollTop !== null && editorBody) {
+						editorBody.scrollTop = savedScrollTop;
+					}
+				}
+			});
+		}
+
+		if ($activeNotePath) {
+			localStorage.setItem('mynotes_mode_' + $activeNotePath, newReadOnly ? 'read' : 'edit');
+		}
+	}
+
+	$effect(() => {
+		if (typeof window !== 'undefined') {
+			const handleKeyDown = (e: KeyboardEvent) => {
+				const isMod = e.ctrlKey || e.metaKey;
+				if (isMod && e.shiftKey && e.key.toLowerCase() === 'r') {
+					e.preventDefault();
+					toggleReadMode();
+				}
+			};
+			window.addEventListener('keydown', handleKeyDown);
+			return () => {
+				window.removeEventListener('keydown', handleKeyDown);
 			};
 		}
 	});
@@ -2677,6 +2740,7 @@
 		untrack(() => {
 			if (editor) {
 				if (ro && $editorDirty) forceSave();
+				ignoreNextUpdate = true; // Ignore update transaction triggered by setEditable
 				editor.setEditable(!ro);
 			}
 		});
@@ -2825,11 +2889,25 @@
 		lastSourceMode = $sourceMode;
 		isLoadingNote = true;
 		isLargeDoc = content.length > LARGE_DOC_CHARS;
-		// Apply default view mode when switching notes - but new notes always open in edit mode.
-		// Viewer mode (external file) always forces read-only.
+
+		// Clear saved selection and scroll positions when loading a new file
+		savedSelection = null;
+		savedScrollTop = null;
+
+		// Restore previous mode for this file if persisted
+		const savedMode = localStorage.getItem('mynotes_mode_' + path);
+		let shouldBeReadOnly = false;
 		const isViewer = !!get(viewerNote);
 		const isNewNote = $activeNote?.meta.title === 'Untitled' && !content.replace(/^---[\s\S]*?---\s*/, '').trim();
-		const shouldBeReadOnly = isViewer ? true : (isNewNote ? false : ($appConfig?.default_view_mode ?? false));
+
+		if (savedMode === 'read') {
+			shouldBeReadOnly = true;
+		} else if (savedMode === 'edit') {
+			shouldBeReadOnly = false;
+		} else {
+			shouldBeReadOnly = isViewer ? true : (isNewNote ? false : ($appConfig?.default_view_mode ?? false));
+		}
+
 		$readOnly = shouldBeReadOnly;
 		if (editor) editor.setEditable(!shouldBeReadOnly);
 		const editorBody = editorElement?.closest('.editor-body') as HTMLElement | null;
@@ -3867,9 +3945,21 @@
 					// native toggle, and dispatch the attr change ourselves so it persists via
 					// the normal onUpdate -> autoSave path. Edit mode keeps TipTap's behaviour.
 					click: (view, event) => {
+						const target = event.target as HTMLElement;
+						const link = target.closest('a');
+						if (link && get(readOnly)) {
+							const href = link.getAttribute('href');
+							if (href) {
+								event.preventDefault();
+								if (href.startsWith('http://') || href.startsWith('https://')) {
+									openUrl(href);
+									return true;
+								}
+							}
+						}
+
 						if (!get(readOnly)) return false;
 						if (get(viewerNote)) return false; // external viewer files are never saved
-						const target = event.target as HTMLElement;
 						const label = target.closest('li[data-checked] > label');
 						if (!label) return false;
 						// Cancel the native checkbox toggle (and the label->input click cascade)
@@ -4987,7 +5077,7 @@
 	});
 </script>
 
-<div class="editor-container" class:mobile={isMobile}>
+<div class="editor-container" class:mobile={isMobile} class:readonly={$readOnly}>
 	{#if !$activeNote}
 		<div class="empty-editor">
 			<div class="empty-icon">
@@ -5093,6 +5183,34 @@
 							<path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
 						</svg>
 					</button>
+
+					<!-- Mobile Read/Edit Mode Toggle -->
+					<div class="mode-segmented-control mobile" style="margin-left: 4px;">
+						<button
+							type="button"
+							class="mode-segment-btn"
+							class:active={!$readOnly}
+							onclick={() => { if ($readOnly) toggleReadMode(); }}
+							title="Edit Mode"
+						>
+							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+								<path d="M12 20h9"/>
+								<path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>
+							</svg>
+						</button>
+						<button
+							type="button"
+							class="mode-segment-btn"
+							class:active={$readOnly}
+							onclick={() => { if (!$readOnly) toggleReadMode(); }}
+							title="Read-Only Mode"
+						>
+							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+								<path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/>
+								<path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
+							</svg>
+						</button>
+					</div>
 				{/if}
 			</div>
 			{#if !isMobile}
@@ -5107,9 +5225,37 @@
 					</button>
 				</div>
 				{/if}
-				{#if $readOnly}
-					<span class="readonly-indicator">View Mode</span>
-				{/if}
+
+				<!-- Segmented Edit/Read Mode Control -->
+				<div class="mode-segmented-control">
+					<button
+						type="button"
+						class="mode-segment-btn"
+						class:active={!$readOnly}
+						onclick={() => { if ($readOnly) toggleReadMode(); }}
+						title={`Edit Mode (${modKey}+Shift+R)`}
+					>
+						<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+							<path d="M12 20h9"/>
+							<path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>
+						</svg>
+						<span>Edit</span>
+					</button>
+					<button
+						type="button"
+						class="mode-segment-btn"
+						class:active={$readOnly}
+						onclick={() => { if (!$readOnly) toggleReadMode(); }}
+						title={`Read-Only Mode (${modKey}+Shift+R)`}
+					>
+						<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+							<path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/>
+							<path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
+						</svg>
+						<span>Read</span>
+					</button>
+				</div>
+
 				<button
 					class="icon-btn"
 					class:active={noteSearchOpen}
@@ -5260,6 +5406,15 @@
 						</svg>
 						Sync Error
 					</span>
+				{:else if !appState.isNoteSynced($activeNotePath)}
+					<span class="status-badge sync-status pending" title="Local changes saved, waiting to sync with Google Drive. Click to sync now." onclick={async (e) => { e.stopPropagation(); await appState.syncNotes(); }}>
+						<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+							<path d="M17.5 19A3.5 3.5 0 0 0 21 15.5c0-2.79-2.54-4.5-5-4.5-.47 0-.89.09-1.29.27A5 5 0 0 0 5 14c0 .34.05.67.15 1A4.5 4.5 0 0 0 8.5 19H17.5z"/>
+							<polyline points="16 16 12 12 8 16"/>
+							<line x1="12" y1="12" x2="12" y2="21"/>
+						</svg>
+						Pending Sync
+					</span>
 				{:else}
 					<span class="status-badge sync-status synced" title={appState.lastSyncedTime ? 'Synced to Google Drive. Last sync: ' + new Date(appState.lastSyncedTime).toLocaleTimeString() : 'Synced to Google Drive'}>
 						<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -5309,7 +5464,7 @@
 				</div>
 			{/if}
 			<div class="editor-body-row">
-			<div class="editor-body">
+			<div class="editor-body" class:readonly={$readOnly}>
 				{#if isMobile}
 					<!-- Mobile: both views always in DOM, toggled via display to avoid slow editor re-creation -->
 					<textarea
@@ -5545,7 +5700,7 @@
 			</div>
 		</div>
 
-		{#if editorReady && !$sourceMode && !$viewerNote}
+		{#if editorReady && !$sourceMode && !$viewerNote && !$readOnly}
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<div class="editor-formatting-bar" style={isMobile ? `${keyboardHeight > 0 ? `bottom: ${keyboardHeight}px;` : ''}${anyDropdownOpen ? 'overflow: visible;' : ''}` : ''} onclick={() => { headingDropdown = false; colorDropdown = false; highlightDropdown = false; tablePickerOpen = false; alignDropdown = false; insertDropdown = false; }}>
 
@@ -6846,6 +7001,125 @@
 {/if}
 
 <style>
+	.mode-segmented-control {
+		display: inline-flex;
+		align-items: center;
+		background: var(--bg-surface);
+		border: 1px solid var(--border-highlight);
+		border-radius: 6px;
+		padding: 2px;
+		gap: 2px;
+		height: 24px;
+		user-select: none;
+	}
+
+	.mode-segmented-control.mobile {
+		height: 28px;
+		border-radius: 6px;
+	}
+
+	.mode-segment-btn {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		padding: 0 8px;
+		font-size: 11px;
+		font-weight: 600;
+		border-radius: 4px;
+		border: none;
+		background: none;
+		color: var(--text-secondary);
+		cursor: pointer;
+		transition: all 0.2s ease;
+		height: 18px;
+		gap: 4px;
+	}
+
+	.mode-segmented-control.mobile .mode-segment-btn {
+		height: 22px;
+		padding: 0 6px;
+	}
+
+	.mode-segment-btn:hover {
+		color: var(--text-primary);
+		background: var(--bg-mid-dark);
+	}
+
+	.mode-segment-btn.active {
+		color: var(--accent);
+		background: rgba(0, 173, 181, 0.08);
+		border: 1px solid rgba(0, 173, 181, 0.2);
+	}
+
+	.mode-segment-btn.active:hover {
+		background: rgba(0, 173, 181, 0.15);
+	}
+
+	/* Spacing, typography, and visual centering overrides for Read Mode */
+	.editor-body.readonly :global(.tiptap) {
+		cursor: default;
+	}
+
+	.editor-body.readonly :global(.tiptap a) {
+		cursor: pointer;
+	}
+
+	.editor-body.readonly :global(.tiptap pre) {
+		cursor: default;
+	}
+
+	.editor-body.readonly :global(.tiptap [data-type="taskList"] label) {
+		cursor: pointer;
+	}
+
+	.editor-title input[readonly] {
+		cursor: default;
+	}
+
+	.editor-body.readonly :global(.tiptap p) {
+		font-size: 16px;
+		line-height: 1.8;
+		margin-bottom: 1.25em;
+		color: var(--text-primary);
+	}
+
+	.editor-body.readonly :global(.tiptap h1) {
+		font-size: 32px;
+		margin-top: 1.5em;
+		margin-bottom: 0.5em;
+		line-height: 1.35;
+	}
+
+	.editor-body.readonly :global(.tiptap h2) {
+		font-size: 24px;
+		margin-top: 1.4em;
+		margin-bottom: 0.5em;
+		line-height: 1.4;
+	}
+
+	.editor-body.readonly :global(.tiptap h3) {
+		font-size: 20px;
+		margin-top: 1.3em;
+		margin-bottom: 0.5em;
+		line-height: 1.4;
+	}
+
+	@media (min-width: 768px) {
+		.editor-body.readonly .tiptap-wrapper {
+			max-width: 800px;
+			margin: 0 auto;
+			width: 100%;
+			padding: 32px 40px 100px;
+		}
+		.editor-container.readonly .editor-toolbar {
+			max-width: 800px;
+			margin: 0 auto;
+			width: 100%;
+			padding-left: 40px;
+			padding-right: 40px;
+		}
+	}
+
 	.editor-container {
 		display: flex;
 		flex-direction: column;
@@ -7021,6 +7295,18 @@
 	.status-badge.sync-status.error:hover {
 		background: rgba(243, 114, 127, 0.22);
 		border-color: rgba(243, 114, 127, 0.4);
+	}
+
+	.status-badge.sync-status.pending {
+		color: var(--semantic-warning, #ffa42b);
+		background: rgba(250, 204, 21, 0.1);
+		border: 1px solid rgba(250, 204, 21, 0.2);
+		cursor: pointer;
+	}
+
+	.status-badge.sync-status.pending:hover {
+		background: rgba(250, 204, 21, 0.18);
+		border-color: rgba(250, 204, 21, 0.35);
 	}
 
 	.status-badge.sync-status.synced {

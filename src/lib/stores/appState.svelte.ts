@@ -85,6 +85,18 @@ class AppState {
   lastSyncedTime = $state<number | null>(localStorage.getItem('mynotes_last_synced') ? Number(localStorage.getItem('mynotes_last_synced')) : null);
   syncEnabled = $state<boolean>(localStorage.getItem('mynotes_sync_enabled') === 'true');
   editorViewMode = $state<'edit' | 'split' | 'preview'>((localStorage.getItem('mynotes_editor_view_mode') as any) || 'edit');
+  driveMappings = $state<Record<string, SyncMapping>>({});
+
+  isNoteSynced(notePath: string | null): boolean {
+    if (!notePath) return true;
+    if (!this.syncEnabled || !this.googleConnected) return false;
+    const note = this.notes.find(n => n.path === notePath);
+    if (!note) return true;
+    const mapping = this.driveMappings[notePath];
+    if (!mapping) return false;
+    // Synced if local modified time matches or is older than the last sync local time (with 2s buffer)
+    return note.modified <= (mapping.lastSyncLocalTime + 2000);
+  }
 
   // Google Drive Sync Service (non-reactive class instance, token stored privately inside)
   syncService = new GoogleDriveSync(localStorage.getItem('mynotes_google_client_id') || '');
@@ -150,6 +162,7 @@ class AppState {
     
     // Clear mappings when switching folder
     localStorage.removeItem('mynotes_drive_mappings');
+    this.driveMappings = {};
     
     // Automatically trigger sync if connected
     if (this.syncEnabled && this.googleConnected) {
@@ -190,6 +203,15 @@ class AppState {
       this.syncService.setFolderId(customFolderId);
     }
     this.applyThemeClass();
+
+    const savedMappings = localStorage.getItem('mynotes_drive_mappings');
+    if (savedMappings) {
+      try {
+        this.driveMappings = JSON.parse(savedMappings);
+      } catch (e) {
+        console.error('Failed to parse drive mappings from localStorage:', e);
+      }
+    }
 
     const token = localStorage.getItem('mynotes_google_access_token');
     const expiry = Number(localStorage.getItem('mynotes_google_token_expiry') || '0');
@@ -384,17 +406,17 @@ class AppState {
     }
 
     if (this.syncDebounceTimer) {
-      console.log('Existing sync timer cleared. Restarting 15s debounce...');
+      console.log('Existing sync timer cleared. Restarting 5s debounce...');
       clearTimeout(this.syncDebounceTimer);
     } else {
-      console.log('Starting 15s debounce timer for Google Drive sync...');
+      console.log('Starting 5s debounce timer for Google Drive sync...');
     }
 
     this.syncDebounceTimer = window.setTimeout(async () => {
       console.log('Debounce timer fired. Initiating remote sync now...');
       this.syncDebounceTimer = null;
       await this.syncNotes();
-    }, 15000); // 15 seconds debounce
+    }, 5000); // 5 seconds debounce
   }
 
   async syncNotes() {
@@ -566,6 +588,7 @@ class AppState {
 
       // Save updated mappings
       localStorage.setItem('mynotes_drive_mappings', JSON.stringify(activeMappings));
+      this.driveMappings = activeMappings;
       console.log('Mappings updated:', activeMappings);
       
       await this.refreshNotes();
@@ -799,6 +822,7 @@ class AppState {
         const activeMappings = { ...mappings };
         delete activeMappings[path];
         localStorage.setItem('mynotes_drive_mappings', JSON.stringify(activeMappings));
+        this.driveMappings = activeMappings;
       } catch (e) {
         console.error('Remote delete failed', e);
       }
@@ -874,6 +898,7 @@ class AppState {
         mappings[newPath] = mappings[oldPath];
         delete mappings[oldPath];
         localStorage.setItem('mynotes_drive_mappings', JSON.stringify(mappings));
+        this.driveMappings = mappings;
       }
 
       await this.refreshNotes();
