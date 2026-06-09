@@ -5107,9 +5107,6 @@
 					</button>
 				</div>
 				{/if}
-				{#if $editorDirty}
-					<span class="save-indicator">Unsaved</span>
-				{/if}
 				{#if $readOnly}
 					<span class="readonly-indicator">View Mode</span>
 				{/if}
@@ -5220,6 +5217,59 @@
 				{/each}
 			</span>
 			{/if}
+
+			<div class="note-status-group">
+				{#if $editorDirty}
+					<span class="status-badge save-status dirty" title="You have unsaved changes in this note">
+						<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+							<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+						</svg>
+						Unsaved Changes
+					</span>
+				{:else}
+					<span class="status-badge save-status clean" title="All changes saved to local storage">
+						<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+							<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+							<polyline points="17 21 17 13 7 13 7 21"/>
+							<polyline points="7 3 7 8 15 8"/>
+						</svg>
+						Saved Locally
+					</span>
+				{/if}
+
+				{#if !appState.syncEnabled || !appState.googleConnected}
+					<span class="status-badge sync-status offline" title="Google Drive sync is disabled or offline. Go to layout settings to connect.">
+						<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+							<path d="M5 14c-.33 0-.66-.03-1-.1A4.5 4.5 0 0 0 8.5 19h7a4.5 4.5 0 0 0 4-2.5"/>
+							<path d="M16 11c1 .5 2.5.5 3.5-1.5M10.3 5.3A5 5 0 0 1 19 8c0 .33-.03.66-.1 1"/>
+							<line x1="2" y1="2" x2="22" y2="22"/>
+						</svg>
+						Sync Offline
+					</span>
+				{:else if appState.syncStatus === 'syncing'}
+					<span class="status-badge sync-status syncing" title="Syncing changes to Google Drive...">
+						<svg class="spin" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+							<path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+						</svg>
+						Syncing...
+					</span>
+				{:else if appState.syncStatus === 'error'}
+					<span class="status-badge sync-status error" title="Sync failed. Click to retry sync." onclick={async (e) => { e.stopPropagation(); await appState.syncNotes(); }}>
+						<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+							<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+						</svg>
+						Sync Error
+					</span>
+				{:else}
+					<span class="status-badge sync-status synced" title={appState.lastSyncedTime ? 'Synced to Google Drive. Last sync: ' + new Date(appState.lastSyncedTime).toLocaleTimeString() : 'Synced to Google Drive'}>
+						<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+							<path d="M17.5 19A3.5 3.5 0 0 0 21 15.5c0-2.79-2.54-4.5-5-4.5-.47 0-.89.09-1.29.27A5 5 0 0 0 5 14c0 .34.05.67.15 1A4.5 4.5 0 0 0 8.5 19H17.5z"/>
+							<polyline points="9 15 11 17 15 13"/>
+						</svg>
+						Drive Synced
+					</span>
+				{/if}
+			</div>
 		</div>
 		{/if}
 
@@ -6904,9 +6954,97 @@
 		display: flex;
 		align-items: center;
 		flex-wrap: wrap;
-		gap: 5px;
+		gap: 8px;
 		padding: 0 20px 10px;
 		flex-shrink: 0;
+	}
+
+	.note-status-group {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		margin-left: auto;
+	}
+
+	.status-badge {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		font-size: 11px;
+		padding: 2px 8px;
+		border-radius: 4px;
+		font-weight: 500;
+		letter-spacing: 0.01em;
+		transition: all 0.2s ease;
+		border: 1px solid transparent;
+		user-select: none;
+	}
+
+	.status-badge svg {
+		flex-shrink: 0;
+		opacity: 0.95;
+	}
+
+	/* Local Save status colors */
+	.status-badge.save-status.clean {
+		color: #10b981;
+		background: rgba(16, 185, 129, 0.1);
+		border: 1px solid rgba(16, 185, 129, 0.2);
+	}
+
+	.status-badge.save-status.dirty {
+		color: var(--semantic-warning, #ffa42b);
+		background: rgba(250, 204, 21, 0.1);
+		border: 1px solid rgba(250, 204, 21, 0.2);
+	}
+
+	/* Google Drive Sync status colors */
+	.status-badge.sync-status.offline {
+		color: var(--text-tertiary);
+		background: rgba(124, 124, 124, 0.08);
+		border: 1px solid rgba(124, 124, 124, 0.15);
+	}
+
+	.status-badge.sync-status.syncing {
+		color: var(--semantic-info, #539df5);
+		background: rgba(83, 157, 245, 0.1);
+		border: 1px solid rgba(83, 157, 245, 0.2);
+	}
+
+	.status-badge.sync-status.error {
+		color: var(--semantic-error, #f3727f);
+		background: rgba(243, 114, 127, 0.15);
+		border: 1px solid rgba(243, 114, 127, 0.25);
+		cursor: pointer;
+	}
+
+	.status-badge.sync-status.error:hover {
+		background: rgba(243, 114, 127, 0.22);
+		border-color: rgba(243, 114, 127, 0.4);
+	}
+
+	.status-badge.sync-status.synced {
+		color: #10b981;
+		background: rgba(16, 185, 129, 0.1);
+		border: 1px solid rgba(16, 185, 129, 0.2);
+	}
+
+	.status-badge svg.spin {
+		animation: status-spin 1.2s linear infinite;
+	}
+
+	@keyframes status-spin {
+		from { transform: rotate(0deg); }
+		to { transform: rotate(360deg); }
+	}
+
+	@media (max-width: 768px) {
+		.note-status-group {
+			margin-left: 0;
+			width: 100%;
+			margin-top: 4px;
+			justify-content: flex-start;
+		}
 	}
 
 	.note-folder {
