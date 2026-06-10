@@ -7539,7 +7539,7 @@
 		position: absolute;
 		bottom: calc(100% + 4px);
 		left: 0;
-		background: var(--bg-primary);
+		background: var(--bg-surface) !important;
 		border: 1px solid var(--border-color);
 		border-radius: 8px;
 		box-shadow: var(--shadow-lg);
@@ -8683,7 +8683,7 @@
 	.code-lang-dropdown {
 		position: fixed;
 		transform: translateX(-100%);
-		background: var(--bg-primary);
+		background: var(--bg-surface) !important;
 		border: 1px solid var(--border-color);
 		border-radius: 8px;
 		box-shadow: var(--shadow-lg);
@@ -10640,7 +10640,7 @@
 		-webkit-overflow-scrolling: touch;
 		scrollbar-width: none;
 		gap: 1px;
-		background: var(--bg-secondary);
+		background: var(--bg-surface) !important;
 		border-top: 1px solid var(--border-color);
 	}
 
@@ -10747,7 +10747,7 @@
 		right: 0;
 		padding: 12px;
 		padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
-		background: var(--bg-secondary);
+		background: var(--bg-surface) !important;
 		border-top: 1px solid var(--border-light);
 		z-index: 51;
 	}
