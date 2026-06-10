@@ -224,7 +224,6 @@
 	});
 	const editorDirty = writable<boolean>(false);
 	const sourceMode = writable<boolean>(localStorage.getItem('mynotes_editor_source_mode') === 'true');
-	const focusMode = writable<boolean>(false);
 	const readOnly = writable<boolean>(false);
 	let savedSelection: { from: number; to: number } | null = null;
 	let savedScrollTop: number | null = null;
@@ -319,6 +318,7 @@
 			editorDirty.set(appState.editorDirty);
 		}
 	});
+
 
 	$effect(() => {
 		const unsubscribe = sourceMode.subscribe(val => {
@@ -1200,7 +1200,7 @@
 		$activeNote = null;
 		$activeNotePath = null;
 		$readOnly = false;
-		$focusMode = false;
+		appState.setFocusMode(false);
 	}
 
 	async function viewerImportTo(folderPath: string) {
@@ -1226,7 +1226,7 @@
 			// Switch to the imported note as a real vault note
 			$viewerNote = null;
 			$readOnly = false;
-			$focusMode = false;
+			appState.setFocusMode(false);
 			viewerImportPickerOpen = false;
 			const content = await readNote(dest);
 			$activeNote = content;
@@ -1628,19 +1628,44 @@
 								if (selection.empty && (!prevState || !prevState.selection.eq(selection))) {
 									setTimeout(() => {
 										try {
-											const editorBody = document.querySelector('.editor-body');
-											if (!editorBody) return;
+											const getScrollContainer = (el: HTMLElement): HTMLElement => {
+												let parent = el.parentElement;
+												while (parent && parent !== document.body && parent !== document.documentElement) {
+													const style = window.getComputedStyle(parent);
+													const overflowY = style.overflowY;
+													if (overflowY === 'auto' || overflowY === 'scroll') {
+														return parent;
+													}
+													parent = parent.parentElement;
+												}
+												// Fallback to editor-body if found, otherwise document.documentElement
+												const editorBody = document.querySelector('.editor-body') as HTMLElement | null;
+												if (editorBody) {
+													const style = window.getComputedStyle(editorBody);
+													if (style.overflowY === 'auto' || style.overflowY === 'scroll') {
+														return editorBody;
+													}
+												}
+												return document.documentElement;
+											};
+
+											const container = getScrollContainer(view.dom);
+											if (!container) return;
 											
 											const caretCoords = view.coordsAtPos(selection.from);
 											if (!caretCoords) return;
 											
-											const rect = editorBody.getBoundingClientRect();
+											const rect = container.getBoundingClientRect();
 											const multiplier = isMobile ? 0.12 : 0.7;
 											const targetY = rect.top + rect.height * multiplier;
 											const diff = caretCoords.top - targetY;
 											
 											if (Math.abs(diff) > 10) {
-												editorBody.scrollTop += diff;
+												if (container === document.documentElement || container === document.body) {
+													window.scrollBy(0, diff);
+												} else {
+													container.scrollTop += diff;
+												}
 											}
 										} catch (e) {
 											console.warn('[TypewriterScroll] failed:', e);
@@ -5461,7 +5486,7 @@
 						title="Toggle Focus Mode"
 					>
 						<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-							<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+							<circle cx="12" cy="12" r="10" fill={appState.focusModeEnabled ? 'var(--accent-light)' : 'none'}/><circle cx="12" cy="12" r="3" fill={appState.focusModeEnabled ? 'currentColor' : 'none'}/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
 						</svg>
 					</button>
 
@@ -5474,7 +5499,10 @@
 						title="Toggle Typewriter Scrolling"
 					>
 						<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-							<line x1="12" y1="3" x2="12" y2="21"/><polyline points="17 8 12 3 7 8"/><polyline points="17 16 12 21 7 16"/><line x1="3" y1="12" x2="21" y2="12" stroke-dasharray="3,3"/>
+							<line x1="12" y1="3" x2="12" y2="21"/>
+							<polygon points="12,3 17,8 7,8" fill={appState.typewriterScrollEnabled ? 'currentColor' : 'none'} stroke="currentColor"/>
+							<polygon points="12,21 17,16 7,16" fill={appState.typewriterScrollEnabled ? 'currentColor' : 'none'} stroke="currentColor"/>
+							<line x1="3" y1="12" x2="21" y2="12" stroke-dasharray={appState.typewriterScrollEnabled ? 'none' : '3,3'} stroke={appState.typewriterScrollEnabled ? 'var(--accent)' : 'currentColor'}/>
 						</svg>
 					</button>
 
@@ -5612,7 +5640,7 @@
 					title="Toggle Focus Mode"
 				>
 					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-						<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+						<circle cx="12" cy="12" r="10" fill={appState.focusModeEnabled ? 'var(--accent-light)' : 'none'}/><circle cx="12" cy="12" r="3" fill={appState.focusModeEnabled ? 'currentColor' : 'none'}/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
 					</svg>
 				</button>
 
@@ -5624,7 +5652,10 @@
 					title="Toggle Typewriter Scrolling"
 				>
 					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-						<line x1="12" y1="3" x2="12" y2="21"/><polyline points="17 8 12 3 7 8"/><polyline points="17 16 12 21 7 16"/><line x1="3" y1="12" x2="21" y2="12" stroke-dasharray="3,3"/>
+						<line x1="12" y1="3" x2="12" y2="21"/>
+						<polygon points="12,3 17,8 7,8" fill={appState.typewriterScrollEnabled ? 'currentColor' : 'none'} stroke="currentColor"/>
+						<polygon points="12,21 17,16 7,16" fill={appState.typewriterScrollEnabled ? 'currentColor' : 'none'} stroke="currentColor"/>
+						<line x1="3" y1="12" x2="21" y2="12" stroke-dasharray={appState.typewriterScrollEnabled ? 'none' : '3,3'} stroke={appState.typewriterScrollEnabled ? 'var(--accent)' : 'currentColor'}/>
 					</svg>
 				</button>
 
@@ -5655,7 +5686,7 @@
 		</div>
 		{/if}
 
-		{#if !$focusMode}
+		{#if !appState.focusModeEnabled}
 		<div class="note-meta-bar">
 			<span class="note-folder" class:unfiled={!noteFolder}>
 				<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>

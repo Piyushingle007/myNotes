@@ -22,6 +22,9 @@
   --border-color: #252930;
   --border-highlight: #3d4450;
   
+  --text-accent: var(--accent);
+  --accent-light: color-mix(in srgb, var(--accent) 15%, transparent);
+  
   --shadow-heavy: rgba(0, 0, 0, 0.5) 0px 8px 24px;
   --shadow-medium: rgba(0, 0, 0, 0.3) 0px 8px 8px;
   
