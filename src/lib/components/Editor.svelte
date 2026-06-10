@@ -430,7 +430,7 @@
 	let sourceElement = $state<HTMLTextAreaElement>(null!);
 	const LARGE_DOC_CHARS = 100_000;
 	let isLargeDoc = $state(false);
-	let editor: Editor | null = null;
+	let editor = $state<Editor | null>(null);
 	let editorReady = $state(false);
 	let sourceContent = $state('');
 	let sourceHistory: Array<{ content: string; cursor: number }> = [];
@@ -1635,7 +1635,8 @@
 											if (!caretCoords) return;
 											
 											const rect = editorBody.getBoundingClientRect();
-											const targetY = rect.top + rect.height * 0.4;
+											const multiplier = isMobile ? 0.12 : 0.7;
+											const targetY = rect.top + rect.height * multiplier;
 											const diff = caretCoords.top - targetY;
 											
 											if (Math.abs(diff) > 10) {
@@ -5935,6 +5936,35 @@
 						<div class="tiptap-wrapper" class:large-doc={isLargeDoc} spellcheck="false" bind:this={editorElement} onclick={(e) => { closeLinkContextMenu(); handleEditorClick(e); showOutline = false; }} oncontextmenu={handleEditorContextMenu}></div>
 					{/if}
 				{/if}
+				
+				<!-- Floating Bubble Menu -->
+				{#if showBubbleMenu && bubbleMenuCoords}
+					<!-- svelte-ignore a11y_no_static_element_interactions -->
+					<div class="bubble-menu-hud" style="left: {bubbleMenuCoords.x}px; top: {bubbleMenuCoords.y}px;" onclick={(e) => e.stopPropagation()}>
+						<button class="bubble-btn" class:active={editor?.isActive('bold')} onclick={() => editor?.chain().focus().toggleBold().run()} title="Bold">
+							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 4h8a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"/><path d="M6 12h9a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"/></svg>
+						</button>
+						<button class="bubble-btn" class:active={editor?.isActive('italic')} onclick={() => editor?.chain().focus().toggleItalic().run()} title="Italic">
+							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="4" x2="10" y2="4"/><line x1="14" y1="20" x2="5" y2="20"/><line x1="15" y1="4" x2="9" y2="20"/></svg>
+						</button>
+						<button class="bubble-btn" class:active={editor?.isActive('underline')} onclick={() => editor?.chain().focus().toggleUnderline().run()} title="Underline">
+							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v7a6 6 0 0 0 6 6 6 6 0 0 0 6-6V3"/><line x1="4" y1="21" x2="20" y2="21"/></svg>
+						</button>
+						<button class="bubble-btn" class:active={editor?.isActive('highlight')} onclick={() => editor?.chain().focus().toggleHighlight().run()} title="Highlight">
+							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+						</button>
+						<button class="bubble-btn" class:active={editor?.isActive('code')} onclick={() => editor?.chain().focus().toggleCode().run()} title="Code">
+							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+						</button>
+						<div class="bubble-sep"></div>
+						<button class="bubble-btn" onclick={() => { addLinkFromToolbar(); bubbleMenuCoords = null; }} title="Link">
+							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+						</button>
+						<button class="bubble-btn" onclick={() => editor?.chain().focus().insertContent({ type: 'callout', attrs: { type: 'note' }, content: [{ type: 'paragraph' }] }).run()} title="Callout Box">
+							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><line x1="9" y1="9" x2="15" y2="9"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg>
+						</button>
+					</div>
+				{/if}
 			</div>
 
 			{#if showHistory}
@@ -6011,34 +6041,6 @@
 				</div>
 			{/if}
 			
-			<!-- Floating Bubble Menu -->
-			{#if showBubbleMenu && bubbleMenuCoords}
-				<!-- svelte-ignore a11y_no_static_element_interactions -->
-				<div class="bubble-menu-hud" style="left: {bubbleMenuCoords.x}px; top: {bubbleMenuCoords.y}px;" onclick={(e) => e.stopPropagation()}>
-					<button class="bubble-btn" class:active={editor?.isActive('bold')} onclick={() => editor?.chain().focus().toggleBold().run()} title="Bold">
-						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 4h8a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"/><path d="M6 12h9a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"/></svg>
-					</button>
-					<button class="bubble-btn" class:active={editor?.isActive('italic')} onclick={() => editor?.chain().focus().toggleItalic().run()} title="Italic">
-						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="4" x2="10" y2="4"/><line x1="14" y1="20" x2="5" y2="20"/><line x1="15" y1="4" x2="9" y2="20"/></svg>
-					</button>
-					<button class="bubble-btn" class:active={editor?.isActive('underline')} onclick={() => editor?.chain().focus().toggleUnderline().run()} title="Underline">
-						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v7a6 6 0 0 0 6 6 6 6 0 0 0 6-6V3"/><line x1="4" y1="21" x2="20" y2="21"/></svg>
-					</button>
-					<button class="bubble-btn" class:active={editor?.isActive('highlight')} onclick={() => editor?.chain().focus().toggleHighlight().run()} title="Highlight">
-						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-					</button>
-					<button class="bubble-btn" class:active={editor?.isActive('code')} onclick={() => editor?.chain().focus().toggleCode().run()} title="Code">
-						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
-					</button>
-					<div class="bubble-sep"></div>
-					<button class="bubble-btn" onclick={() => { addLinkFromToolbar(); bubbleMenuCoords = null; }} title="Link">
-						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-					</button>
-					<button class="bubble-btn" onclick={() => editor?.chain().focus().insertContent({ type: 'callout', attrs: { type: 'note' }, content: [{ type: 'paragraph' }] }).run()} title="Callout Box">
-						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><line x1="9" y1="9" x2="15" y2="9"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg>
-					</button>
-				</div>
-			{/if}
 			</div>
 		</div>
 

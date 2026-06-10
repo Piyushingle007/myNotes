@@ -879,19 +879,24 @@ class AppState {
     const mapEntry = mappings[path];
     const remoteId = mapEntry ? (typeof mapEntry === 'string' ? mapEntry : mapEntry.id) : undefined;
 
+    // Deselect active note first if it's the one being deleted to avoid stale state in Editor
+    const isActive = this.activeNotePath === path;
+    if (isActive) {
+      this.activeNotePath = null;
+      this.activeNoteContent = '';
+      this.activeNoteTitle = '';
+      this.editorDirty = false;
+    }
+
     try {
       await this.storage.deleteNote(path);
       await this.refreshNotes();
       
       this.showToast(`Deleted note "${noteName}" locally.`, 'success', 3000);
       
-      if (this.activeNotePath === path) {
+      if (isActive) {
         if (this.notes.length > 0) {
           this.selectNote(this.notes[0].path);
-        } else {
-          this.activeNotePath = null;
-          this.activeNoteContent = '';
-          this.activeNoteTitle = '';
         }
       }
     } catch (err) {
@@ -948,6 +953,16 @@ class AppState {
 
   async deleteNotebook(path: string) {
     const notebookName = path.split('/').pop() || path;
+    
+    // If the active note is inside the deleted notebook, deselect it first
+    const isActiveNoteInside = this.activeNotePath && (this.activeNotePath === path || this.activeNotePath.startsWith(path + '/'));
+    if (isActiveNoteInside) {
+      this.activeNotePath = null;
+      this.activeNoteContent = '';
+      this.activeNoteTitle = '';
+      this.editorDirty = false;
+    }
+
     try {
       await this.storage.deleteDirectory(path);
       await this.refreshNotes();
@@ -955,6 +970,12 @@ class AppState {
       
       if (this.activeNotebook === path) {
         this.activeNotebook = null;
+      }
+
+      if (isActiveNoteInside) {
+        if (this.notes.length > 0) {
+          this.selectNote(this.notes[0].path);
+        }
       }
     } catch (err) {
       console.error('Local notebook delete failed', err);
