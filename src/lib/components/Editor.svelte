@@ -5684,27 +5684,28 @@
 		</div>
 		{/if}
 
-		{#if !appState.focusModeEnabled}
-		<div class="note-meta-bar">
-			<span class="note-folder" class:unfiled={!noteFolder}>
-				<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-				{#if noteFolder}
-					{#each noteFolder.split('/') as segment, i}
-						{#if i > 0}<span class="path-sep">›</span>{/if}{segment}
-					{/each}
-				{:else}
-					Unfiled Notes
+		<div class="note-meta-bar" class:focus-mode={appState.focusModeEnabled}>
+			{#if !appState.focusModeEnabled}
+				<span class="note-folder" class:unfiled={!noteFolder}>
+					<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+					{#if noteFolder}
+						{#each noteFolder.split('/') as segment, i}
+							{#if i > 0}<span class="path-sep">›</span>{/if}{segment}
+						{/each}
+					{:else}
+						Unfiled Notes
+					{/if}
+				</span>
+				{#if $activeNote.meta.tags?.length > 0}
+					<span class="meta-divider">·</span>
 				{/if}
-			</span>
-			{#if $activeNote.meta.tags?.length > 0}
-				<span class="meta-divider">·</span>
-			{/if}
-			{#if $activeNote.meta.tags?.length > 0}
-			<span class="note-tags">
-				{#each $activeNote.meta.tags as tag}
-					<span class="note-tag">#{tag}</span>
-				{/each}
-			</span>
+				{#if $activeNote.meta.tags?.length > 0}
+				<span class="note-tags">
+					{#each $activeNote.meta.tags as tag}
+						<span class="note-tag">#{tag}</span>
+					{/each}
+				</span>
+				{/if}
 			{/if}
 
 			<div class="note-status-group">
@@ -5769,7 +5770,6 @@
 				{/if}
 			</div>
 		</div>
-		{/if}
 
 		<div class="editor-body-wrapper">
 			{#if noteSearchOpen}
@@ -7613,6 +7613,11 @@
 		flex-shrink: 0;
 	}
 
+	.note-meta-bar.focus-mode {
+		padding: 0 20px 6px;
+		justify-content: flex-end;
+	}
+
 	.note-status-group {
 		display: flex;
 		align-items: center;
@@ -7716,6 +7721,17 @@
 			width: 100%;
 			margin-top: 4px;
 			justify-content: flex-start;
+		}
+
+		.note-meta-bar.focus-mode {
+			padding: 0 16px 4px;
+		}
+
+		.note-meta-bar.focus-mode .note-status-group {
+			margin-top: 0;
+			width: auto;
+			margin-left: auto;
+			justify-content: flex-end;
 		}
 	}
 
