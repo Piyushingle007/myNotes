@@ -682,6 +682,44 @@
 	let aiMediaPlaceholders = $state<Map<string, string>>(new Map());
 	let aiStreamUnlisten: (() => void) | null = null;
 
+	// Bubble Menu
+	let bubbleMenuCoords = $state<{ x: number; y: number } | null>(null);
+	let showBubbleMenu = $derived(!!bubbleMenuCoords && !$readOnly && !$sourceMode);
+
+	function updateBubbleMenu() {
+		if (!editor || editor.state.selection.empty || $readOnly || $sourceMode) {
+			bubbleMenuCoords = null;
+			return;
+		}
+		
+		try {
+			const { from, to } = editor.state.selection;
+			const fromCoords = editor.view.coordsAtPos(from);
+			const toCoords = editor.view.coordsAtPos(to);
+			
+			const editorBody = document.querySelector('.editor-body') as HTMLElement | null;
+			if (!editorBody) return;
+			const rect = editorBody.getBoundingClientRect();
+			const computedStyle = window.getComputedStyle(editorBody);
+			const paddingTop = parseFloat(computedStyle.paddingTop) || 0;
+			const paddingLeft = parseFloat(computedStyle.paddingLeft) || 0;
+			const borderTop = parseFloat(computedStyle.borderTopWidth) || 0;
+			const borderLeft = parseFloat(computedStyle.borderLeftWidth) || 0;
+
+			// Viewport coordinates of selection center
+			const left = (fromCoords.left + toCoords.left) / 2;
+			const top = Math.min(fromCoords.top, toCoords.top);
+			
+			// Convert to editor-body relative coordinates, adjusting for borders, padding, and scroll
+			const x = left - rect.left - borderLeft - paddingLeft + editorBody.scrollLeft;
+			const y = top - rect.top - borderTop - paddingTop + editorBody.scrollTop - 44; // 44px above selection
+			
+			bubbleMenuCoords = { x, y };
+		} catch (e) {
+			bubbleMenuCoords = null;
+		}
+	}
+
 
 	// Outline
 	let showOutline = $state(false);
@@ -1431,6 +1469,191 @@
 			return ['div', { 'data-page-break': 'true', style: 'page-break-after: always; break-after: page;', class: 'page-break' }];
 		},
 	});
+
+	// ═══ CUSTOM EDITING / TYPING EXPERIENCE EXTENSIONS ═══
+
+	const AutoClosePairs = new Map([
+		['(', ')'],
+		['[', ']'],
+		['{', '}'],
+		['"', '"'],
+		["'", "'"],
+		['`', '`']
+	]);
+
+	const SelectionWrappers = new Map([
+		['*', '*'],
+		['_', '_'],
+		['~', '~'],
+		['`', '`'],
+		['(', ')'],
+		['[', ']'],
+		['{', '}'],
+		['"', '"'],
+		["'", "'"]
+	]);
+
+	const TypingKeyboardShortcuts = Extension.create({
+		name: 'typingKeyboardShortcuts',
+		addProseMirrorPlugins() {
+			return [
+				new Plugin({
+					key: new PluginKey('typingKeyboardShortcuts'),
+					props: {
+						handleTextInput(view, from, to, text) {
+							const { state, dispatch } = view;
+							const { selection } = state;
+							
+							// 1. Selection wrapping
+							if (!selection.empty) {
+								const wrapper = SelectionWrappers.get(text);
+								if (wrapper) {
+									const selectedText = state.doc.textBetween(selection.from, selection.to);
+									const tr = state.tr.replaceWith(
+										selection.from,
+										selection.to,
+										state.schema.text(text + selectedText + wrapper)
+									);
+									const newFrom = selection.from + text.length;
+									const newTo = newFrom + selectedText.length;
+									tr.setSelection(TextSelection.create(tr.doc, newFrom, newTo));
+									dispatch(tr);
+									return true;
+								}
+							}
+							
+							// 2. Auto-close pairs
+							if (selection.empty) {
+								const closer = AutoClosePairs.get(text);
+								if (closer) {
+									const tr = state.tr.insertText(text + closer, selection.from);
+									const newPos = selection.from + text.length;
+									dispatch(tr.setSelection(TextSelection.create(tr.doc, newPos, newPos)));
+									return true;
+								}
+								
+								// 3. Step over closing character
+								const nextChar = state.doc.textBetween(selection.from, selection.from + 1);
+								if (text === nextChar && Array.from(AutoClosePairs.values()).includes(text)) {
+									const newPos = selection.from + 1;
+									dispatch(state.tr.setSelection(TextSelection.create(state.tr.doc, newPos, newPos)));
+									return true;
+								}
+							}
+							
+							return false;
+						},
+						handleKeyDown(view, event) {
+							const { state, dispatch } = view;
+							const { selection } = state;
+							
+							// 4. Backspace inside empty pair
+							if (event.key === 'Backspace' && selection.empty && selection.from > 0) {
+								const prevChar = state.doc.textBetween(selection.from - 1, selection.from);
+								const nextChar = state.doc.textBetween(selection.from, selection.from + 1);
+								const expectedCloser = AutoClosePairs.get(prevChar);
+								if (expectedCloser && expectedCloser === nextChar) {
+									const tr = state.tr.delete(selection.from - 1, selection.from + 1);
+									dispatch(tr);
+									return true;
+								}
+							}
+							return false;
+						}
+					}
+				})
+			];
+		}
+	});
+
+	function findActiveBlockDecoration(state: EditorState): DecorationSet {
+		const { selection, doc } = state;
+		const resolvedFrom = selection.$from;
+		
+		let depth = resolvedFrom.depth;
+		while (depth > 0) {
+			const node = resolvedFrom.node(depth);
+			if (node.type.isBlock) {
+				const from = resolvedFrom.before(depth);
+				const to = resolvedFrom.after(depth);
+				if (from >= 0 && to <= doc.content.size) {
+					const deco = Decoration.node(from, to, { class: 'has-focus' });
+					return DecorationSet.create(doc, [deco]);
+				}
+			}
+			depth--;
+		}
+		return DecorationSet.empty;
+	}
+
+	const focusActiveBlockPlugin = new Plugin({
+		key: new PluginKey('focusActiveBlock'),
+		state: {
+			init(_, state) {
+				return findActiveBlockDecoration(state);
+			},
+			apply(tr, oldDeco, oldState, newState) {
+				if (tr.docChanged || tr.selectionSet) {
+					return findActiveBlockDecoration(newState);
+				}
+				return oldDeco.map(tr.mapping, tr.doc);
+			}
+		},
+		props: {
+			decorations(state) {
+				return this.getState(state);
+			}
+		}
+	});
+
+	const FocusModeHighlight = Extension.create({
+		name: 'focusModeHighlight',
+		addProseMirrorPlugins() {
+			return [focusActiveBlockPlugin];
+		}
+	});
+
+	const TypewriterScrolling = Extension.create({
+		name: 'typewriterScrolling',
+		addProseMirrorPlugins() {
+			return [
+				new Plugin({
+					key: new PluginKey('typewriterScrolling'),
+					view(editorView) {
+						return {
+							update(view, prevState) {
+								if (!appState.typewriterScrollEnabled) return;
+								const { state } = view;
+								const { selection } = state;
+								if (selection.empty && (!prevState || !prevState.selection.eq(selection))) {
+									setTimeout(() => {
+										try {
+											const editorBody = document.querySelector('.editor-body');
+											if (!editorBody) return;
+											
+											const caretCoords = view.coordsAtPos(selection.from);
+											if (!caretCoords) return;
+											
+											const rect = editorBody.getBoundingClientRect();
+											const targetY = rect.top + rect.height * 0.4;
+											const diff = caretCoords.top - targetY;
+											
+											if (Math.abs(diff) > 10) {
+												editorBody.scrollTop += diff;
+											}
+										} catch (e) {
+											console.warn('[TypewriterScroll] failed:', e);
+										}
+									}, 0);
+								}
+							}
+						};
+					}
+				})
+			];
+		}
+	});
+
 
 	const Callout = TiptapNode.create({
 		name: 'callout',
@@ -3795,7 +4018,7 @@
 			loadedPath = '';
 			return;
 		}
-		if (note && path !== loadedPath) {
+		if (note && note.path === path && path !== loadedPath) {
 			loadNote(path, note.content);
 		}
 	});
@@ -3857,6 +4080,9 @@
 				MathInline,
 				PageBreak,
 				Callout,
+				TypingKeyboardShortcuts,
+				FocusModeHighlight,
+				TypewriterScrolling,
 				Details.configure({ persist: true, HTMLAttributes: { class: 'editor-details' } }),
 				DetailsSummary,
 				DetailsContent,
@@ -4053,6 +4279,10 @@
 				// On mobile, only check menus when they're already open or user just typed trigger char
 				if (!isMobile || slashMenu || slashTypedByUser) updateSlashMenu();
 				if (!isMobile || wikiLinkMenu || wikiLinkTypedByUser) updateWikiLinkMenu();
+				updateBubbleMenu();
+			},
+			onBlur: () => {
+				bubbleMenuCoords = null;
 			},
 			onUpdate: () => {
 				if (ignoreNextUpdate || isLoadingNote) {
@@ -5221,6 +5451,32 @@
 						</button>
 					</div>
 
+					<!-- Mobile Focus Mode Toggle -->
+					<button
+						class="icon-btn"
+						class:active={appState.focusModeEnabled}
+						style="padding: 6px; flex-shrink: 0; margin-left: 4px;"
+						onclick={() => appState.setFocusMode(!appState.focusModeEnabled)}
+						title="Toggle Focus Mode"
+					>
+						<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+							<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+						</svg>
+					</button>
+
+					<!-- Mobile Typewriter Scroll Toggle -->
+					<button
+						class="icon-btn"
+						class:active={appState.typewriterScrollEnabled}
+						style="padding: 6px; flex-shrink: 0; margin-left: 4px;"
+						onclick={() => appState.setTypewriterScroll(!appState.typewriterScrollEnabled)}
+						title="Toggle Typewriter Scrolling"
+					>
+						<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+							<line x1="12" y1="3" x2="12" y2="21"/><polyline points="17 8 12 3 7 8"/><polyline points="17 16 12 21 7 16"/><line x1="3" y1="12" x2="21" y2="12" stroke-dasharray="3,3"/>
+						</svg>
+					</button>
+
 					<!-- Mobile Delete Note Button -->
 					<button
 						class="icon-btn delete-btn"
@@ -5347,6 +5603,30 @@
 					</svg>
 				</button>
 				{/if}
+				<!-- Desktop Focus Mode Button -->
+				<button
+					class="icon-btn"
+					class:active={appState.focusModeEnabled}
+					onclick={() => appState.setFocusMode(!appState.focusModeEnabled)}
+					title="Toggle Focus Mode"
+				>
+					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+						<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+					</svg>
+				</button>
+
+				<!-- Desktop Typewriter Scroll Button -->
+				<button
+					class="icon-btn"
+					class:active={appState.typewriterScrollEnabled}
+					onclick={() => appState.setTypewriterScroll(!appState.typewriterScrollEnabled)}
+					title="Toggle Typewriter Scrolling"
+				>
+					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+						<line x1="12" y1="3" x2="12" y2="21"/><polyline points="17 8 12 3 7 8"/><polyline points="17 16 12 21 7 16"/><line x1="3" y1="12" x2="21" y2="12" stroke-dasharray="3,3"/>
+					</svg>
+				</button>
+
 				<!-- Desktop Delete Note Button -->
 				<button
 					class="icon-btn delete-btn"
@@ -5497,7 +5777,7 @@
 				</div>
 			{/if}
 			<div class="editor-body-row">
-			<div class="editor-body" class:readonly={$readOnly}>
+			<div class="editor-body" class:readonly={$readOnly} class:focus-mode-active={appState.focusModeEnabled} class:typewriter-active={appState.typewriterScrollEnabled}>
 				{#if isMobile}
 					<!-- Mobile: both views always in DOM, toggled via display to avoid slow editor re-creation -->
 					<textarea
@@ -5728,6 +6008,35 @@
 							{/each}
 						</div>
 					{/if}
+				</div>
+			{/if}
+			
+			<!-- Floating Bubble Menu -->
+			{#if showBubbleMenu && bubbleMenuCoords}
+				<!-- svelte-ignore a11y_no_static_element_interactions -->
+				<div class="bubble-menu-hud" style="left: {bubbleMenuCoords.x}px; top: {bubbleMenuCoords.y}px;" onclick={(e) => e.stopPropagation()}>
+					<button class="bubble-btn" class:active={editor?.isActive('bold')} onclick={() => editor?.chain().focus().toggleBold().run()} title="Bold">
+						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 4h8a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"/><path d="M6 12h9a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"/></svg>
+					</button>
+					<button class="bubble-btn" class:active={editor?.isActive('italic')} onclick={() => editor?.chain().focus().toggleItalic().run()} title="Italic">
+						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="4" x2="10" y2="4"/><line x1="14" y1="20" x2="5" y2="20"/><line x1="15" y1="4" x2="9" y2="20"/></svg>
+					</button>
+					<button class="bubble-btn" class:active={editor?.isActive('underline')} onclick={() => editor?.chain().focus().toggleUnderline().run()} title="Underline">
+						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v7a6 6 0 0 0 6 6 6 6 0 0 0 6-6V3"/><line x1="4" y1="21" x2="20" y2="21"/></svg>
+					</button>
+					<button class="bubble-btn" class:active={editor?.isActive('highlight')} onclick={() => editor?.chain().focus().toggleHighlight().run()} title="Highlight">
+						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+					</button>
+					<button class="bubble-btn" class:active={editor?.isActive('code')} onclick={() => editor?.chain().focus().toggleCode().run()} title="Code">
+						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+					</button>
+					<div class="bubble-sep"></div>
+					<button class="bubble-btn" onclick={() => { addLinkFromToolbar(); bubbleMenuCoords = null; }} title="Link">
+						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+					</button>
+					<button class="bubble-btn" onclick={() => editor?.chain().focus().insertContent({ type: 'callout', attrs: { type: 'note' }, content: [{ type: 'paragraph' }] }).run()} title="Callout Box">
+						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><line x1="9" y1="9" x2="15" y2="9"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg>
+					</button>
 				</div>
 			{/if}
 			</div>
@@ -10847,5 +11156,101 @@
 	.ai-menu.mobile .ai-error {
 		padding: 12px 16px;
 		font-size: 14px;
+	}
+
+	/* ═══ TYPING / EDITING ENHANCEMENTS STYLES ═══ */
+
+	.editor-body.focus-mode-active :global(.tiptap > *) {
+		opacity: 0.25;
+		transition: opacity 0.25s ease-in-out;
+	}
+
+	/* Keep active block or any block containing the active block at opacity 1 */
+	.editor-body.focus-mode-active :global(.tiptap > *.has-focus),
+	.editor-body.focus-mode-active :global(.tiptap > *:has(.has-focus)) {
+		opacity: 1;
+	}
+
+	/* Also make sure that the focused node itself has opacity 1 */
+	.editor-body.focus-mode-active :global(.has-focus) {
+		opacity: 1 !important;
+	}
+
+	/* Dim siblings inside active block containers (e.g. other items in a list) */
+	.editor-body.focus-mode-active :global(.tiptap > *:has(.has-focus) > *:not(.has-focus):not(:has(.has-focus))) {
+		opacity: 0.25;
+	}
+
+	/* Enable smooth opacity changes on all nested elements when moving focus */
+	.editor-body.focus-mode-active :global(.tiptap *) {
+		transition: opacity 0.25s ease-in-out;
+	}
+
+	.editor-body.typewriter-active :global(.tiptap) {
+		padding-bottom: 50vh !important;
+	}
+
+	.bubble-menu-hud {
+		position: absolute;
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		gap: 4px;
+		background: #1a1a1a;
+		border: 1px solid rgba(255, 255, 255, 0.1);
+		border-radius: 20px;
+		padding: 4px 6px;
+		box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+		backdrop-filter: blur(8px);
+		z-index: 100;
+		animation: bubble-fade-in 0.18s cubic-bezier(0.16, 1, 0.3, 1) both;
+		transform: translateX(-50%);
+	}
+
+	@keyframes bubble-fade-in {
+		from {
+			opacity: 0;
+			transform: translateX(-50%) translateY(4px) scale(0.96);
+		}
+		to {
+			opacity: 1;
+			transform: translateX(-50%) translateY(0) scale(1);
+		}
+	}
+
+	.bubble-btn {
+		width: 32px;
+		height: 32px;
+		border-radius: 50%;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		background: transparent;
+		border: none;
+		color: var(--text-secondary);
+		cursor: pointer;
+		transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+	}
+
+	.bubble-btn:hover {
+		background: rgba(255, 255, 255, 0.08);
+		color: var(--text-primary);
+		transform: scale(1.08);
+	}
+
+	.bubble-btn:active {
+		transform: scale(0.95);
+	}
+
+	.bubble-btn.active {
+		color: var(--accent) !important;
+		background: rgba(0, 173, 181, 0.15);
+	}
+
+	.bubble-sep {
+		width: 1px;
+		height: 16px;
+		background: rgba(255, 255, 255, 0.15);
+		margin: 0 4px;
 	}
 </style>

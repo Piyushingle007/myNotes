@@ -96,6 +96,9 @@ class AppState {
   editorViewMode = $state<'edit' | 'split' | 'preview'>((localStorage.getItem('mynotes_editor_view_mode') as any) || 'edit');
   driveMappings = $state<Record<string, SyncMapping>>({});
   toasts = $state<Toast[]>([]);
+  focusModeEnabled = $state<boolean>(localStorage.getItem('mynotes_focus_mode') === 'true');
+  typewriterScrollEnabled = $state<boolean>(localStorage.getItem('mynotes_typewriter_scroll') === 'true');
+
 
   showToast(message: string, type: 'success' | 'info' | 'error' | 'warning' = 'info', duration = 4000, title?: string, loading = false): string {
     const id = Math.random().toString(36).substring(2, 9);
@@ -177,6 +180,16 @@ class AppState {
   setEditorViewMode(mode: 'edit' | 'split' | 'preview') {
     this.editorViewMode = mode;
     localStorage.setItem('mynotes_editor_view_mode', mode);
+  }
+
+  setFocusMode(enabled: boolean) {
+    this.focusModeEnabled = enabled;
+    localStorage.setItem('mynotes_focus_mode', String(enabled));
+  }
+
+  setTypewriterScroll(enabled: boolean) {
+    this.typewriterScrollEnabled = enabled;
+    localStorage.setItem('mynotes_typewriter_scroll', String(enabled));
   }
 
   applyThemeClass() {
