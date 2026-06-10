@@ -5485,8 +5485,8 @@
 						onclick={() => appState.setFocusMode(!appState.focusModeEnabled)}
 						title="Toggle Focus Mode"
 					>
-						<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-							<circle cx="12" cy="12" r="10" fill={appState.focusModeEnabled ? 'var(--accent-light)' : 'none'}/><circle cx="12" cy="12" r="3" fill={appState.focusModeEnabled ? 'currentColor' : 'none'}/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+						<svg class="focus-mode-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+							<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
 						</svg>
 					</button>
 
@@ -5498,11 +5498,10 @@
 						onclick={() => appState.setTypewriterScroll(!appState.typewriterScrollEnabled)}
 						title="Toggle Typewriter Scrolling"
 					>
-						<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-							<line x1="12" y1="3" x2="12" y2="21"/>
-							<polygon points="12,3 17,8 7,8" fill={appState.typewriterScrollEnabled ? 'currentColor' : 'none'} stroke="currentColor"/>
-							<polygon points="12,21 17,16 7,16" fill={appState.typewriterScrollEnabled ? 'currentColor' : 'none'} stroke="currentColor"/>
-							<line x1="3" y1="12" x2="21" y2="12" stroke-dasharray={appState.typewriterScrollEnabled ? 'none' : '3,3'} stroke={appState.typewriterScrollEnabled ? 'var(--accent)' : 'currentColor'}/>
+						<svg class="typewriter-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+							<line class="lock-line" x1="4" y1="12" x2="20" y2="12" stroke-dasharray="3,3"/>
+							<polyline class="arrow-up" points="8 7 12 3 16 7"/>
+							<polyline class="arrow-down" points="8 17 12 21 16 17"/>
 						</svg>
 					</button>
 
@@ -5639,8 +5638,8 @@
 					onclick={() => appState.setFocusMode(!appState.focusModeEnabled)}
 					title="Toggle Focus Mode"
 				>
-					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-						<circle cx="12" cy="12" r="10" fill={appState.focusModeEnabled ? 'var(--accent-light)' : 'none'}/><circle cx="12" cy="12" r="3" fill={appState.focusModeEnabled ? 'currentColor' : 'none'}/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+					<svg class="focus-mode-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+						<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
 					</svg>
 				</button>
 
@@ -5651,11 +5650,10 @@
 					onclick={() => appState.setTypewriterScroll(!appState.typewriterScrollEnabled)}
 					title="Toggle Typewriter Scrolling"
 				>
-					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-						<line x1="12" y1="3" x2="12" y2="21"/>
-						<polygon points="12,3 17,8 7,8" fill={appState.typewriterScrollEnabled ? 'currentColor' : 'none'} stroke="currentColor"/>
-						<polygon points="12,21 17,16 7,16" fill={appState.typewriterScrollEnabled ? 'currentColor' : 'none'} stroke="currentColor"/>
-						<line x1="3" y1="12" x2="21" y2="12" stroke-dasharray={appState.typewriterScrollEnabled ? 'none' : '3,3'} stroke={appState.typewriterScrollEnabled ? 'var(--accent)' : 'currentColor'}/>
+					<svg class="typewriter-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+						<line class="lock-line" x1="4" y1="12" x2="20" y2="12" stroke-dasharray="3,3"/>
+						<polyline class="arrow-up" points="8 7 12 3 16 7"/>
+						<polyline class="arrow-down" points="8 17 12 21 16 17"/>
 					</svg>
 				</button>
 
@@ -7811,6 +7809,12 @@
 	.icon-btn.active {
 		color: var(--text-accent);
 		background: var(--accent-light);
+	}
+
+	/* Ensure Zen Focus and Typewriter Scroll icons remain clean outlines (non-bold) */
+	.icon-btn :global(.focus-mode-icon),
+	.icon-btn :global(.typewriter-icon) {
+		fill: none !important;
 	}
 
 	.sr-only {
