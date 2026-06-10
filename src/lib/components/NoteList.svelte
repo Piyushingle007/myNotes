@@ -46,7 +46,8 @@
 
 <div 
   class="note-list flex-col" 
-  style="width: {appState.notelistCollapsed ? 0 : appState.notelistWidth}px; display: {appState.notelistCollapsed ? 'none' : 'flex'}; overflow: hidden; flex-shrink: 0;"
+  class:collapsed={appState.notelistCollapsed}
+  style="width: {appState.notelistCollapsed ? 0 : appState.notelistWidth}px;"
 >
   <!-- Top Playlist Header -->
   <div class="list-header flex-col" style="position: relative;">
@@ -149,6 +150,7 @@
       <div 
         class="note-row flex-row"
         class:active={appState.activeNotePath === note.path}
+        style="--index: {index};"
         role="button"
         tabindex="0"
         onclick={() => appState.selectNote(note.path)}
@@ -198,6 +200,16 @@
     height: 100%;
     padding: 20px 12px 12px;
     border-right: 1px solid var(--border-color);
+    overflow: hidden;
+    flex-shrink: 0;
+    transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), padding 0.3s cubic-bezier(0.4, 0, 0.2, 1), border-right-color 0.3s ease;
+    will-change: width, padding;
+  }
+
+  .note-list.collapsed {
+    padding-left: 0;
+    padding-right: 0;
+    border-right-color: transparent;
   }
 
   .flex-col {
@@ -349,19 +361,35 @@
     border-radius: var(--radius-standard);
     width: 100%;
     text-align: left;
-    transition: background-color 0.2s;
+    transition: background-color 0.2s, transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease;
+    animation: list-item-fade-in 0.32s cubic-bezier(0.16, 1, 0.3, 1) calc(var(--index, 0) * 0.04s) both;
+    will-change: transform, opacity;
   }
 
   .note-row:hover {
     background-color: rgba(255, 255, 255, 0.05);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2), 0 0 0 1px rgba(255, 255, 255, 0.04);
   }
 
   .note-row.active {
     background-color: rgba(255, 255, 255, 0.1);
+    box-shadow: inset 3px 0 0 0 var(--accent);
   }
 
   .note-row.active .track-name {
     color: var(--accent);
+  }
+
+  @keyframes list-item-fade-in {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
   }
 
   .track-icon {
@@ -411,7 +439,7 @@
   .row-delete-btn {
     opacity: 0;
     color: var(--text-secondary);
-    transition: opacity 0.2s, color 0.2s;
+    transition: opacity 0.2s, color 0.2s, transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.2s;
     padding: 4px;
     border-radius: 4px;
     display: flex;
@@ -426,6 +454,7 @@
   .row-delete-btn:hover {
     color: var(--semantic-error);
     background-color: rgba(255, 255, 255, 0.05);
+    transform: scale(1.15) rotate(5deg);
   }
 
   .empty-state {

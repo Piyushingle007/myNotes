@@ -51,7 +51,8 @@
 
 <div 
   class="sidebar flex-col" 
-  style="width: {appState.sidebarCollapsed ? 0 : appState.sidebarWidth}px; display: {appState.sidebarCollapsed ? 'none' : 'flex'}; overflow: hidden; flex-shrink: 0;"
+  class:collapsed={appState.sidebarCollapsed}
+  style="width: {appState.sidebarCollapsed ? 0 : appState.sidebarWidth}px;"
 >
   <!-- Logo Section -->
   <div class="logo-section flex-row" style="justify-content: space-between; width: 100%;">
@@ -267,6 +268,16 @@
     padding: 16px 8px;
     gap: 12px;
     border-right: 1px solid var(--border-color);
+    overflow: hidden;
+    flex-shrink: 0;
+    transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), padding 0.3s cubic-bezier(0.4, 0, 0.2, 1), border-right-color 0.3s ease;
+    will-change: width, padding;
+  }
+
+  .sidebar.collapsed {
+    padding-left: 0;
+    padding-right: 0;
+    border-right-color: transparent;
   }
 
   .flex-col {
@@ -333,7 +344,7 @@
     border-radius: 50%;
     justify-content: center;
     color: var(--text-secondary);
-    transition: background-color 0.2s, color 0.2s;
+    transition: background-color 0.2s, color 0.2s, transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
   .add-btn:hover {
@@ -373,16 +384,22 @@
     gap: 12px;
     text-align: left;
     width: 100%;
-    transition: background-color 0.2s;
     position: relative;
+    transition: background-color 0.2s ease, transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), padding-left 0.2s ease, box-shadow 0.2s ease;
   }
 
   .nav-item:hover {
     background-color: var(--bg-mid-dark);
+    transform: scale(1.02) translateX(4px);
+  }
+
+  .nav-item:active {
+    transform: scale(0.98);
   }
 
   .nav-item.active {
     background-color: rgba(255, 255, 255, 0.08);
+    box-shadow: inset 3px 0 0 0 var(--accent);
   }
 
   .playlist-art {
@@ -457,7 +474,7 @@
     font-size: 12px;
     font-weight: 600;
     color: var(--text-secondary);
-    transition: background-color 0.2s, color 0.2s;
+    transition: background-color 0.2s, color 0.2s, transform 0.2s ease;
     width: 100%;
     text-align: left;
     justify-content: flex-start;

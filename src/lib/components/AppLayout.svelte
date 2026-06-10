@@ -1,5 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { fade, fly } from 'svelte/transition';
+  import { cubicOut } from 'svelte/easing';
   import { appState } from '../stores/appState.svelte';
   import Sidebar from './Sidebar.svelte';
   import NoteList from './NoteList.svelte';
@@ -510,8 +512,16 @@
 
 <!-- Settings Modal Overlay -->
 {#if appState.showSettings}
-  <div class="settings-backdrop flex-row" onclick={(e) => { if (e.target === e.currentTarget) appState.showSettings = false; }} role="presentation">
-    <div class="settings-modal flex-col">
+  <div 
+    class="settings-backdrop flex-row" 
+    transition:fade={{ duration: 150 }}
+    onclick={(e) => { if (e.target === e.currentTarget) appState.showSettings = false; }} 
+    role="presentation"
+  >
+    <div 
+      class="settings-modal flex-col"
+      transition:fly={{ y: 20, duration: 250, easing: cubicOut }}
+    >
       <div class="settings-header flex-row">
         <div class="settings-title flex-row">
           <Cloud size={20} class="sync-icon-accent" />
@@ -879,11 +889,17 @@
     text-align: left;
     width: 100%;
     gap: 8px;
-    transition: transform 0.15s ease, border-color 0.2s ease, background-color 0.2s ease;
+    transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  .recent-note-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
+    border-color: var(--border-highlight);
   }
 
   .recent-note-card:active {
-    transform: scale(0.98);
+    transform: translateY(0) scale(0.98);
     background-color: var(--bg-mid-dark);
   }
 
@@ -1000,10 +1016,17 @@
     gap: 12px;
     text-align: left;
     border-radius: var(--radius-standard);
+    transition: background-color 0.18s ease, transform 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .search-result-row:hover {
+    background-color: var(--bg-surface);
+    transform: translateX(4px);
   }
 
   .search-result-row:active {
     background-color: rgba(255, 255, 255, 0.05);
+    transform: scale(0.98);
   }
 
   .row-art {
@@ -1161,16 +1184,14 @@
     gap: 8px;
   }
 
-  /* Mobile Bottom Navigation Bar - Floating Glassmorphic Pill */
+  /* Mobile Bottom Navigation Bar - Floating Pill */
   .android-bottom-nav {
     position: absolute;
     bottom: 16px;
     left: 16px;
     right: 16px;
     height: 56px;
-    background-color: rgba(24, 27, 32, 0.85); /* var(--bg-surface) with opacity */
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
+    background-color: var(--bg-surface);
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: var(--radius-pill);
     box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
@@ -1317,7 +1338,6 @@
     display: flex;
     flex-direction: column;
     box-shadow: var(--shadow-heavy);
-    animation: settings-slide-up 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
     overflow: hidden;
   }
 

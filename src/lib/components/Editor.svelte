@@ -7063,7 +7063,7 @@
 		background: none;
 		color: var(--text-secondary);
 		cursor: pointer;
-		transition: all 0.2s ease;
+		transition: color 0.2s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.2s cubic-bezier(0.4, 0, 0.2, 1), transform 0.15s ease, border-color 0.2s;
 		height: 18px;
 		gap: 4px;
 	}
@@ -7076,12 +7076,14 @@
 	.mode-segment-btn:hover {
 		color: var(--text-primary);
 		background: var(--bg-mid-dark);
+		transform: scale(1.03);
 	}
 
 	.mode-segment-btn.active {
 		color: var(--accent);
 		background: rgba(0, 173, 181, 0.08);
 		border: 1px solid rgba(0, 173, 181, 0.2);
+		transform: scale(1.05);
 	}
 
 	.mode-segment-btn.active:hover {
@@ -7222,12 +7224,17 @@
 		border-radius: 5px;
 		cursor: pointer;
 		padding: 0;
-		transition: color 0.15s, background 0.15s;
+		transition: color 0.15s, background 0.15s, transform 0.15s cubic-bezier(0.16, 1, 0.3, 1);
 	}
 
 	.nav-history-btn:hover {
 		color: var(--text-primary);
 		background: var(--bg-hover);
+		transform: scale(1.12);
+	}
+
+	.nav-history-btn:active {
+		transform: scale(0.92);
 	}
 
 	.nav-history-btn:disabled {
@@ -7282,9 +7289,15 @@
 		border-radius: 4px;
 		font-weight: 500;
 		letter-spacing: 0.01em;
-		transition: all 0.2s ease;
+		transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 		border: 1px solid transparent;
 		user-select: none;
+	}
+
+	.status-badge:hover {
+		filter: brightness(1.1);
+		box-shadow: 0 0 8px rgba(16, 185, 129, 0.15);
+		transform: translateY(-0.5px);
 	}
 
 	.status-badge svg {
@@ -7440,11 +7453,17 @@
 		border-radius: 4px;
 		display: flex;
 		align-items: center;
+		transition: background-color 0.15s, color 0.15s, transform 0.15s cubic-bezier(0.16, 1, 0.3, 1);
 	}
 
 	.icon-btn:hover {
 		background: var(--bg-hover);
 		color: var(--text-primary);
+		transform: scale(1.1);
+	}
+
+	.icon-btn:active {
+		transform: scale(0.93);
 	}
 
 	.icon-btn.active {
