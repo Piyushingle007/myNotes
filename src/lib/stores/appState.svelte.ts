@@ -772,6 +772,17 @@ class AppState {
     this.searchIndex.addAll(searchDocs);
   }
 
+  async readBlob(path: string): Promise<Blob | null> {
+    if (this.storage.readBlob) {
+      try {
+        return await this.storage.readBlob(path);
+      } catch (e) {
+        console.error('Failed to read blob:', path, e);
+      }
+    }
+    return null;
+  }
+
   selectNote(path: string) {
     if (this.editorDirty && this.activeNotePath) {
       this.saveActiveNote(true);

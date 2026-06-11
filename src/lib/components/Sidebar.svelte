@@ -20,7 +20,7 @@
       appState.selectNote(existing.path);
     } else {
       await appState.storage.createDirectory('Daily Notes');
-      await appState.storage.writeNote(dailyPath, `# Daily Log: ${today} 🗓️\n\n- Write daily highlights here...\n\n#journal`);
+      await appState.storage.writeNote(dailyPath, `# Daily Log: ${today} 🗓️\n\n## 💼 Work\n- \n\n## 🧘 Personal\n- \n\n#journal`);
       await appState.refreshNotes();
       appState.selectNote(dailyPath);
     }

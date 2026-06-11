@@ -14,6 +14,7 @@ export interface StorageAdapter {
   renameNote(oldPath: string, newPath: string): Promise<void>;
   createDirectory(path: string): Promise<void>;
   deleteDirectory(path: string): Promise<void>;
+  readBlob?(path: string): Promise<Blob>;
 }
 
 // ----------------------------------------------------
@@ -256,5 +257,11 @@ export class FileSystemAccessAdapter implements StorageAdapter {
       currentDir = await currentDir.getDirectoryHandle(part);
     }
     await currentDir.removeEntry(dirToDeleteName, { recursive: true });
+  }
+
+  async readBlob(path: string): Promise<Blob> {
+    const { parentDir, filename } = await this.getHandleForPath(path);
+    const fileHandle = await parentDir.getFileHandle(filename);
+    return await fileHandle.getFile();
   }
 }

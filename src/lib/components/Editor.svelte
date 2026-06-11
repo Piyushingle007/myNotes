@@ -39,6 +39,83 @@
 	import { debounce } from '../utils/debounce';
 	import GraphView from './GraphView.svelte';
 
+	let resolvedAssetsMap = new Map<string, string>(); // relative path -> blob URL
+
+	function getRelativeFilePath(src: string): string {
+		const decoded = decodeURIComponent(src);
+		const notePath = $activeNotePath;
+		if (notePath) {
+			const noteDir = notePath.substring(0, notePath.lastIndexOf('/'));
+			return noteDir ? `${noteDir}/${decoded}` : decoded;
+		}
+		return decoded;
+	}
+
+	async function resolveLocalAssets() {
+		if (!editor || !editor.view.dom) return;
+		
+		// 1. Resolve Images
+		const imgs = editor.view.dom.querySelectorAll('img');
+		for (const img of Array.from(imgs)) {
+			const src = img.getAttribute('src');
+			if (!src) continue;
+			
+			// If it's a relative local path
+			if (!src.startsWith('http://') && !src.startsWith('https://') && !src.startsWith('data:') && !src.startsWith('blob:') && !src.startsWith('asset:')) {
+				const resolvedPath = getRelativeFilePath(src);
+				if (resolvedAssetsMap.has(resolvedPath)) {
+					img.src = resolvedAssetsMap.get(resolvedPath)!;
+				} else {
+					try {
+						const blob = await appState.readBlob(resolvedPath);
+						if (blob) {
+							const url = URL.createObjectURL(blob);
+							resolvedAssetsMap.set(resolvedPath, url);
+							img.src = url;
+						}
+					} catch (e) {
+						console.warn('Failed to load local image:', resolvedPath, e);
+					}
+				}
+			}
+		}
+
+		// 2. Resolve PDF Embeds
+		const embeds = editor.view.dom.querySelectorAll('.pdf-embed');
+		for (const embed of Array.from(embeds)) {
+			const iframe = embed.querySelector('iframe');
+			const pdfSrc = embed.getAttribute('data-pdf-src');
+			if (!iframe || !pdfSrc) continue;
+			
+			const currentSrc = iframe.getAttribute('src');
+			if (currentSrc && !currentSrc.startsWith('blob:')) {
+				const resolvedPath = getRelativeFilePath(pdfSrc);
+				if (resolvedAssetsMap.has(resolvedPath)) {
+					iframe.src = resolvedAssetsMap.get(resolvedPath)!;
+				} else {
+					try {
+						const blob = await appState.readBlob(resolvedPath);
+						if (blob) {
+							const pdfBlob = new Blob([blob], { type: 'application/pdf' });
+							const url = URL.createObjectURL(pdfBlob);
+							resolvedAssetsMap.set(resolvedPath, url);
+							iframe.src = url;
+						}
+					} catch (e) {
+						console.warn('Failed to load local PDF:', resolvedPath, e);
+					}
+				}
+			}
+		}
+	}
+
+	function clearResolvedAssets() {
+		for (const url of resolvedAssetsMap.values()) {
+			URL.revokeObjectURL(url);
+		}
+		resolvedAssetsMap.clear();
+	}
+
 	const FontSize = Extension.create({
 		name: 'fontSize',
 		addOptions() {
@@ -375,6 +452,9 @@
 				editor.setEditable(false);
 			}
 			$readOnly = true;
+			tick().then(() => {
+				resolveLocalAssets();
+			});
 		} else {
 			// Switch Read -> Edit Mode
 			if (editor) {
@@ -393,6 +473,7 @@
 						editorBody.scrollTop = savedScrollTop;
 					}
 				}
+				resolveLocalAssets();
 			});
 		}
 
@@ -659,9 +740,43 @@
 		tablePickerOpen = false;
 		fontDropdown = false;
 		fontSizeDropdown = false;
+		exportDropdownOpen = false;
 	}
 
-	let anyDropdownOpen = $derived(headingDropdown || colorDropdown || highlightDropdown || alignDropdown || insertDropdown || tablePickerOpen || fontDropdown || fontSizeDropdown);
+	function exportAsMarkdown() {
+		exportDropdownOpen = false;
+		if (!$activeNotePath || !$activeNote) return;
+		const content = editor ? editorToMarkdown() : $activeNote.content;
+		const filename = ($activeNote.meta.title || $activeNote.name || 'note') + '.md';
+		const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
+		const url = URL.createObjectURL(blob);
+		const a = document.createElement('a');
+		a.href = url;
+		a.download = filename;
+		document.body.appendChild(a);
+		a.click();
+		document.body.removeChild(a);
+		URL.revokeObjectURL(url);
+		appState.showToast(`Exported ${filename} successfully.`, 'success');
+	}
+
+	function exportAsPdf() {
+		exportDropdownOpen = false;
+		window.print();
+	}
+
+	function handleToolbarTouchStart(e: TouchEvent) {
+		const target = e.target as HTMLElement;
+		if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
+		e.preventDefault();
+		const button = target.closest('button');
+		if (button) {
+			button.click();
+		}
+	}
+
+	let exportDropdownOpen = $state(false);
+	let anyDropdownOpen = $derived(headingDropdown || colorDropdown || highlightDropdown || alignDropdown || insertDropdown || tablePickerOpen || fontDropdown || fontSizeDropdown || exportDropdownOpen);
 	let editorState = $state(0);
 	let editorStateRaf = 0; // RAF handle for batching toolbar updates
 
@@ -1344,7 +1459,10 @@
 				const displaySrc = convertFileSrc(absPath);
 				return ['div', mergeAttributes({ 'data-pdf-src': src, 'data-pdf-name': name, class: 'pdf-embed' }),
 					['iframe', { src: displaySrc, width: '100%', height: `${pdfHeight}px`, frameborder: '0' }],
-					['p', { class: 'pdf-label' }, name],
+					['div', { class: 'pdf-footer' },
+						['p', { class: 'pdf-label' }, name],
+						['button', { class: 'pdf-download-btn', 'data-download-src': src, title: 'Download PDF' }, 'Download']
+					]
 				];
 			}
 			// Non-inline: render as a clickable link (mobile + desktop with setting off)
@@ -2318,8 +2436,8 @@
 		}
 
 		const textBefore = parentNode.textContent.slice(0, resolvedFrom.parentOffset);
-		// Match "/" at start of line or after whitespace
-		const match = textBefore.match(/(^|\s)\/([^\s]*)$/);
+		// Match "." at start of line or after whitespace
+		const match = textBefore.match(/(^|\s)\.([^\s]*)$/);
 		if (!match) {
 			closeSlashMenu();
 			return;
@@ -2361,7 +2479,7 @@
 					key: new PluginKey('slashCommands'),
 					props: {
 						handleTextInput: (_view, _from, _to, text) => {
-							if (text === '/') {
+							if (text === '.') {
 								slashTypedByUser = true;
 							}
 							return false;
@@ -3048,6 +3166,7 @@
 			const body = fmEnd > 0 ? raw.substring(raw.indexOf('\n', fmEnd) + 1) : raw;
 			if (editor) {
 				editor.commands.setContent(markdownToHtml(body));
+				resolveLocalAssets();
 			}
 			$editorDirty = true;
 			autoSave();
@@ -3143,6 +3262,7 @@
 	}
 
 	export function loadNote(path: string, content: string) {
+		clearResolvedAssets();
 		loadedPath = path;
 		lastSourceMode = $sourceMode;
 		isLoadingNote = true;
@@ -3191,6 +3311,7 @@
 					// No tr.scrollIntoView() - must not trigger any scroll
 					editor.view.dispatch(tr);
 				}
+				resolveLocalAssets();
 				requestAnimationFrame(() => { if (editorBody) editorBody.scrollTop = 0; });
 				isLoadingNote = false;
 			});
@@ -3897,7 +4018,7 @@
 			if (showInline) {
 				const pdfHeight = $appConfig?.pdf_height ?? 600;
 				const displaySrc = convertFileSrc(absPath);
-				return `<div data-pdf-src="${pdfSrc}" data-pdf-name="${name}" class="pdf-embed"><iframe src="${displaySrc}" width="100%" height="${pdfHeight}px"></iframe><p class="pdf-label">${name}</p></div>`;
+				return `<div data-pdf-src="${pdfSrc}" data-pdf-name="${name}" class="pdf-embed"><iframe src="${displaySrc}" width="100%" height="${pdfHeight}px"></iframe><div class="pdf-footer"><p class="pdf-label">${name}</p><button class="pdf-download-btn" data-download-src="${pdfSrc}" title="Download PDF">Download</button></div></div>`;
 			}
 			return `<div data-pdf-src="${pdfSrc}" data-pdf-name="${name}" class="pdf-embed-mobile"><a href="${decodeURIComponent(pdfSrc)}" class="pdf-link-mobile">\uD83D\uDCC4 ${name}</a></div>`;
 		});
@@ -4008,12 +4129,15 @@
 		}
 	});
 
-	// Close formatting dropdowns when clicking outside the formatting bar
+	// Close formatting dropdowns when clicking outside the formatting bar or export dropdown
 	$effect(() => {
 		if (!anyDropdownOpen) return;
 		function onClickAway(e: MouseEvent) {
 			const bar = document.querySelector('.editor-formatting-bar');
-			if (bar && !bar.contains(e.target as Node)) {
+			const exp = document.querySelector('.export-dropdown-wrap');
+			const isInsideBar = bar && bar.contains(e.target as Node);
+			const isInsideExp = exp && exp.contains(e.target as Node);
+			if (!isInsideBar && !isInsideExp) {
 				closeAllDropdowns();
 			}
 		}
@@ -4059,6 +4183,7 @@
 		mathObserver = null;
 		editorReady = false;
 		closeSlashMenu();
+		clearResolvedAssets();
 	}
 
 	function createEditor(content: string) {
@@ -4207,6 +4332,29 @@
 					// the normal onUpdate -> autoSave path. Edit mode keeps TipTap's behaviour.
 					click: (view, event) => {
 						const target = event.target as HTMLElement;
+
+						// Handle clicking PDF download button in both edit and read modes
+						const pdfDownloadBtn = target.closest('.pdf-download-btn') as HTMLElement | null;
+						if (pdfDownloadBtn) {
+							event.preventDefault();
+							const downloadSrc = pdfDownloadBtn.getAttribute('data-download-src');
+							if (downloadSrc) {
+								downloadFile(downloadSrc);
+								return true;
+							}
+						}
+
+						// Handle clicking PDF link in both edit and read modes
+						const pdfLinkMobile = target.closest('.pdf-link-mobile') as HTMLAnchorElement | null;
+						if (pdfLinkMobile) {
+							event.preventDefault();
+							const href = pdfLinkMobile.getAttribute('href');
+							if (href) {
+								downloadFile(href);
+								return true;
+							}
+						}
+
 						const link = target.closest('a');
 						if (link && get(readOnly)) {
 							const href = link.getAttribute('href');
@@ -4215,6 +4363,15 @@
 								if (href.startsWith('http://') || href.startsWith('https://')) {
 									openUrl(href);
 									return true;
+								} else if (isFileLink(href)) {
+									downloadFile(href);
+									return true;
+								} else {
+									const notePath = resolveNoteHref(href);
+									if (notePath) {
+										navigateToWikiLink(notePath, '');
+										return true;
+									}
 								}
 							}
 						}
@@ -4321,6 +4478,7 @@
 			},
 		});
 		editorReady = true;
+		resolveLocalAssets();
 		// Pre-load note titles for wiki-link autocomplete
 		if ($appConfig?.enable_wiki_links) {
 			refreshWikiLinkTitles();
@@ -5068,25 +5226,52 @@
 	}
 
 	function isFileLink(href: string): boolean {
-		if (href.startsWith('http://') || href.startsWith('https://') || href.startsWith('mailto:')) return false;
+		if (!href) return false;
+		if (href.startsWith('http://') || href.startsWith('https://') || href.startsWith('mailto:') || href.startsWith('#')) return false;
 		const ext = href.split('.').pop()?.toLowerCase() ?? '';
-		return ['pdf', 'zip', 'rar', '7z', 'tar', 'gz', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'csv', 'txt', 'rtf', 'odt', 'ods', 'mp3', 'mp4', 'wav', 'avi', 'mov', 'mkv', 'exe', 'dmg', 'apk', 'iso', 'epub'].includes(ext);
+		if (ext === 'md' || ext === 'html') return false;
+		return href.includes('.') && ext !== '';
+	}
+
+	async function downloadFile(href: string) {
+		const absPath = resolveHrefToAbsPath(href);
+		const filename = absPath.split('/').pop() || 'file';
+		try {
+			const blob = await appState.readBlob(absPath);
+			if (blob) {
+				const url = URL.createObjectURL(blob);
+				const a = document.createElement('a');
+				a.href = url;
+				a.download = filename;
+				document.body.appendChild(a);
+				a.click();
+				document.body.removeChild(a);
+				URL.revokeObjectURL(url);
+				appState.showToast(`Downloaded ${filename} successfully.`, 'success');
+			} else {
+				// Fallback if the path is a valid URL or data URL
+				if (href.startsWith('http') || href.startsWith('blob:') || href.startsWith('data:')) {
+					const a = document.createElement('a');
+					a.href = href;
+					a.download = filename;
+					document.body.appendChild(a);
+					a.click();
+					document.body.removeChild(a);
+				} else {
+					appState.showToast(`File not found or local storage access denied.`, 'error');
+				}
+			}
+		} catch (e) {
+			console.error('Failed to download file:', e);
+			appState.showToast(`Failed to download ${filename}.`, 'error');
+		}
 	}
 
 	async function linkMenuSaveAs() {
 		if (!linkContextMenu) return;
 		const href = linkContextMenu.href;
 		closeLinkContextMenu();
-		const absPath = resolveHrefToAbsPath(href);
-		const filename = absPath.split('/').pop() || 'file';
-		const dest = await saveDialog({ defaultPath: filename });
-		if (dest) {
-			try {
-				await copyFileTo(absPath, dest);
-			} catch (e) {
-				console.error('Failed to save file:', e);
-			}
-		}
+		await downloadFile(href);
 	}
 
 	function handleFileDrop(event: DragEvent): boolean {
@@ -5151,13 +5336,14 @@
 
 	async function insertImage(file: File) {
 		try {
-			const buffer = await file.arrayBuffer();
-			const data = Array.from(new Uint8Array(buffer));
-			const relativePath = await saveImage(file.name, data);
-			if (editor) {
-				const displaySrc = resolveImageSrc(relativePath);
-				editor.chain().focus().setImage({ src: displaySrc }).run();
-			}
+			const reader = new FileReader();
+			reader.onload = () => {
+				const base64 = reader.result as string;
+				if (editor) {
+					editor.chain().focus().setImage({ src: base64 }).run();
+				}
+			};
+			reader.readAsDataURL(file);
 		} catch (e) {
 			console.error('Failed to insert image:', e);
 		}
@@ -5449,6 +5635,36 @@
 						</svg>
 					</button>
 
+					<!-- Mobile Download Note Button -->
+					<div class="export-dropdown-wrap mobile">
+						<button
+							class="icon-btn"
+							class:active={exportDropdownOpen}
+							onclick={(e) => { e.stopPropagation(); exportDropdownOpen = !exportDropdownOpen; }}
+							title="Export Note"
+							style="padding: 6px; flex-shrink: 0; margin-left: 4px;"
+						>
+							<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+								<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+								<polyline points="7 10 12 15 17 10"/>
+								<line x1="12" y1="15" x2="12" y2="3"/>
+							</svg>
+						</button>
+						{#if exportDropdownOpen}
+							<!-- svelte-ignore a11y_no_static_element_interactions -->
+							<div class="fmt-dropdown export-dropdown mobile" onclick={(e) => e.stopPropagation()}>
+								<button onclick={exportAsMarkdown}>
+									<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+									Markdown (.md)
+								</button>
+								<button onclick={exportAsPdf}>
+									<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><circle cx="9" cy="15" r="2"/><path d="M9 17v2h3"/></svg>
+									PDF (Print)
+								</button>
+							</div>
+						{/if}
+					</div>
+
 					<!-- Mobile Read/Edit Mode Toggle -->
 					<div class="mode-segmented-control mobile" style="margin-left: 4px;">
 						<button
@@ -5477,6 +5693,7 @@
 						</button>
 					</div>
 
+					{#if !$readOnly}
 					<!-- Mobile Focus Mode Toggle -->
 					<button
 						class="icon-btn"
@@ -5504,6 +5721,7 @@
 							<polyline class="arrow-down" points="8 17 12 21 16 17"/>
 						</svg>
 					</button>
+					{/if}
 
 					<!-- Mobile Delete Note Button -->
 					<button
@@ -5596,6 +5814,35 @@
 						<line x1="4" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="20" y2="12"/><line x1="8" y1="18" x2="20" y2="18"/><circle cx="4" cy="12" r="1" fill="currentColor"/><circle cx="4" cy="18" r="1" fill="currentColor"/>
 					</svg>
 				</button>
+
+				<!-- Desktop Download Note Button -->
+				<div class="export-dropdown-wrap">
+					<button
+						class="icon-btn"
+						class:active={exportDropdownOpen}
+						onclick={(e) => { e.stopPropagation(); exportDropdownOpen = !exportDropdownOpen; }}
+						title="Export Note"
+					>
+						<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+							<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+							<polyline points="7 10 12 15 17 10"/>
+							<line x1="12" y1="15" x2="12" y2="3"/>
+						</svg>
+					</button>
+					{#if exportDropdownOpen}
+						<!-- svelte-ignore a11y_no_static_element_interactions -->
+						<div class="fmt-dropdown export-dropdown" onclick={(e) => e.stopPropagation()}>
+							<button onclick={exportAsMarkdown}>
+								<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+								Download Markdown (.md)
+							</button>
+							<button onclick={exportAsPdf}>
+								<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><circle cx="9" cy="15" r="2"/><path d="M9 17v2h3"/></svg>
+								Export as PDF
+							</button>
+						</div>
+					{/if}
+				</div>
 				<button
 					class="icon-btn"
 					class:active={showHistory}
@@ -5631,6 +5878,7 @@
 					</svg>
 				</button>
 				{/if}
+				{#if !$readOnly}
 				<!-- Desktop Focus Mode Button -->
 				<button
 					class="icon-btn"
@@ -5656,6 +5904,7 @@
 						<polyline class="arrow-down" points="8 17 12 21 16 17"/>
 					</svg>
 				</button>
+				{/if}
 
 				<!-- Desktop Delete Note Button -->
 				<button
@@ -5807,7 +6056,7 @@
 				</div>
 			{/if}
 			<div class="editor-body-row">
-			<div class="editor-body" class:readonly={$readOnly} class:focus-mode-active={appState.focusModeEnabled} class:typewriter-active={appState.typewriterScrollEnabled}>
+			<div class="editor-body" class:readonly={$readOnly} class:focus-mode-active={!$readOnly && appState.focusModeEnabled} class:typewriter-active={!$readOnly && appState.typewriterScrollEnabled}>
 				{#if isMobile}
 					<!-- Mobile: both views always in DOM, toggled via display to avoid slow editor re-creation -->
 					<textarea
@@ -5970,26 +6219,26 @@
 				{#if showBubbleMenu && bubbleMenuCoords}
 					<!-- svelte-ignore a11y_no_static_element_interactions -->
 					<div class="bubble-menu-hud" style="left: {bubbleMenuCoords.x}px; top: {bubbleMenuCoords.y}px;" onclick={(e) => e.stopPropagation()}>
-						<button class="bubble-btn" class:active={editor?.isActive('bold')} onclick={() => editor?.chain().focus().toggleBold().run()} title="Bold">
+						<button class="bubble-btn" class:active={editor?.isActive('bold')} onmousedown={(e) => e.preventDefault()} onclick={() => editor?.chain().focus().toggleBold().run()} title="Bold">
 							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 4h8a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"/><path d="M6 12h9a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"/></svg>
 						</button>
-						<button class="bubble-btn" class:active={editor?.isActive('italic')} onclick={() => editor?.chain().focus().toggleItalic().run()} title="Italic">
+						<button class="bubble-btn" class:active={editor?.isActive('italic')} onmousedown={(e) => e.preventDefault()} onclick={() => editor?.chain().focus().toggleItalic().run()} title="Italic">
 							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="4" x2="10" y2="4"/><line x1="14" y1="20" x2="5" y2="20"/><line x1="15" y1="4" x2="9" y2="20"/></svg>
 						</button>
-						<button class="bubble-btn" class:active={editor?.isActive('underline')} onclick={() => editor?.chain().focus().toggleUnderline().run()} title="Underline">
+						<button class="bubble-btn" class:active={editor?.isActive('underline')} onmousedown={(e) => e.preventDefault()} onclick={() => editor?.chain().focus().toggleUnderline().run()} title="Underline">
 							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v7a6 6 0 0 0 6 6 6 6 0 0 0 6-6V3"/><line x1="4" y1="21" x2="20" y2="21"/></svg>
 						</button>
-						<button class="bubble-btn" class:active={editor?.isActive('highlight')} onclick={() => editor?.chain().focus().toggleHighlight().run()} title="Highlight">
+						<button class="bubble-btn" class:active={editor?.isActive('highlight')} onmousedown={(e) => e.preventDefault()} onclick={() => editor?.chain().focus().toggleHighlight().run()} title="Highlight">
 							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
 						</button>
-						<button class="bubble-btn" class:active={editor?.isActive('code')} onclick={() => editor?.chain().focus().toggleCode().run()} title="Code">
+						<button class="bubble-btn" class:active={editor?.isActive('code')} onmousedown={(e) => e.preventDefault()} onclick={() => editor?.chain().focus().toggleCode().run()} title="Code">
 							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
 						</button>
 						<div class="bubble-sep"></div>
-						<button class="bubble-btn" onclick={() => { addLinkFromToolbar(); bubbleMenuCoords = null; }} title="Link">
+						<button class="bubble-btn" onmousedown={(e) => e.preventDefault()} onclick={() => { addLinkFromToolbar(); bubbleMenuCoords = null; }} title="Link">
 							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
 						</button>
-						<button class="bubble-btn" onclick={() => editor?.chain().focus().insertContent({ type: 'callout', attrs: { type: 'note' }, content: [{ type: 'paragraph' }] }).run()} title="Callout Box">
+						<button class="bubble-btn" onmousedown={(e) => e.preventDefault()} onclick={() => { editor?.chain().focus().insertContent({ type: 'callout', attrs: { type: 'note' }, content: [{ type: 'paragraph' }] }).run(); bubbleMenuCoords = null; }} title="Callout Box">
 							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><line x1="9" y1="9" x2="15" y2="9"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg>
 						</button>
 					</div>
@@ -6075,7 +6324,19 @@
 
 		{#if editorReady && !$sourceMode && !$viewerNote && !$readOnly}
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
-			<div class="editor-formatting-bar" style={isMobile ? `${keyboardHeight > 0 ? `bottom: ${keyboardHeight}px;` : ''}${anyDropdownOpen ? 'overflow: visible;' : ''}` : ''} onclick={() => { headingDropdown = false; colorDropdown = false; highlightDropdown = false; tablePickerOpen = false; alignDropdown = false; insertDropdown = false; }}>
+			<div class="editor-formatting-bar" 
+				style={isMobile ? `${keyboardHeight > 0 ? `bottom: ${keyboardHeight}px;` : ''}${anyDropdownOpen ? 'overflow: visible;' : ''}` : ''} 
+				onmousedown={(e) => {
+					if (isMobile) {
+						const target = e.target as HTMLElement;
+						if (target && target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA') {
+							e.preventDefault();
+						}
+					}
+				}}
+				ontouchstart={handleToolbarTouchStart}
+				onclick={() => { headingDropdown = false; colorDropdown = false; highlightDropdown = false; tablePickerOpen = false; alignDropdown = false; insertDropdown = false; }}
+			>
 
 				<!-- ═══ DESKTOP formatting bar: full feature set ═══ -->
 
@@ -7451,40 +7712,12 @@
 		cursor: default;
 	}
 
-	.editor-body.readonly :global(.tiptap p) {
-		font-size: 16px;
-		line-height: 1.8;
-		margin-bottom: 1.25em;
-		color: var(--text-primary);
-	}
-
-	.editor-body.readonly :global(.tiptap h1) {
-		font-size: 32px;
-		margin-top: 1.5em;
-		margin-bottom: 0.5em;
-		line-height: 1.35;
-	}
-
-	.editor-body.readonly :global(.tiptap h2) {
-		font-size: 24px;
-		margin-top: 1.4em;
-		margin-bottom: 0.5em;
-		line-height: 1.4;
-	}
-
-	.editor-body.readonly :global(.tiptap h3) {
-		font-size: 20px;
-		margin-top: 1.3em;
-		margin-bottom: 0.5em;
-		line-height: 1.4;
-	}
-
 	@media (min-width: 768px) {
 		.editor-body.readonly .tiptap-wrapper {
 			max-width: 800px;
 			margin: 0 auto;
 			width: 100%;
-			padding: 32px 40px 100px;
+			padding: 20px 40px;
 		}
 		.editor-container.readonly .editor-toolbar {
 			max-width: 800px;
@@ -10127,12 +10360,35 @@
 		border: none;
 		width: 100%;
 	}
-	:global(.tiptap .pdf-embed .pdf-label) {
+	:global(.tiptap .pdf-embed .pdf-footer) {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
 		padding: 6px 12px;
+		background: var(--bg-secondary);
+		border-top: 1px solid var(--border);
+	}
+	:global(.tiptap .pdf-embed .pdf-label) {
 		font-size: 12px;
 		color: var(--text-secondary);
-		border-top: 1px solid var(--border);
 		margin: 0;
+	}
+	:global(.tiptap .pdf-embed .pdf-download-btn) {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		background: var(--accent);
+		color: white;
+		border: none;
+		border-radius: 4px;
+		padding: 4px 10px;
+		font-size: 11px;
+		font-weight: 500;
+		cursor: pointer;
+		transition: background 0.2s;
+	}
+	:global(.tiptap .pdf-embed .pdf-download-btn:hover) {
+		filter: brightness(0.9);
 	}
 	:global(.tiptap .page-break) {
 		position: relative;
@@ -11305,5 +11561,61 @@
 		height: 16px;
 		background: rgba(255, 255, 255, 0.15);
 		margin: 0 4px;
+	}
+	.export-dropdown-wrap {
+		position: relative;
+	}
+
+	.export-dropdown {
+		top: calc(100% + 4px) !important;
+		bottom: auto !important;
+		right: 0 !important;
+		left: auto !important;
+		min-width: 180px;
+	}
+
+	.export-dropdown button {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+
+	.export-dropdown.mobile {
+		right: 0 !important;
+		left: auto !important;
+	}
+
+	@media print {
+		:global(body), :global(html) {
+			background: #fff !important;
+			color: #000 !important;
+		}
+		:global(.app-container), :global(.sidebar), :global(.note-list), :global(.editor-toolbar), :global(.editor-formatting-bar), :global(.icon-btn), :global(.mode-segmented-control), :global(.fmt-btn), :global(.fmt-sep), :global(.pdf-download-btn), :global(.nav-history-btns) {
+			display: none !important;
+		}
+		:global(.editor-container) {
+			margin: 0 !important;
+			padding: 0 !important;
+			border: none !important;
+			width: 100% !important;
+			max-width: 100% !important;
+			box-shadow: none !important;
+		}
+		:global(.editor-body) {
+			padding: 0 !important;
+			margin: 0 !important;
+			overflow: visible !important;
+			height: auto !important;
+		}
+		:global(.tiptap-wrapper) {
+			padding: 0 !important;
+			margin: 0 !important;
+			max-width: 100% !important;
+			width: 100% !important;
+		}
+		:global(.tiptap) {
+			color: #000 !important;
+			background: transparent !important;
+		}
 	}
 </style>
