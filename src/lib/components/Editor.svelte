@@ -766,6 +766,7 @@
 	}
 
 	let touchStartX = 0;
+	let touchStartY = 0;
 	let touchStartScrollLeft = 0;
 	let touchIsDragging = false;
 
@@ -775,6 +776,7 @@
 
 		e.preventDefault();
 		touchStartX = e.touches[0].clientX;
+		touchStartY = e.touches[0].clientY;
 		const container = e.currentTarget as HTMLElement;
 		touchStartScrollLeft = container.scrollLeft;
 		touchIsDragging = false;
@@ -783,8 +785,11 @@
 	function handleToolbarTouchMove(e: TouchEvent) {
 		if (e.touches.length === 0) return;
 		const touchX = e.touches[0].clientX;
+		const touchY = e.touches[0].clientY;
 		const diffX = touchX - touchStartX;
-		if (Math.abs(diffX) > 5) {
+		const diffY = touchY - touchStartY;
+		
+		if (Math.abs(diffX) > 15 || Math.abs(diffY) > 15) {
 			touchIsDragging = true;
 		}
 		if (touchIsDragging) {
