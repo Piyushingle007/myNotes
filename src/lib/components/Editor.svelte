@@ -765,47 +765,6 @@
 		window.print();
 	}
 
-	let touchStartX = 0;
-	let touchStartY = 0;
-	let touchStartScrollLeft = 0;
-	let touchIsDragging = false;
-
-	function handleToolbarTouchStart(e: TouchEvent) {
-		const target = e.target as HTMLElement;
-		if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT') return;
-
-		e.preventDefault();
-		touchStartX = e.touches[0].clientX;
-		touchStartY = e.touches[0].clientY;
-		const container = e.currentTarget as HTMLElement;
-		touchStartScrollLeft = container.scrollLeft;
-		touchIsDragging = false;
-	}
-
-	function handleToolbarTouchMove(e: TouchEvent) {
-		if (e.touches.length === 0) return;
-		const touchX = e.touches[0].clientX;
-		const touchY = e.touches[0].clientY;
-		const diffX = touchX - touchStartX;
-		const diffY = touchY - touchStartY;
-		
-		if (Math.abs(diffX) > 15 || Math.abs(diffY) > 15) {
-			touchIsDragging = true;
-		}
-		if (touchIsDragging) {
-			const container = e.currentTarget as HTMLElement;
-			container.scrollLeft = touchStartScrollLeft - diffX;
-		}
-	}
-
-	function handleToolbarTouchEnd(e: TouchEvent) {
-		if (touchIsDragging) return;
-		const target = e.target as HTMLElement;
-		const button = target.closest('button');
-		if (button) {
-			button.click();
-		}
-	}
 
 	let exportDropdownOpen = $state(false);
 	let anyDropdownOpen = $derived(headingDropdown || colorDropdown || highlightDropdown || alignDropdown || insertDropdown || tablePickerOpen || fontDropdown || fontSizeDropdown || exportDropdownOpen);
@@ -6358,17 +6317,6 @@
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<div class="editor-formatting-bar" 
 				style={isMobile ? `${keyboardHeight > 0 ? `bottom: ${keyboardHeight}px;` : ''}${anyDropdownOpen ? 'overflow: visible;' : ''}` : ''} 
-				onmousedown={(e) => {
-					if (isMobile) {
-						const target = e.target as HTMLElement;
-						if (target && target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA') {
-							e.preventDefault();
-						}
-					}
-				}}
-				ontouchstart={handleToolbarTouchStart}
-				ontouchmove={handleToolbarTouchMove}
-				ontouchend={handleToolbarTouchEnd}
 				onclick={() => { headingDropdown = false; colorDropdown = false; highlightDropdown = false; tablePickerOpen = false; alignDropdown = false; insertDropdown = false; }}
 			>
 
