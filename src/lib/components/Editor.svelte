@@ -765,10 +765,37 @@
 		window.print();
 	}
 
+	let touchStartX = 0;
+	let touchStartScrollLeft = 0;
+	let touchIsDragging = false;
+
 	function handleToolbarTouchStart(e: TouchEvent) {
 		const target = e.target as HTMLElement;
-		if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
+		if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT') return;
+
 		e.preventDefault();
+		touchStartX = e.touches[0].clientX;
+		const container = e.currentTarget as HTMLElement;
+		touchStartScrollLeft = container.scrollLeft;
+		touchIsDragging = false;
+	}
+
+	function handleToolbarTouchMove(e: TouchEvent) {
+		if (e.touches.length === 0) return;
+		const touchX = e.touches[0].clientX;
+		const diffX = touchX - touchStartX;
+		if (Math.abs(diffX) > 5) {
+			touchIsDragging = true;
+		}
+		if (touchIsDragging) {
+			const container = e.currentTarget as HTMLElement;
+			container.scrollLeft = touchStartScrollLeft - diffX;
+		}
+	}
+
+	function handleToolbarTouchEnd(e: TouchEvent) {
+		if (touchIsDragging) return;
+		const target = e.target as HTMLElement;
 		const button = target.closest('button');
 		if (button) {
 			button.click();
@@ -6335,6 +6362,8 @@
 					}
 				}}
 				ontouchstart={handleToolbarTouchStart}
+				ontouchmove={handleToolbarTouchMove}
+				ontouchend={handleToolbarTouchEnd}
 				onclick={() => { headingDropdown = false; colorDropdown = false; highlightDropdown = false; tablePickerOpen = false; alignDropdown = false; insertDropdown = false; }}
 			>
 
