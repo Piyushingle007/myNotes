@@ -646,6 +646,12 @@ class AppState {
           ? driveFiles.find(f => f.id === remoteId)
           : driveFileMap.get(note.path.toLowerCase());
 
+        // Legacy string mappings upgrade on-the-fly
+        if (mapEntry && typeof mapEntry === 'string') {
+          lastSyncLocalTime = note.modified;
+          lastSyncRemoteTime = driveFile ? new Date(driveFile.modifiedTime).getTime() : 0;
+        }
+
         console.log(`Sync check for: ${note.path}`);
         if (driveFile) {
           const remoteTime = new Date(driveFile.modifiedTime).getTime();
@@ -660,8 +666,9 @@ class AppState {
           if (localChanged && remoteChanged) {
             // Conflict! Resolving via Last Modified Wins
             console.log('  Conflict detected! Resolving via Last Modified Wins.');
-            if (note.modified > remoteTime) {
-              console.log('  Local is newer. Uploading note...');
+            // Trust local edits within a 5-minute clock skew buffer to prevent data loss.
+            if (note.modified > remoteTime - 300000) {
+              console.log('  Local is newer or within skew buffer. Uploading note...');
               const uploadRes = await uploadNoteToDrive(note.path, `${note.name}.html`, note.content, driveFile.id);
               const updatedRemoteTime = new Date(uploadRes.modifiedTime).getTime();
               activeMappings[note.path] = {

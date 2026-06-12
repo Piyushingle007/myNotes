@@ -5375,16 +5375,61 @@
 		}
 	}
 
+	async function compressImage(file: File | Blob): Promise<string> {
+		return new Promise((resolve, reject) => {
+			const reader = new FileReader();
+			reader.onload = (e) => {
+				const img = new window.Image();
+				img.onload = () => {
+					if (file.size < 300 * 1024) {
+						resolve(e.target?.result as string);
+						return;
+					}
+					const canvas = document.createElement('canvas');
+					let width = img.width;
+					let height = img.height;
+					const MAX_WIDTH = 1200;
+					const MAX_HEIGHT = 1200;
+
+					if (width > height) {
+						if (width > MAX_WIDTH) {
+							height *= MAX_WIDTH / width;
+							width = MAX_WIDTH;
+						}
+					} else {
+						if (height > MAX_HEIGHT) {
+							width *= MAX_HEIGHT / height;
+							height = MAX_HEIGHT;
+						}
+					}
+
+					canvas.width = width;
+					canvas.height = height;
+					const ctx = canvas.getContext('2d');
+					if (!ctx) {
+						resolve(e.target?.result as string);
+						return;
+					}
+					ctx.drawImage(img, 0, 0, width, height);
+					const compressedBase64 = canvas.toDataURL('image/jpeg', 0.8);
+					resolve(compressedBase64);
+				};
+				img.onerror = () => {
+					resolve(e.target?.result as string);
+				};
+				img.src = e.target?.result as string;
+			};
+			reader.onerror = () => reject(reader.error);
+			reader.readAsDataURL(file);
+		});
+	}
+
 	async function insertImage(file: File) {
 		try {
-			const reader = new FileReader();
-			reader.onload = () => {
-				const base64 = reader.result as string;
-				if (editor) {
-					editor.chain().focus().setImage({ src: base64 }).run();
-				}
-			};
-			reader.readAsDataURL(file);
+			const base64 = await compressImage(file);
+			if (editor) {
+				editor.chain().focus().setImage({ src: base64 }).run();
+			}
 		} catch (e) {
 			console.error('Failed to insert image:', e);
 		}
@@ -5420,14 +5465,9 @@
 		try {
 			const resp = await fetch(blobUrl);
 			const blob = await resp.blob();
-			const ext = blob.type.split('/')[1] || 'png';
-			const name = `pasted-image.${ext}`;
-			const buffer = await blob.arrayBuffer();
-			const data = Array.from(new Uint8Array(buffer));
-			const relativePath = await saveImage(name, data);
-			return resolveImageSrc(relativePath);
+			return await compressImage(blob);
 		} catch (e) {
-			console.error('Failed to save blob image:', e);
+			console.error('Failed to convert blob image to base64:', e);
 			return null;
 		}
 	}
