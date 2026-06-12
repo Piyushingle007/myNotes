@@ -4254,7 +4254,7 @@
 				CustomTableCell,
 				CustomTableHeader,
 				Link.configure({ openOnClick: false, HTMLAttributes: { class: 'editor-link' }, isAllowedUri: (url, ctx) => ctx.defaultValidate(url) || !url.startsWith('javascript:'), shouldAutoLink: (url) => /^https?:\/\//.test(url) }),
-				CustomImage.configure({ inline: true, HTMLAttributes: { class: 'editor-image' } }),
+				CustomImage.configure({ inline: true, allowBase64: true, HTMLAttributes: { class: 'editor-image' } }),
 				Highlight.configure({ multicolor: true }),
 				Typography,
 				Underline,
@@ -5786,7 +5786,7 @@
 					{#if !$readOnly}
 					<!-- Mobile Focus Mode Toggle -->
 					<button
-						class="icon-btn"
+						class="icon-btn toggle-btn"
 						class:active={appState.focusModeEnabled}
 						style="padding: 6px; flex-shrink: 0; margin-left: 4px;"
 						onclick={() => appState.setFocusMode(!appState.focusModeEnabled)}
@@ -5799,7 +5799,7 @@
 
 					<!-- Mobile Typewriter Scroll Toggle -->
 					<button
-						class="icon-btn"
+						class="icon-btn toggle-btn"
 						class:active={appState.typewriterScrollEnabled}
 						style="padding: 6px; flex-shrink: 0; margin-left: 4px;"
 						onclick={() => appState.setTypewriterScroll(!appState.typewriterScrollEnabled)}
@@ -5975,7 +5975,7 @@
 				{#if !$readOnly}
 				<!-- Desktop Focus Mode Button -->
 				<button
-					class="icon-btn"
+					class="icon-btn toggle-btn"
 					class:active={appState.focusModeEnabled}
 					onclick={() => appState.setFocusMode(!appState.focusModeEnabled)}
 					title="Toggle Focus Mode"
@@ -5987,7 +5987,7 @@
 
 				<!-- Desktop Typewriter Scroll Button -->
 				<button
-					class="icon-btn"
+					class="icon-btn toggle-btn"
 					class:active={appState.typewriterScrollEnabled}
 					onclick={() => appState.setTypewriterScroll(!appState.typewriterScrollEnabled)}
 					title="Toggle Typewriter Scrolling"
@@ -8143,6 +8143,25 @@
 	.icon-btn.active {
 		color: var(--text-accent);
 		background: var(--accent-light);
+	}
+
+	/* Toggle buttons (Zen Focus Mode + Typewriter Scroll):
+	   OFF = clearly muted/unfocused, ON = clearly highlighted. */
+	.icon-btn.toggle-btn {
+		color: var(--text-tertiary);
+		opacity: 0.5;
+	}
+
+	.icon-btn.toggle-btn:hover {
+		color: var(--text-primary);
+		opacity: 1;
+	}
+
+	.icon-btn.toggle-btn.active {
+		color: var(--accent);
+		background: var(--accent-light);
+		opacity: 1;
+		box-shadow: inset 0 0 0 1.5px var(--accent);
 	}
 
 	/* Ensure Zen Focus and Typewriter Scroll icons remain clean outlines (non-bold) */
