@@ -38,6 +38,8 @@
 	import { appState, parseHtmlMetadata, generateHtmlNote } from '../stores/appState.svelte';
 	import { debounce } from '../utils/debounce';
 	import GraphView from './GraphView.svelte';
+	import DiagramEditor from './DiagramEditor.svelte';
+	import { renderDiagramSVG, decodeDiagram } from '../utils/diagram';
 
 	let resolvedAssetsMap = new Map<string, string>(); // relative path -> blob URL
 
@@ -806,9 +808,72 @@
 		appState.showToast(`Exported ${filename} successfully.`, 'success');
 	}
 
-	function exportAsPdf() {
+	async function exportAsPdf() {
 		exportDropdownOpen = false;
-		window.print();
+		if (!$activeNote) return;
+
+		const toastId = appState.showToast('Generating PDF…', 'info', 0, undefined, true);
+		try {
+			const [{ jsPDF }, html2canvasMod] = await Promise.all([
+				import('jspdf'),
+				import('html2canvas')
+			]);
+			const html2canvas = (html2canvasMod as any).default || html2canvasMod;
+
+			// Build a clean, light, print-friendly render target off-screen so the
+			// output looks like a document regardless of the current editor theme.
+			const sourceEl = (editor ? editor.view.dom : editorElement) as HTMLElement;
+			const clone = sourceEl.cloneNode(true) as HTMLElement;
+			clone.style.cssText = 'color:#111111; background:transparent;';
+
+			const container = document.createElement('div');
+			container.style.cssText = [
+				'position:fixed', 'left:-99999px', 'top:0', 'width:794px', /* ~A4 @96dpi */
+				'padding:48px', 'background:#ffffff', 'color:#111111',
+				'font-family:Georgia, "Times New Roman", serif', 'line-height:1.6', 'box-sizing:border-box'
+			].join(';');
+
+			const titleEl = document.createElement('h1');
+			titleEl.textContent = $activeNote.meta.title || $activeNote.name || 'Note';
+			titleEl.style.cssText = 'font-family:inherit; color:#111111; margin:0 0 20px; font-size:28px;';
+			container.appendChild(titleEl);
+			container.appendChild(clone);
+			document.body.appendChild(container);
+
+			const canvas = await html2canvas(container, {
+				scale: 2,
+				backgroundColor: '#ffffff',
+				useCORS: true,
+				logging: false
+			});
+			document.body.removeChild(container);
+
+			const pdf = new jsPDF('p', 'mm', 'a4');
+			const pageW = pdf.internal.pageSize.getWidth();
+			const pageH = pdf.internal.pageSize.getHeight();
+			const imgW = pageW;
+			const imgH = (canvas.height * imgW) / canvas.width;
+			const imgData = canvas.toDataURL('image/jpeg', 0.92);
+
+			let heightLeft = imgH;
+			let position = 0;
+			pdf.addImage(imgData, 'JPEG', 0, position, imgW, imgH);
+			heightLeft -= pageH;
+			while (heightLeft > 0) {
+				position -= pageH;
+				pdf.addPage();
+				pdf.addImage(imgData, 'JPEG', 0, position, imgW, imgH);
+				heightLeft -= pageH;
+			}
+
+			const filename = ($activeNote.meta.title || $activeNote.name || 'note') + '.pdf';
+			pdf.save(filename);
+			appState.updateToast(toastId, { message: `Exported ${filename}`, type: 'success', loading: false, duration: 3000 });
+		} catch (e) {
+			console.error('PDF export failed, falling back to print dialog:', e);
+			appState.updateToast(toastId, { message: 'PDF render failed — opening print dialog instead.', type: 'warning', loading: false, duration: 4000 });
+			window.print();
+		}
 	}
 
 
@@ -952,6 +1017,15 @@
 				icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg>',
 				action: () => editor?.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(),
 				category: 'insert'
+			},
+			{
+				label: 'Diagram',
+				description: 'Draw shapes, arrows & flowcharts on a canvas',
+				aliases: ['diagram', 'draw', 'drawio', 'flowchart', 'sketch', 'canvas', 'whiteboard'],
+				icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><path d="M10 6.5h4a3 3 0 0 1 3 3V14"/></svg>',
+				action: () => openDiagramInsert(),
+				category: 'insert',
+				badge: 'New'
 			},
 			{
 				label: 'Checklist',
@@ -1257,6 +1331,34 @@
 
 	// Math insert/edit modal (opened by /math slash command or double-click on existing math node)
 	let mathModal = $state<{ kind: 'block' | 'inline'; editPos: number | null; tex: string } | null>(null);
+
+	// ═══ DIAGRAM (native draw.io-style) editor wiring ═══
+	let diagramModal = $state<{ pos: number | null; data: string } | null>(null);
+	function openDiagramInsert() {
+		diagramModal = { pos: null, data: '' };
+	}
+	function openDiagramEditor(pos: number, data: string) {
+		diagramModal = { pos, data };
+	}
+	function cancelDiagram() {
+		diagramModal = null;
+	}
+	function commitDiagram(encoded: string) {
+		if (!editor || !diagramModal) return;
+		const { pos } = diagramModal;
+		diagramModal = null;
+		if (pos !== null) {
+			const node = editor.state.doc.nodeAt(pos);
+			if (node && node.type.name === 'diagram') {
+				const tr = editor.state.tr.setNodeAttribute(pos, 'data', encoded);
+				editor.view.dispatch(tr);
+			}
+		} else {
+			editor.chain().focus().insertContent({ type: 'diagram', attrs: { data: encoded } }).run();
+		}
+		$editorDirty = true;
+		autoSave();
+	}
 
 	function openMathInsert(kind: 'block' | 'inline') {
 		mathModal = { kind, editPos: null, tex: '' };
@@ -1583,6 +1685,68 @@
 					if (pos !== null && pos !== undefined) openMathEdit(pos, 'inline', node.attrs.tex);
 				});
 				return { dom, destroy() { mathObserver?.unobserve(dom); mathPending.delete(dom); } };
+			};
+		},
+	});
+
+	// ═══ DIAGRAM NODE (native draw.io-style canvas, stored as JSON, rendered as SVG) ═══
+	const Diagram = TiptapNode.create({
+		name: 'diagram',
+		group: 'block',
+		atom: true,
+		draggable: true,
+		addAttributes() {
+			return { data: { default: '' } };
+		},
+		parseHTML() {
+			return [{
+				tag: 'div[data-diagram]',
+				getAttrs: (el: HTMLElement) => ({ data: el.getAttribute('data-diagram') || '' }),
+			}];
+		},
+		renderHTML({ HTMLAttributes }) {
+			// Serialize with an embedded SVG so exports (HTML/PDF) display the diagram,
+			// while keeping the JSON in data-diagram for re-editing.
+			const data = HTMLAttributes.data || '';
+			const dom = document.createElement('div');
+			dom.setAttribute('data-diagram', data);
+			dom.className = 'diagram-block';
+			try {
+				const d = decodeDiagram(data);
+				if (d.shapes.length) dom.innerHTML = renderDiagramSVG(d);
+			} catch (e) { /* ignore */ }
+			return dom;
+		},
+		addNodeView() {
+			return ({ node, getPos }) => {
+				const dom = document.createElement('div');
+				dom.className = 'diagram-block';
+				dom.setAttribute('data-diagram', node.attrs.data || '');
+				const render = () => {
+					const enc = dom.getAttribute('data-diagram') || '';
+					let inner = '';
+					try {
+						const d = decodeDiagram(enc);
+						inner = d.shapes.length ? renderDiagramSVG(d) : '';
+					} catch (e) { /* ignore */ }
+					dom.innerHTML = inner || '<div class="diagram-empty">✎ Empty diagram — double-click to edit</div>';
+				};
+				render();
+				dom.addEventListener('dblclick', (e) => {
+					e.preventDefault();
+					e.stopPropagation();
+					const pos = typeof getPos === 'function' ? getPos() : null;
+					if (pos !== null && pos !== undefined) openDiagramEditor(pos, node.attrs.data || '');
+				});
+				return {
+					dom,
+					update(updatedNode: any) {
+						if (updatedNode.type.name !== 'diagram') return false;
+						dom.setAttribute('data-diagram', updatedNode.attrs.data || '');
+						render();
+						return true;
+					}
+				};
 			};
 		},
 	});
@@ -4270,6 +4434,7 @@
 				PdfEmbed,
 				MathBlock,
 				MathInline,
+				Diagram,
 				PageBreak,
 				Callout,
 				TypingKeyboardShortcuts,
@@ -6461,6 +6626,10 @@
 								<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="13" height="7" x="8" y="3" rx="1"/><path d="m2 9 3 3-3 3"/><rect width="13" height="7" x="8" y="14" rx="1"/></svg>
 								Collapsible Section
 							</button>
+							<button onclick={() => { insertDropdown = false; openDiagramInsert(); }}>
+								<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><path d="M10 6.5h4a3 3 0 0 1 3 3V14"/></svg>
+								Diagram
+							</button>
 							<button onclick={() => { insertDropdown = false; insertTimestamp('datetime'); }}>
 								<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 7.5V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h6"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="16" y1="2" x2="16" y2="6"/><circle cx="18" cy="17" r="4"/><path d="M18 15.5v1.5l1 1"/></svg>
 								Date &amp; Time
@@ -7717,6 +7886,10 @@
 
 {#if showGraph}
 	<GraphView onclose={() => showGraph = false} onnavigate={(path, title) => { showGraph = false; navigateToWikiLink(path, title); }} />
+{/if}
+
+{#if diagramModal}
+	<DiagramEditor data={diagramModal.data} onSave={commitDiagram} onCancel={cancelDiagram} />
 {/if}
 
 <style>
@@ -11721,5 +11894,42 @@
 			color: #000 !important;
 			background: transparent !important;
 		}
+	}
+
+	/* ═══ Diagram node (in-note preview) ═══ */
+	:global(.diagram-block) {
+		display: flex;
+		justify-content: center;
+		margin: 14px 0;
+		padding: 8px;
+		border-radius: 10px;
+		border: 1px solid transparent;
+		cursor: pointer;
+		transition: border-color 0.15s, background 0.15s;
+	}
+	:global(.diagram-block:hover) {
+		border-color: var(--border-highlight, #2c313a);
+		background: rgba(255, 255, 255, 0.02);
+	}
+	:global(.diagram-block.ProseMirror-selectednode) {
+		border-color: var(--accent, #38bdf8);
+		background: var(--accent-light, rgba(56, 189, 248, 0.1));
+	}
+	:global(.diagram-block svg) {
+		max-width: 100%;
+		height: auto;
+	}
+	:global(.diagram-empty) {
+		width: 100%;
+		padding: 28px;
+		text-align: center;
+		color: var(--text-tertiary, #7c8290);
+		border: 1px dashed var(--border-highlight, #2c313a);
+		border-radius: 10px;
+		font-size: 13px;
+		font-weight: 500;
+	}
+	@media print {
+		:global(.diagram-block) { border-color: transparent !important; }
 	}
 </style>

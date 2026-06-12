@@ -250,6 +250,18 @@ class AppState {
     this.toasts = this.toasts.filter(t => t.id !== id);
   }
 
+  // Compares two note files by their body content (ignoring volatile metadata
+  // like created/modified timestamps) so first-time sync can detect true equality.
+  private notesBodyEqual(a: string, b: string): boolean {
+    try {
+      const ba = parseHtmlMetadata(a).content.replace(/\s+/g, ' ').trim();
+      const bb = parseHtmlMetadata(b).content.replace(/\s+/g, ' ').trim();
+      return ba === bb;
+    } catch {
+      return a.trim() === b.trim();
+    }
+  }
+
   isNoteSynced(notePath: string | null): boolean {
     if (!notePath) return true;
     if (!this.syncEnabled || !this.googleConnected) return false;
@@ -658,7 +670,47 @@ class AppState {
           console.log(`  Remote file found: ${driveFile.name} (ID: ${driveFile.id})`);
           console.log(`  Local modified: ${note.modified} (Last sync local: ${lastSyncLocalTime})`);
           console.log(`  Remote modified: ${remoteTime} (Last sync remote: ${lastSyncRemoteTime})`);
-          
+
+          // First-time reconciliation: there is no prior sync record for this note
+          // (e.g. first connect, a second device, or after switching Drive folders).
+          // Compare the actual content first so we don't needlessly re-upload notes
+          // that already match what's on Drive.
+          if (!mapEntry) {
+            let remoteContent: string | null = null;
+            try {
+              remoteContent = await this.syncService.downloadFile(driveFile.id);
+            } catch (e) {
+              console.warn('  First-sync compare: failed to download remote, reconciling by time.', e);
+            }
+
+            if (remoteContent !== null && this.notesBodyEqual(note.content, remoteContent)) {
+              console.log('  First sync: local and remote are identical. Linking without transfer.');
+              activeMappings[note.path] = {
+                id: driveFile.id,
+                lastSyncLocalTime: note.modified,
+                lastSyncRemoteTime: remoteTime
+              };
+            } else if (remoteContent !== null && remoteTime > note.modified) {
+              console.log('  First sync: remote is newer. Adopting remote copy.');
+              await this.storage.writeNote(note.path, remoteContent);
+              activeMappings[note.path] = {
+                id: driveFile.id,
+                lastSyncLocalTime: Date.now(),
+                lastSyncRemoteTime: remoteTime
+              };
+            } else {
+              console.log('  First sync: local is newer (or remote unavailable). Uploading local copy.');
+              const uploadRes = await uploadNoteToDrive(note.path, `${note.name}.html`, note.content, driveFile.id);
+              const updatedRemoteTime = new Date(uploadRes.modifiedTime).getTime();
+              activeMappings[note.path] = {
+                id: uploadRes.id,
+                lastSyncLocalTime: note.modified,
+                lastSyncRemoteTime: updatedRemoteTime
+              };
+            }
+            continue; // reconciliation handled for this note
+          }
+
           const localChanged = note.modified > lastSyncLocalTime + 2000;
           const remoteChanged = remoteTime > lastSyncRemoteTime + 2000;
           console.log(`  localChanged: ${localChanged}, remoteChanged: ${remoteChanged}`);
