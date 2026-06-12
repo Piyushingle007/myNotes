@@ -748,8 +748,47 @@ a {
   background-color: var(--bg-surface);
 }
 
-/* Selection and Highlighting */
 ::selection {
   background-color: var(--accent);
   color: #000000;
+}
+
+@media print {
+  /* Hide sidebar and note list in print layout */
+  .sidebar,
+  .notelist,
+  .mobile-app .android-bottom-nav,
+  .mobile-app .mobile-editor-top,
+  .mobile-app .mobile-header,
+  .resize-handle,
+  .all-collapsed-placeholder,
+  .export-dropdown-wrap,
+  .floating-action-button,
+  .icon-btn,
+  .toolbar-wrapper,
+  .editor-header,
+  .titlebar,
+  .quick-access,
+  button,
+  header {
+    display: none !important;
+  }
+
+  body, html, .desktop-app, .mobile-app, .editor-panel, .tiptap-wrapper {
+    background: #ffffff !important;
+    color: #000000 !important;
+    width: 100% !important;
+    height: auto !important;
+    overflow: visible !important;
+    position: static !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .editor-body, .tiptap-wrapper, .prose {
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+    height: auto !important;
+  }
 }

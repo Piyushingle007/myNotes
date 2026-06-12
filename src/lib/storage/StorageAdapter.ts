@@ -15,6 +15,8 @@ export interface StorageAdapter {
   createDirectory(path: string): Promise<void>;
   deleteDirectory(path: string): Promise<void>;
   readBlob?(path: string): Promise<Blob>;
+  writeBlob?(path: string, blob: Blob): Promise<void>;
+  migrateNotes?(convertFn: (md: string) => string): Promise<void>;
 }
 
 // ----------------------------------------------------
@@ -34,11 +36,14 @@ export class IndexedDBAdapter implements StorageAdapter {
   private ensureDb(): Promise<IDBDatabase> {
     return new Promise((resolve, reject) => {
       if (this.db) return resolve(this.db);
-      const request = indexedDB.open(this.dbName, 1);
+      const request = indexedDB.open(this.dbName, 2);
       request.onupgradeneeded = (e) => {
         const db = request.result;
         if (!db.objectStoreNames.contains(this.storeName)) {
           db.createObjectStore(this.storeName, { keyPath: 'path' });
+        }
+        if (!db.objectStoreNames.contains('attachments')) {
+          db.createObjectStore('attachments', { keyPath: 'path' });
         }
       };
       request.onsuccess = () => {
@@ -69,7 +74,7 @@ export class IndexedDBAdapter implements StorageAdapter {
     const now = Date.now();
     const note: NoteFile = {
       path,
-      name: path.split('/').pop()?.replace(/\.md$/, '') || 'Untitled',
+      name: path.split('/').pop()?.replace(/\.(md|html)$/, '') || 'Untitled',
       content,
       modified: now,
       created: existing ? existing.created : now
@@ -130,6 +135,72 @@ export class IndexedDBAdapter implements StorageAdapter {
       }
     });
   }
+
+  async readBlob(path: string): Promise<Blob> {
+    const db = await this.ensureDb();
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction('attachments', 'readonly');
+      const store = transaction.objectStore('attachments');
+      const request = store.get(path);
+      request.onsuccess = () => {
+        if (request.result) {
+          resolve(request.result.blob);
+        } else {
+          reject(new Error('Attachment not found: ' + path));
+        }
+      };
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async writeBlob(path: string, blob: Blob): Promise<void> {
+    const db = await this.ensureDb();
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction('attachments', 'readwrite');
+      const store = transaction.objectStore('attachments');
+      const request = store.put({ path, blob });
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async migrateNotes(convertFn: (md: string) => string): Promise<void> {
+    const db = await this.ensureDb();
+    const notesList: NoteFile[] = await new Promise((resolve, reject) => {
+      const transaction = db.transaction(this.storeName, 'readonly');
+      const store = transaction.objectStore(this.storeName);
+      const request = store.getAll();
+      request.onsuccess = () => resolve(request.result || []);
+      request.onerror = () => reject(request.error);
+    });
+
+    const mdNotes = notesList.filter(n => n.path.endsWith('.md'));
+    if (mdNotes.length === 0) return;
+
+    const transaction = db.transaction(this.storeName, 'readwrite');
+    const store = transaction.objectStore(this.storeName);
+
+    for (const note of mdNotes) {
+      const htmlContent = convertFn(note.content);
+      const htmlPath = note.path.replace(/\.md$/, '.html');
+      const now = Date.now();
+      const newNote: NoteFile = {
+        path: htmlPath,
+        name: htmlPath.split('/').pop()?.replace(/\.html$/, '') || 'Untitled',
+        content: htmlContent,
+        modified: now,
+        created: note.created
+      };
+      
+      store.put(newNote);
+      store.delete(note.path);
+    }
+
+    return new Promise((resolve, reject) => {
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error);
+    });
+  }
 }
 
 // ----------------------------------------------------
@@ -180,12 +251,12 @@ export class FileSystemAccessAdapter implements StorageAdapter {
     for await (const entry of dirHandle.values()) {
       const relativePath = currentPath ? `${currentPath}/${entry.name}` : entry.name;
       
-      if (entry.kind === 'file' && entry.name.endsWith('.md')) {
+      if (entry.kind === 'file' && entry.name.endsWith('.html')) {
         const file = await entry.getFile();
         const content = await file.text();
         results.push({
           path: relativePath,
-          name: entry.name.replace(/\.md$/, ''),
+          name: entry.name.replace(/\.html$/, ''),
           content,
           modified: file.lastModified,
           created: file.lastModified // File System Access API does not expose file creation date easily
@@ -263,5 +334,53 @@ export class FileSystemAccessAdapter implements StorageAdapter {
     const { parentDir, filename } = await this.getHandleForPath(path);
     const fileHandle = await parentDir.getFileHandle(filename);
     return await fileHandle.getFile();
+  }
+
+  async writeBlob(path: string, blob: Blob): Promise<void> {
+    const { parentDir, filename } = await this.getHandleForPath(path, { create: true });
+    const fileHandle = await parentDir.getFileHandle(filename, { create: true });
+    // @ts-ignore
+    const writable = await fileHandle.createWritable();
+    await writable.write(blob);
+    await writable.close();
+  }
+
+  async migrateNotes(convertFn: (md: string) => string): Promise<void> {
+    if (!this.dirHandle) return;
+    await this.migrateRecursive(this.dirHandle, '', convertFn);
+  }
+
+  private async migrateRecursive(
+    dirHandle: FileSystemDirectoryHandle,
+    currentPath: string,
+    convertFn: (md: string) => string
+  ): Promise<void> {
+    // @ts-ignore
+    for await (const entry of dirHandle.values()) {
+      const relativePath = currentPath ? `${currentPath}/${entry.name}` : entry.name;
+      if (entry.kind === 'file' && entry.name.endsWith('.md')) {
+        try {
+          const file = await entry.getFile();
+          const mdContent = await file.text();
+          const htmlContent = convertFn(mdContent);
+          
+          const htmlPath = relativePath.replace(/\.md$/, '.html');
+          const { parentDir, filename } = await this.getHandleForPath(htmlPath, { create: true });
+          const fileHandle = await parentDir.getFileHandle(filename, { create: true });
+          // @ts-ignore
+          const writable = await fileHandle.createWritable();
+          await writable.write(htmlContent);
+          await writable.close();
+          
+          const { parentDir: oldParent, filename: oldFilename } = await this.getHandleForPath(relativePath);
+          await oldParent.removeEntry(oldFilename);
+        } catch (err) {
+          console.error('Failed to migrate markdown file:', relativePath, err);
+        }
+      } else if (entry.kind === 'directory') {
+        if (entry.name.startsWith('.')) continue;
+        await this.migrateRecursive(entry, relativePath, convertFn);
+      }
+    }
   }
 }

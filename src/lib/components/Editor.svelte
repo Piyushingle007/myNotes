@@ -33,9 +33,9 @@
 	import { Extension, Node as TiptapNode, Mark as TiptapMark, mergeAttributes } from '@tiptap/core';
 	import { Plugin, PluginKey, EditorState, TextSelection } from '@tiptap/pm/state';
 	import { Decoration, DecorationSet } from '@tiptap/pm/view';
-	import { DOMSerializer } from '@tiptap/pm/model';
+	import { DOMSerializer, DOMParser as PMParser } from '@tiptap/pm/model';
 	import { writable, derived } from 'svelte/store';
-	import { appState } from '../stores/appState.svelte';
+	import { appState, parseHtmlMetadata, generateHtmlNote } from '../stores/appState.svelte';
 	import { debounce } from '../utils/debounce';
 	import GraphView from './GraphView.svelte';
 
@@ -224,9 +224,9 @@
 	}
 
 	function mockReadNote(path: string, content: string) {
-		const parsed = parseFrontmatter(content);
+		const parsed = path.endsWith('.html') ? parseHtmlMetadata(content) : parseFrontmatter(content);
 		if (!parsed.meta.title) {
-			parsed.meta.title = path.split('/').pop()?.replace(/\.md$/, '') || 'Untitled';
+			parsed.meta.title = path.split('/').pop()?.replace(/\.(md|html)$/, '') || 'Untitled';
 		}
 		if (!parsed.meta.id) {
 			parsed.meta.id = path;
@@ -260,7 +260,7 @@
 	async function renameNote(path: string, newTitle: string) {
 		await appState.renameNote(path, newTitle);
 		const parts = path.split('/');
-		parts[parts.length - 1] = `${newTitle}.md`;
+		parts[parts.length - 1] = `${newTitle}.html`;
 		return parts.join('/');
 	}
 
@@ -743,12 +743,58 @@
 		exportDropdownOpen = false;
 	}
 
+	function exportAsHtml() {
+		exportDropdownOpen = false;
+		if (!$activeNotePath || !$activeNote) return;
+		const bodyHtml = $sourceMode ? sourceContent : (editor ? editor.getHTML() : ($activeNote ? parseHtmlMetadata($activeNote.content).content : ''));
+		const fullHtml = generateHtmlNote($activeNote.meta, bodyHtml);
+		const filename = ($activeNote.meta.title || $activeNote.name || 'note') + '.html';
+		const blob = new Blob([fullHtml], { type: 'text/html;charset=utf-8' });
+		const url = URL.createObjectURL(blob);
+		const a = document.createElement('a');
+		a.href = url;
+		a.download = filename;
+		document.body.appendChild(a);
+		a.click();
+		document.body.removeChild(a);
+		URL.revokeObjectURL(url);
+		appState.showToast(`Exported ${filename} successfully.`, 'success');
+	}
+
 	function exportAsMarkdown() {
 		exportDropdownOpen = false;
 		if (!$activeNotePath || !$activeNote) return;
-		const content = editor ? editorToMarkdown() : $activeNote.content;
+		
+		let htmlContent = '';
+		if ($sourceMode) {
+			htmlContent = sourceContent;
+		} else if (editor) {
+			htmlContent = editor.getHTML();
+		} else {
+			htmlContent = $activeNote.content;
+			if (htmlContent.includes('<html') || htmlContent.includes('<body')) {
+				htmlContent = parseHtmlMetadata(htmlContent).content;
+			}
+		}
+
+		let markdown = '';
+		if (editor) {
+			try {
+				const parser = PMParser.fromSchema(editor.schema);
+				const tempEl = document.createElement('div');
+				tempEl.innerHTML = htmlContent;
+				const docNode = parser.parse(tempEl);
+				markdown = prosemirrorToMarkdown(docNode);
+			} catch (e) {
+				console.error('Failed to convert HTML to Markdown:', e);
+				markdown = htmlContent.replace(/<[^>]+>/g, '');
+			}
+		} else {
+			markdown = htmlContent.replace(/<[^>]+>/g, '');
+		}
+
 		const filename = ($activeNote.meta.title || $activeNote.name || 'note') + '.md';
-		const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
+		const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' });
 		const url = URL.createObjectURL(blob);
 		const a = document.createElement('a');
 		a.href = url;
@@ -3067,16 +3113,14 @@
 		}
 		await fixingBlobsPromise;
 		try {
-			const body = $sourceMode
-				? restoreTitleH1(sourceContent)
-				: editorToMarkdown();
-			// Safety: never save empty/near-empty body over a note that had real content
-			const trimmed = body.replace(/^#.*\n?/, '').trim();
-			if (!trimmed && $activeNote.content && $activeNote.content.trim().length > 10) {
+			const bodyHtml = $sourceMode ? sourceContent : (editor ? editor.getHTML() : '');
+			const textOnly = bodyHtml.replace(/<[^>]+>/g, '').trim();
+			if (!textOnly && $activeNote.content && $activeNote.content.replace(/<[^>]+>/g, '').trim().length > 10) {
 				console.warn('Auto-save blocked: refusing to overwrite note with empty content');
 				return;
 			}
-			await saveNote($activeNotePath, $activeNote.meta, body);
+			const fileContent = generateHtmlNote($activeNote.meta, bodyHtml);
+			await saveNote($activeNotePath, $activeNote.meta, fileContent);
 			$editorDirty = false;
 		} catch (e) {
 			console.error('Auto-save failed:', e);
@@ -3088,13 +3132,14 @@
 		if (!$activeNote || !$activeNotePath) return;
 		await fixingBlobsPromise;
 		try {
-			const body = $sourceMode ? restoreTitleH1(sourceContent) : editorToMarkdown();
-			const trimmed = body.replace(/^#.*\n?/, '').trim();
-			if (!trimmed && $activeNote.content && $activeNote.content.trim().length > 10) {
+			const bodyHtml = $sourceMode ? sourceContent : (editor ? editor.getHTML() : '');
+			const textOnly = bodyHtml.replace(/<[^>]+>/g, '').trim();
+			if (!textOnly && $activeNote.content && $activeNote.content.replace(/<[^>]+>/g, '').trim().length > 10) {
 				console.warn('Force-save blocked: refusing to overwrite note with empty content');
 				return;
 			}
-			await saveNote($activeNotePath, $activeNote.meta, body);
+			const fileContent = generateHtmlNote($activeNote.meta, bodyHtml);
+			await saveNote($activeNotePath, $activeNote.meta, fileContent);
 			$editorDirty = false;
 		} catch (e) {
 			console.error('Save failed:', e);
@@ -3239,13 +3284,9 @@
 	export function flushSave() {
 		if (!$editorDirty || !$activeNote || !$activeNotePath) return;
 		try {
-			const body = $sourceMode
-				? restoreTitleH1(sourceContent)
-				: editorToMarkdown();
-			const trimmed = body.replace(/^#.*\n?/, '').trim();
-			if (trimmed || !$activeNote.content || $activeNote.content.trim().length <= 10) {
-				saveNote($activeNotePath, $activeNote.meta, body);
-			}
+			const bodyHtml = $sourceMode ? sourceContent : (editor ? editor.getHTML() : '');
+			const fileContent = generateHtmlNote($activeNote.meta, bodyHtml);
+			saveNote($activeNotePath, $activeNote.meta, fileContent);
 		} catch (e) {
 			console.error('Pre-switch save failed:', e);
 		}
@@ -3281,13 +3322,13 @@
 		if (editor) editor.setEditable(!shouldBeReadOnly);
 		const editorBody = editorElement?.closest('.editor-body') as HTMLElement | null;
 		if ($sourceMode) {
-			sourceContent = stripTitleH1(content);
+			sourceContent = path.endsWith('.html') ? parseHtmlMetadata(content).content : stripTitleH1(content);
 			resetSourceHistory(sourceContent);
 			if (editorBody) editorBody.scrollTop = 0;
 			isLoadingNote = false;
 		} else if (editorElement && editor) {
 			// Editor already exists, just swap content
-			const html = markdownToHtml(content);
+			const html = path.endsWith('.html') ? parseHtmlMetadata(content).content : markdownToHtml(content);
 			ignoreNextUpdate = true;
 			editor.commands.setContent(html);
 			// Clear undo/redo history so it doesn't bleed across notes
@@ -4182,7 +4223,16 @@
 		destroyEditor();
 
 		isLargeDoc = content.length > LARGE_DOC_CHARS;
-		const html = markdownToHtml(content);
+		let html = '';
+		if ($activeNotePath && $activeNotePath.endsWith('.html')) {
+			if (content.includes('<html') || content.includes('<head') || content.includes('<body')) {
+				html = parseHtmlMetadata(content).content;
+			} else {
+				html = content;
+			}
+		} else {
+			html = markdownToHtml(content);
+		}
 
 		editor = new Editor({
 			element: editorElement,
@@ -5342,23 +5392,25 @@
 
 	async function insertPdf(file: File) {
 		try {
-			const buffer = await file.arrayBuffer();
-			const data = Array.from(new Uint8Array(buffer));
-			const relativePath = await saveAttachment(file.name, data);
-			if (!editor) return;
-			const usePdfPreview = !isMobile && ($appConfig?.pdf_preview ?? false);
-			if (usePdfPreview) {
-				editor.chain().focus().insertContent({
-					type: 'pdfEmbed',
-					attrs: { src: relativePath, name: file.name },
-				}).run();
-			} else {
-				const sizeKB = Math.round(file.size / 1024);
-				const label = `${file.name} (${sizeKB} kB)`;
-				editor.chain().focus()
-					.insertContent(`<a href="${relativePath}">${label}</a> `)
-					.run();
-			}
+			const reader = new FileReader();
+			reader.onload = () => {
+				const base64 = reader.result as string;
+				if (!editor) return;
+				const usePdfPreview = !isMobile && ($appConfig?.pdf_preview ?? false);
+				if (usePdfPreview) {
+					editor.chain().focus().insertContent({
+						type: 'pdfEmbed',
+						attrs: { src: base64, name: file.name },
+					}).run();
+				} else {
+					const sizeKB = Math.round(file.size / 1024);
+					const label = `${file.name} (${sizeKB} kB)`;
+					editor.chain().focus()
+						.insertContent(`<a href="${base64}" download="${file.name}">${label}</a> `)
+						.run();
+				}
+			};
+			reader.readAsDataURL(file);
 		} catch (e) {
 			console.error('Failed to insert PDF:', e);
 		}
@@ -5414,16 +5466,18 @@
 
 	async function insertFileAttachment(file: File) {
 		try {
-			const buffer = await file.arrayBuffer();
-			const data = Array.from(new Uint8Array(buffer));
-			const relativePath = await saveAttachment(file.name, data);
-			if (editor) {
-				const sizeKB = Math.round(file.size / 1024);
-				const label = `${file.name} (${sizeKB} kB)`;
-				editor.chain().focus()
-					.insertContent(`<a href="${relativePath}">${label}</a> `)
-					.run();
-			}
+			const reader = new FileReader();
+			reader.onload = () => {
+				const base64 = reader.result as string;
+				if (editor) {
+					const sizeKB = Math.round(file.size / 1024);
+					const label = `${file.name} (${sizeKB} kB)`;
+					editor.chain().focus()
+						.insertContent(`<a href="${base64}" download="${file.name}">${label}</a> `)
+						.run();
+				}
+			};
+			reader.readAsDataURL(file);
 		} catch (e) {
 			console.error('Failed to insert attachment:', e);
 		}
@@ -5436,24 +5490,25 @@
 		if (!loadedPath) return;
 
 		if (isSource && !lastSourceMode) {
-			// Switching TO source: extract markdown from editor
-			sourceContent = editor ? editorToMarkdown() : ($activeNote?.content ?? '');
+			// Switching TO source: extract HTML body from editor
+			sourceContent = editor ? editor.getHTML() : ($activeNote ? (loadedPath.endsWith('.html') ? parseHtmlMetadata($activeNote.content).content : $activeNote.content) : '');
 			resetSourceHistory(sourceContent);
 			lastSourceMode = true;
 		} else if (!isSource && lastSourceMode) {
 			lastSourceMode = false;
 			if (isMobile) {
 				// Mobile: editor stays in DOM, just update its content
-				const content = sourceContent || ($activeNote?.content ?? '');
+				const content = sourceContent || ($activeNote ? (loadedPath.endsWith('.html') ? parseHtmlMetadata($activeNote.content).content : $activeNote.content) : '');
 				if (editor) {
 					ignoreNextUpdate = true;
-					editor.commands.setContent(markdownToHtml(content));
+					const html = loadedPath.endsWith('.html') ? content : markdownToHtml(content);
+					editor.commands.setContent(html);
 				}
 			} else {
 				// Desktop: destroy old editor (its DOM element is gone),
 				// wait for DOM to swap textarea→div, then create editor on new element.
 				destroyEditor();
-				const content = sourceContent || ($activeNote?.content ?? '');
+				const content = sourceContent || ($activeNote ? (loadedPath.endsWith('.html') ? parseHtmlMetadata($activeNote.content).content : $activeNote.content) : '');
 				tick().then(() => {
 					if (editorElement && !editor) {
 						createEditor(content);
@@ -5644,6 +5699,10 @@
 						{#if exportDropdownOpen}
 							<!-- svelte-ignore a11y_no_static_element_interactions -->
 							<div class="fmt-dropdown export-dropdown mobile" onclick={(e) => e.stopPropagation()}>
+								<button onclick={exportAsHtml}>
+									<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M8 17h8"/><path d="M12 12v5"/><path d="m9 15 3 3 3-3"/></svg>
+									Download HTML (.html)
+								</button>
 								<button onclick={exportAsMarkdown}>
 									<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
 									Markdown (.md)
@@ -5823,6 +5882,10 @@
 					{#if exportDropdownOpen}
 						<!-- svelte-ignore a11y_no_static_element_interactions -->
 						<div class="fmt-dropdown export-dropdown" onclick={(e) => e.stopPropagation()}>
+							<button onclick={exportAsHtml}>
+								<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M8 17h8"/><path d="M12 12v5"/><path d="m9 15 3 3 3-3"/></svg>
+								Download HTML (.html)
+							</button>
 							<button onclick={exportAsMarkdown}>
 								<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
 								Download Markdown (.md)

@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { appState } from '../stores/appState.svelte';
-  import { Folder, Plus, Trash2, Calendar, Settings, Library, Palette, FolderOpen, X, ChevronRight, FileText } from 'lucide-svelte';
+  import { appState, generateHtmlNote } from '../stores/appState.svelte';
+  import { Folder, Plus, Trash2, Calendar, Settings, Library, Palette, FolderOpen, X, ChevronRight, FileText, Download } from 'lucide-svelte';
   import GoogleLogo from './GoogleLogo.svelte';
 
   let newNotebookName = $state('');
@@ -12,7 +12,7 @@
 
   async function handleDesktopDailyNote() {
     const today = new Date().toISOString().split('T')[0];
-    const dailyPath = `Daily Notes/${today}.md`;
+    const dailyPath = `Daily Notes/${today}.html`;
     
     // Check if it already exists
     const existing = appState.notes.find(n => n.path === dailyPath);
@@ -20,9 +20,78 @@
       appState.selectNote(existing.path);
     } else {
       await appState.storage.createDirectory('Daily Notes');
-      await appState.storage.writeNote(dailyPath, `# Daily Log: ${today} 🗓️\n\n## 💼 Work\n- \n\n## 🧘 Personal\n- \n\n#journal`);
+      const meta = {
+        id: dailyPath,
+        title: `Daily Log: ${today}`,
+        tags: ['journal'],
+        pinned: false,
+        created: new Date().toISOString(),
+        modified: new Date().toISOString()
+      };
+      const initialContent = `<h1>Daily Log: ${today} 🗓️</h1><h2>💼 Work</h2><ul><li></li></ul><h2>🧘 Personal</h2><ul><li></li></ul>`;
+      const htmlContent = generateHtmlNote(meta, initialContent);
+      await appState.storage.writeNote(dailyPath, htmlContent);
       await appState.refreshNotes();
       appState.selectNote(dailyPath);
+    }
+  }
+
+  let fileInput: HTMLInputElement;
+
+  function triggerImport() {
+    fileInput?.click();
+  }
+
+  async function handleImportFile(event: Event) {
+    const input = event.target as HTMLInputElement;
+    if (!input.files || input.files.length === 0) return;
+    const file = input.files[0];
+    
+    try {
+      const text = await file.text();
+      const bundle = JSON.parse(text);
+      
+      if (!bundle.title || !bundle.content) {
+        alert('Invalid .mynote file format. Missing title or content.');
+        return;
+      }
+      
+      const cleanTitle = bundle.title.trim();
+      let path = `${cleanTitle}.html`;
+      const folder = appState.activeNotebook;
+      if (folder) {
+        path = `${folder}/${cleanTitle}.html`;
+      }
+      
+      let version = 1;
+      let finalPath = path;
+      while (appState.notes.some(n => n.path === finalPath)) {
+        finalPath = folder 
+          ? `${folder}/${cleanTitle} (${version}).html`
+          : `${cleanTitle} (${version}).html`;
+        version++;
+      }
+      
+      const meta = {
+        id: bundle.id || finalPath,
+        title: cleanTitle,
+        tags: bundle.tags || [],
+        pinned: bundle.pinned || false,
+        created: bundle.created ? new Date(bundle.created).toISOString() : new Date().toISOString(),
+        modified: new Date().toISOString()
+      };
+      
+      const fileContent = generateHtmlNote(meta, bundle.content);
+      
+      await appState.storage.writeNote(finalPath, fileContent);
+      await appState.refreshNotes();
+      appState.selectNote(finalPath);
+      appState.showToast(`Imported note "${cleanTitle}" successfully!`, 'success');
+    } catch (e) {
+      console.error('Failed to import note:', e);
+      alert('Failed to parse and import note file.');
+    } finally {
+      input.value = '';
     }
   }
 
@@ -235,6 +304,19 @@
 
   <!-- Footer Actions -->
   <div class="footer-actions flex-col">
+    <input 
+      type="file" 
+      accept=".mynote" 
+      bind:this={fileInput} 
+      onchange={handleImportFile} 
+      style="display: none;" 
+    />
+    
+    <button class="footer-btn flex-row" onclick={triggerImport}>
+      <Download size={16} />
+      <span>Import Note (.mynote)</span>
+    </button>
+
     <button class="footer-btn flex-row" onclick={appState.openDirectory.bind(appState)}>
       <FolderOpen size={16} />
       <span>Open Local Directory</span>

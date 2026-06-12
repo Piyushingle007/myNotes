@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { fade, fly } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
-  import { appState } from '../stores/appState.svelte';
+  import { appState, generateHtmlNote } from '../stores/appState.svelte';
   import Sidebar from './Sidebar.svelte';
   import NoteList from './NoteList.svelte';
   import Editor from './Editor.svelte';
@@ -48,7 +48,7 @@
   // Create standard daily note
   async function handleMobileDailyNote() {
     const today = new Date().toISOString().split('T')[0];
-    const dailyPath = `Daily Notes/${today}.md`;
+    const dailyPath = `Daily Notes/${today}.html`;
     
     // Check if it already exists
     const existing = appState.notes.find(n => n.path === dailyPath);
@@ -56,7 +56,17 @@
       appState.selectNote(existing.path);
     } else {
       await appState.storage.createDirectory('Daily Notes');
-      await appState.storage.writeNote(dailyPath, `# Daily Log: ${today} 🗓️\n\n## 💼 Work\n- \n\n## 🧘 Personal\n- \n\n#journal`);
+      const meta = {
+        id: dailyPath,
+        title: `Daily Log: ${today}`,
+        tags: ['journal'],
+        pinned: false,
+        created: new Date().toISOString(),
+        modified: new Date().toISOString()
+      };
+      const initialContent = `<h1>Daily Log: ${today} 🗓️</h1><h2>💼 Work</h2><ul><li></li></ul><h2>🧘 Personal</h2><ul><li></li></ul>`;
+      const htmlContent = generateHtmlNote(meta, initialContent);
+      await appState.storage.writeNote(dailyPath, htmlContent);
       await appState.refreshNotes();
       appState.selectNote(dailyPath);
     }

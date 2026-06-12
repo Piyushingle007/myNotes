@@ -227,12 +227,12 @@ export class GoogleDriveSync {
     };
 
     // Filter only markdown files that belong to our root folder tree
-    const markdownFiles: DriveFileMeta[] = [];
+    const driveFiles: DriveFileMeta[] = [];
     for (const item of allItems) {
-      if (item.mimeType !== 'application/vnd.google-apps.folder' && item.name.toLowerCase().endsWith('.md')) {
+      if (item.mimeType !== 'application/vnd.google-apps.folder' && (item.name.toLowerCase().endsWith('.html') || item.name.toLowerCase().endsWith('.md'))) {
         const relativePath = resolvePath(item.id);
         if (relativePath !== null) {
-          markdownFiles.push({
+          driveFiles.push({
             id: item.id,
             name: item.name,
             modifiedTime: item.modifiedTime,
@@ -241,7 +241,7 @@ export class GoogleDriveSync {
         }
       }
     }
-    return markdownFiles;
+    return driveFiles;
   }
 
   // Download a file's raw content
@@ -271,12 +271,13 @@ export class GoogleDriveSync {
     const delimiter = `\r\n--${boundary}\r\n`;
     const closeDelimiter = `\r\n--${boundary}--`;
 
+    const contentType = filename.toLowerCase().endsWith('.html') ? 'text/html' : 'text/markdown';
     const multipartBody = 
       delimiter +
       'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
       JSON.stringify(metadata) +
       delimiter +
-      'Content-Type: text/markdown; charset=UTF-8\r\n\r\n' +
+      `Content-Type: ${contentType}; charset=UTF-8\r\n\r\n` +
       content +
       closeDelimiter;
 

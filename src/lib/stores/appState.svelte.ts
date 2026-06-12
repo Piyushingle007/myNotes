@@ -1,6 +1,7 @@
 import { type NoteFile, type StorageAdapter, IndexedDBAdapter, FileSystemAccessAdapter } from '../storage/StorageAdapter';
 import { GoogleDriveSync } from '../sync/GoogleDriveSync';
 import MiniSearch from 'minisearch';
+import MarkdownIt from 'markdown-it';
 
 declare const google: any;
 
@@ -17,6 +18,123 @@ export interface Toast {
   title?: string;
   loading?: boolean;
   duration?: number;
+}
+
+export function parseHtmlMetadata(html: string): { meta: any; content: string } {
+  const meta: any = {
+    id: '',
+    title: '',
+    tags: [],
+    pinned: false,
+    created: '',
+    modified: ''
+  };
+  let content = html;
+  if (typeof DOMParser !== 'undefined') {
+    try {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(html, 'text/html');
+      const metaTags = doc.querySelectorAll('meta');
+      metaTags.forEach(tag => {
+        const name = tag.getAttribute('name');
+        const contentVal = tag.getAttribute('content');
+        if (name && contentVal !== null) {
+          if (name === 'id') meta.id = contentVal;
+          else if (name === 'title') meta.title = contentVal;
+          else if (name === 'pinned') meta.pinned = contentVal === 'true';
+          else if (name === 'tags') {
+            meta.tags = contentVal ? contentVal.split(',').map(t => t.trim()).filter(Boolean) : [];
+          }
+          else if (name === 'created') meta.created = contentVal;
+          else if (name === 'modified') meta.modified = contentVal;
+        }
+      });
+      if (doc.body) {
+        content = doc.body.innerHTML;
+      }
+    } catch (e) {
+      console.error('Failed to parse HTML metadata:', e);
+    }
+  } else {
+    // Basic regex fallback if DOMParser isn't available
+    const getMeta = (name: string) => {
+      const match = html.match(new RegExp(`<meta\\s+name="${name}"\\s+content="([^"]*)"`, 'i'));
+      return match ? match[1] : '';
+    };
+    meta.id = getMeta('id');
+    meta.title = getMeta('title');
+    meta.pinned = getMeta('pinned') === 'true';
+    const tagsVal = getMeta('tags');
+    meta.tags = tagsVal ? tagsVal.split(',').map(t => t.trim()).filter(Boolean) : [];
+    meta.created = getMeta('created');
+    meta.modified = getMeta('modified');
+    const bodyMatch = html.match(/<body>([\s\S]*)<\/body>/i);
+    if (bodyMatch) content = bodyMatch[1];
+  }
+  return { meta, content };
+}
+
+export function generateHtmlNote(meta: any, bodyContent: string): string {
+  const titleEscaped = (meta.title || '').replace(/"/g, '&quot;');
+  const tagsString = (meta.tags || []).join(',');
+  const idEscaped = (meta.id || '').replace(/"/g, '&quot;');
+  const createdEscaped = (meta.created || '').replace(/"/g, '&quot;');
+  const modifiedEscaped = (meta.modified || '').replace(/"/g, '&quot;');
+  
+  return `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="id" content="${idEscaped}">
+<meta name="title" content="${titleEscaped}">
+<meta name="tags" content="${tagsString}">
+<meta name="pinned" content="${meta.pinned ? 'true' : 'false'}">
+<meta name="created" content="${createdEscaped}">
+<meta name="modified" content="${modifiedEscaped}">
+<title>${meta.title || 'Untitled'}</title>
+</head>
+<body>
+${bodyContent}
+</body>
+</html>`;
+}
+
+function parseFrontmatter(rawContent: string): { meta: any; content: string } {
+  const meta: any = {
+    id: '',
+    title: '',
+    tags: [],
+    pinned: false,
+    created: '',
+    modified: ''
+  };
+  let content = rawContent;
+  if (rawContent.startsWith('---')) {
+    const endIdx = rawContent.indexOf('---', 3);
+    if (endIdx !== -1) {
+      const yamlText = rawContent.substring(3, endIdx);
+      content = rawContent.substring(endIdx + 3);
+      const lines = yamlText.split('\n');
+      for (const line of lines) {
+        const colonIdx = line.indexOf(':');
+        if (colonIdx !== -1) {
+          const key = line.substring(0, colonIdx).trim().toLowerCase();
+          let val = line.substring(colonIdx + 1).trim();
+          if (val.startsWith('"') && val.endsWith('"')) val = val.slice(1, -1);
+          if (val.startsWith("'") && val.endsWith("'")) val = val.slice(1, -1);
+          if (key === 'id') meta.id = val;
+          else if (key === 'title') meta.title = val;
+          else if (key === 'pinned') meta.pinned = val === 'true';
+          else if (key === 'tags') {
+            meta.tags = val.replace(/[\[\]]/g, '').split(',').map(t => t.trim()).filter(Boolean);
+          }
+          else if (key === 'created') meta.created = val;
+          else if (key === 'modified') meta.modified = val;
+        }
+      }
+    }
+  }
+  return { meta, content };
 }
 
 class AppState {
@@ -544,7 +662,7 @@ class AppState {
             console.log('  Conflict detected! Resolving via Last Modified Wins.');
             if (note.modified > remoteTime) {
               console.log('  Local is newer. Uploading note...');
-              const uploadRes = await uploadNoteToDrive(note.path, `${note.name}.md`, note.content, driveFile.id);
+              const uploadRes = await uploadNoteToDrive(note.path, `${note.name}.html`, note.content, driveFile.id);
               const updatedRemoteTime = new Date(uploadRes.modifiedTime).getTime();
               activeMappings[note.path] = {
                 id: uploadRes.id,
@@ -563,7 +681,7 @@ class AppState {
             }
           } else if (localChanged) {
             console.log('  Local changed since last sync. Uploading updates...');
-            const uploadRes = await uploadNoteToDrive(note.path, `${note.name}.md`, note.content, driveFile.id);
+            const uploadRes = await uploadNoteToDrive(note.path, `${note.name}.html`, note.content, driveFile.id);
             const updatedRemoteTime = new Date(uploadRes.modifiedTime).getTime();
             activeMappings[note.path] = {
               id: uploadRes.id,
@@ -590,7 +708,7 @@ class AppState {
         } else {
           if (remoteId) {
             console.log('  Note was deleted on Google Drive. Deleting locally...');
-            const noteName = note.path.split('/').pop()?.replace(/\.md$/, '') || note.path;
+            const noteName = note.path.split('/').pop()?.replace(/\.(md|html)$/, '') || note.path;
             try {
               await this.storage.deleteNote(note.path);
               this.showToast(`Deleted note "${noteName}" locally to match Google Drive deletion.`, 'info', 4000);
@@ -599,7 +717,7 @@ class AppState {
             }
           } else {
             console.log('  New local note found. Uploading to Google Drive...');
-            const uploadRes = await uploadNoteToDrive(note.path, `${note.name}.md`, note.content);
+            const uploadRes = await uploadNoteToDrive(note.path, `${note.name}.html`, note.content);
             const updatedRemoteTime = new Date(uploadRes.modifiedTime).getTime();
             activeMappings[note.path] = {
               id: uploadRes.id,
@@ -685,6 +803,28 @@ class AppState {
 
 
 
+  async migrateOldNotes() {
+    if (this.storage.migrateNotes) {
+      const markdownParser = new MarkdownIt({
+        html: true,
+        breaks: true,
+        linkify: true
+      });
+      const convertFn = (md: string) => {
+        const parsed = parseFrontmatter(md);
+        const htmlBody = markdownParser.render(parsed.content);
+        return generateHtmlNote(parsed.meta, htmlBody);
+      };
+      
+      try {
+        await this.storage.migrateNotes(convertFn);
+        console.log('Successfully migrated markdown notes to html notes.');
+      } catch (err) {
+        console.error('Error migrating markdown notes:', err);
+      }
+    }
+  }
+
   async initSandbox() {
     console.log('[MyNotes] initSandbox started');
     try {
@@ -694,11 +834,14 @@ class AppState {
       console.log('[MyNotes] selectDirectory returned:', name);
       this.vaultName = name;
       
+      // Perform migration of markdown notes to html notes
+      await this.migrateOldNotes();
+      
       // Clean up existing default files if they are in the storage
       console.log('[MyNotes] listNotes starting...');
       const list = await this.storage.listNotes();
       console.log('[MyNotes] listNotes completed, count:', list?.length);
-      const defaultFiles = ['Welcome.md', 'Recipes/Pizza.md', 'Daily Notes/2026-06-08.md'];
+      const defaultFiles = ['Welcome.html', 'Recipes/Pizza.html', 'Daily Notes/2026-06-08.html'];
       let needsRefresh = false;
       for (const file of defaultFiles) {
         if (list && list.some(n => n.path === file)) {
@@ -737,6 +880,8 @@ class AppState {
       const name = await adapter.selectDirectory();
       this.storage = adapter;
       this.vaultName = name;
+      // Perform migration of markdown notes to html notes
+      await this.migrateOldNotes();
       await this.refreshNotes();
       this.vaultReady = true;
       
@@ -767,7 +912,7 @@ class AppState {
     const searchDocs = list.map(note => ({
       path: note.path,
       title: note.name,
-      content: note.content
+      content: note.content.replace(/<[^>]+>/g, ' ')
     }));
     this.searchIndex.addAll(searchDocs);
   }
@@ -781,6 +926,12 @@ class AppState {
       }
     }
     return null;
+  }
+
+  async writeBlob(path: string, blob: Blob) {
+    if (this.storage.writeBlob) {
+      await this.storage.writeBlob(path, blob);
+    }
   }
 
   selectNote(path: string) {
@@ -856,9 +1007,9 @@ class AppState {
 
   async createNote(title: string, folder: string | null = null) {
     const cleanTitle = title.trim() || 'Untitled';
-    let path = `${cleanTitle}.md`;
+    let path = `${cleanTitle}.html`;
     if (folder) {
-      path = `${folder}/${cleanTitle}.md`;
+      path = `${folder}/${cleanTitle}.html`;
     }
     
     // Ensure unique path
@@ -866,12 +1017,21 @@ class AppState {
     let finalPath = path;
     while (this.notes.some(n => n.path === finalPath)) {
       finalPath = folder 
-        ? `${folder}/${cleanTitle} (${version}).md`
-        : `${cleanTitle} (${version}).md`;
+        ? `${folder}/${cleanTitle} (${version}).html`
+        : `${cleanTitle} (${version}).html`;
       version++;
     }
 
-    const initialContent = `# ${cleanTitle.replace(/\.md$/, '')}\n\n`;
+    const meta = {
+      id: finalPath,
+      title: cleanTitle,
+      tags: [],
+      pinned: false,
+      created: new Date().toISOString(),
+      modified: new Date().toISOString()
+    };
+    const bodyContent = `<h1>${cleanTitle}</h1><p></p>`;
+    const initialContent = generateHtmlNote(meta, bodyContent);
     await this.storage.writeNote(finalPath, initialContent);
     await this.refreshNotes();
     this.selectNote(finalPath);
@@ -883,7 +1043,7 @@ class AppState {
   }
 
   async deleteNote(path: string) {
-    const noteName = path.split('/').pop()?.replace(/\.md$/, '') || path;
+    const noteName = path.split('/').pop()?.replace(/\.(md|html)$/, '') || path;
     
     // Read mapping before deleting note to enable deleting on Drive
     const mappings = JSON.parse(localStorage.getItem('mynotes_drive_mappings') || '{}');
@@ -952,7 +1112,18 @@ class AppState {
     const cleanName = name.trim();
     if (!cleanName) return;
     await this.storage.createDirectory(cleanName);
-    await this.storage.writeNote(`${cleanName}/ReadMe.md`, `# ${cleanName} Notebook 📂\n\nFolder created. Add your notes here!`);
+    const readmePath = `${cleanName}/ReadMe.html`;
+    const meta = {
+      id: readmePath,
+      title: `${cleanName} Notebook`,
+      tags: [],
+      pinned: false,
+      created: new Date().toISOString(),
+      modified: new Date().toISOString()
+    };
+    const bodyContent = `<h1>${cleanName} Notebook 📂</h1><p>Folder created. Add your notes here!</p>`;
+    const initialContent = generateHtmlNote(meta, bodyContent);
+    await this.storage.writeNote(readmePath, initialContent);
     await this.refreshNotes();
     this.activeNotebook = cleanName;
 
@@ -1016,7 +1187,7 @@ class AppState {
 
     // Compute new relative path
     const parts = oldPath.split('/');
-    parts[parts.length - 1] = `${cleanTitle}.md`;
+    parts[parts.length - 1] = `${cleanTitle}.html`;
     const newPath = parts.join('/');
 
     if (newPath === oldPath) return;
@@ -1028,6 +1199,15 @@ class AppState {
     }
 
     try {
+      // Read note, update title in metadata, write back, rename note
+      const notes = await this.storage.listNotes();
+      const existing = notes.find(n => n.path === oldPath);
+      if (existing) {
+        const parsed = parseHtmlMetadata(existing.content);
+        parsed.meta.title = cleanTitle;
+        const updatedContent = generateHtmlNote(parsed.meta, parsed.content);
+        await this.storage.writeNote(oldPath, updatedContent);
+      }
       // Perform storage rename
       await this.storage.renameNote(oldPath, newPath);
 
