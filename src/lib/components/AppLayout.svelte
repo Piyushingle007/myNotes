@@ -133,13 +133,30 @@
                 <h1>{greeting}</h1>
                 <span class="mobile-vault-stat" style="font-size: 12px; color: var(--text-secondary); margin-top: 4px;">{appState.notes.length} notes in your vault</span>
               </div>
-              <button 
-                class="icon-circle-btn flex-row" 
-                onclick={() => appState.showSettings = true}
-                aria-label="Settings"
-              >
-                <Settings size={20} />
-              </button>
+              <div class="flex-row" style="gap: 8px; align-items: center;">
+                {#if appState.googleConnected && appState.syncEnabled}
+                  {#if appState.syncStatus === 'syncing'}
+                    <span class="sync-indicator spin" style="color: var(--accent); display: flex;" title="Syncing...">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+                      </svg>
+                    </span>
+                  {:else if appState.syncStatus === 'error'}
+                    <span class="sync-indicator" style="color: var(--semantic-error, #ff4444); display: flex;" title="Sync Error">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                      </svg>
+                    </span>
+                  {/if}
+                {/if}
+                <button 
+                  class="icon-circle-btn flex-row" 
+                  onclick={() => appState.showSettings = true}
+                  aria-label="Settings"
+                >
+                  <Settings size={20} />
+                </button>
+              </div>
             </div>
 
             <!-- Premium Stats Dashboard Card -->
@@ -597,11 +614,30 @@
                 <span class="status-text">
                   {#if appState.syncStatus === 'syncing'}
                     Syncing database...
+                  {:else if !appState.syncEnabled}
+                    Connected & Sync Disabled
                   {:else}
                     Connected & Sync Enabled
                   {/if}
                 </span>
               </div>
+            </div>
+
+            <div class="sync-toggle-row flex-row" style="justify-content: space-between; margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border-color); width: 100%;">
+              <span style="font-size: 13px; color: var(--text-primary); font-weight: 500;">Enable Google Drive Syncing</span>
+              <label class="switch-container">
+                <input 
+                  type="checkbox" 
+                  checked={appState.syncEnabled} 
+                  onchange={(e) => {
+                    appState.setSyncEnabled(e.currentTarget.checked);
+                    if (e.currentTarget.checked) {
+                      appState.syncNotes();
+                    }
+                  }}
+                />
+                <span class="slider"></span>
+              </label>
             </div>
 
             <div class="sync-stats flex-col">
@@ -1759,5 +1795,47 @@
       width: 100%;
       box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
     }
+  }
+
+  /* Switch / Toggle styling */
+  .switch-container {
+    position: relative;
+    display: inline-block;
+    width: 38px;
+    height: 20px;
+    flex-shrink: 0;
+  }
+  .switch-container input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+  }
+  .slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: var(--border-color);
+    transition: .2s;
+    border-radius: 20px;
+  }
+  .slider:before {
+    position: absolute;
+    content: "";
+    height: 14px;
+    width: 14px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: .2s;
+    border-radius: 50%;
+  }
+  input:checked + .slider {
+    background-color: var(--accent);
+  }
+  input:checked + .slider:before {
+    transform: translateX(18px);
   }
 </style>

@@ -12033,7 +12033,12 @@
 	}
 	:global(.diagram-block[data-size="full"]) {
 		max-width: 100%;
-		width: 100%;
+		width: fit-content;
+	}
+	@media (max-width: 768px) {
+		:global(.diagram-block[data-size="full"]) {
+			width: 100%;
+		}
 	}
 
 	/* Diagram Alignment */

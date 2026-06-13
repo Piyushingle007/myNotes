@@ -1,6 +1,6 @@
 <script lang="ts">
   import { appState, generateHtmlNote } from '../stores/appState.svelte';
-  import { Folder, Plus, Trash2, Calendar, Settings, Library, Palette, FolderOpen, X, ChevronRight, FileText, Download } from 'lucide-svelte';
+  import { Folder, Plus, Trash2, Calendar, Settings, Library, Palette, FolderOpen, X, ChevronRight, FileText, Download, Cloud, RefreshCw, CloudOff } from 'lucide-svelte';
   import GoogleLogo from './GoogleLogo.svelte';
 
   let newNotebookName = $state('');
@@ -327,9 +327,39 @@
       <span>Theme: {appState.themes.find(t => t.id === appState.theme)?.name || appState.theme}</span>
     </button>
 
-    <button class="footer-btn flex-row" onclick={() => appState.showSettings = true}>
-      <Settings size={16} />
-      <span>Google Drive Sync</span>
+    <button 
+      class="footer-btn flex-row" 
+      onclick={() => appState.showSettings = true}
+      style="justify-content: space-between; width: 100%;"
+    >
+      <div class="flex-row" style="gap: 12px;">
+        {#if appState.googleConnected && appState.syncEnabled}
+          <Cloud size={16} class={appState.syncStatus === 'syncing' ? 'pulse-icon' : ''} />
+        {:else}
+          <CloudOff size={16} />
+        {/if}
+        <span>Google Drive Sync</span>
+      </div>
+      {#if appState.googleConnected && appState.syncEnabled}
+        {#if appState.syncStatus === 'syncing'}
+          <span class="sync-badge syncing flex-row" style="gap: 4px; font-size: 10px; background: rgba(56, 189, 248, 0.15); color: var(--accent); padding: 2px 8px; border-radius: 9999px; font-weight: 700;">
+            <span class="sync-dot pulsing" style="width: 6px; height: 6px; background-color: var(--accent); border-radius: 50%; display: inline-block;"></span>
+            Syncing
+          </span>
+        {:else if appState.syncStatus === 'error'}
+          <span class="sync-badge error flex-row" style="gap: 4px; font-size: 10px; background: rgba(239, 68, 68, 0.15); color: var(--semantic-error, #ff4444); padding: 2px 8px; border-radius: 9999px; font-weight: 700;">
+            Error
+          </span>
+        {:else}
+          <span class="sync-badge idle flex-row" style="gap: 4px; font-size: 10px; background: rgba(16, 185, 129, 0.15); color: #10b981; padding: 2px 8px; border-radius: 9999px; font-weight: 700;">
+            Synced
+          </span>
+        {/if}
+      {:else}
+        <span class="sync-badge offline flex-row" style="gap: 4px; font-size: 10px; background: rgba(255, 255, 255, 0.08); color: var(--text-tertiary); padding: 2px 8px; border-radius: 9999px; font-weight: 700;">
+          Disabled
+        </span>
+      {/if}
     </button>
 
     <div class="vault-info flex-col">
@@ -594,5 +624,23 @@
     .item-delete-btn {
       opacity: 1;
     }
+  }
+
+  /* Sync status animations and layout */
+  .pulsing {
+    animation: sync-pulse-dot 1.5s infinite;
+  }
+  @keyframes sync-pulse-dot {
+    0% { transform: scale(0.8); opacity: 0.5; }
+    50% { transform: scale(1.2); opacity: 1; }
+    100% { transform: scale(0.8); opacity: 0.5; }
+  }
+  .pulse-icon {
+    animation: sync-pulse-icon 2s infinite ease-in-out;
+  }
+  @keyframes sync-pulse-icon {
+    0% { opacity: 0.6; }
+    50% { opacity: 1; }
+    100% { opacity: 0.6; }
   }
 </style>

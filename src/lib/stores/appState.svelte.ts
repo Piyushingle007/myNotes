@@ -165,7 +165,7 @@ class AppState {
   editorCollapsed = $state<boolean>(localStorage.getItem('mynotes_editor_collapsed') === 'true');
 
   // Diagram Editor Preference: 'native' (built-in) or 'drawio' (embed diagrams.net)
-  diagramEditorType = $state<'native' | 'drawio'>((localStorage.getItem('mynotes_diagram_editor') as 'native' | 'drawio') || 'native');
+  diagramEditorType = $state<'native' | 'drawio'>((localStorage.getItem('mynotes_diagram_editor') as 'native' | 'drawio') || 'drawio');
 
   setDiagramEditorType(type: 'native' | 'drawio') {
     this.diagramEditorType = type;
