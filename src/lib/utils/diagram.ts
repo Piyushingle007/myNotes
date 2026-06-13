@@ -31,6 +31,7 @@ export interface DiagramData {
 	width: number;
 	height: number;
 	background?: string;
+	drawioSvg?: string; // Raw SVG from draw.io for faithful rendering
 }
 
 export const DEFAULT_DIAGRAM: DiagramData = {
@@ -61,7 +62,8 @@ export function decodeDiagram(encoded: string): DiagramData {
 			shapes: parsed.shapes,
 			width: parsed.width || DEFAULT_DIAGRAM.width,
 			height: parsed.height || DEFAULT_DIAGRAM.height,
-			background: parsed.background || 'transparent'
+			background: parsed.background || 'transparent',
+			drawioSvg: parsed.drawioSvg // Preserve draw.io SVG if present
 		};
 	} catch {
 		return structuredCloneSafe(DEFAULT_DIAGRAM);
@@ -83,20 +85,21 @@ function escapeXml(s: string): string {
 
 // Render a single shape to an SVG fragment string.
 export function renderShape(s: DiagramShape): string {
-	const stroke = s.stroke || '#e2e8f0';
+	// Use darker colors for white background
+	const stroke = s.stroke || '#374151';
 	const fill = s.fill || 'transparent';
 	const sw = s.strokeWidth ?? 2;
 
 	switch (s.type) {
 		case 'rect':
-			return `<rect x="${s.x}" y="${s.y}" width="${Math.max(1, s.w)}" height="${Math.max(1, s.h)}" rx="6" ry="6" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"/>`;
+			return `<rect x="${s.x}" y="${s.y}" width="${Math.max(1, s.w)}" height="${Math.max(1, s.h)}" rx="4" ry="4" fill="${fill === 'transparent' ? '#f9fafb' : fill}" stroke="${stroke}" stroke-width="${sw}"/>`;
 		case 'ellipse':
-			return `<ellipse cx="${s.x + s.w / 2}" cy="${s.y + s.h / 2}" rx="${Math.max(1, s.w / 2)}" ry="${Math.max(1, s.h / 2)}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"/>`;
+			return `<ellipse cx="${s.x + s.w / 2}" cy="${s.y + s.h / 2}" rx="${Math.max(1, s.w / 2)}" ry="${Math.max(1, s.h / 2)}" fill="${fill === 'transparent' ? '#f9fafb' : fill}" stroke="${stroke}" stroke-width="${sw}"/>`;
 		case 'diamond': {
 			const cx = s.x + s.w / 2;
 			const cy = s.y + s.h / 2;
 			const pts = `${cx},${s.y} ${s.x + s.w},${cy} ${cx},${s.y + s.h} ${s.x},${cy}`;
-			return `<polygon points="${pts}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"/>`;
+			return `<polygon points="${pts}" fill="${fill === 'transparent' ? '#f9fafb' : fill}" stroke="${stroke}" stroke-width="${sw}"/>`;
 		}
 		case 'line':
 			return `<line x1="${s.x}" y1="${s.y}" x2="${s.x + s.w}" y2="${s.y + s.h}" stroke="${stroke}" stroke-width="${sw}" stroke-linecap="round"/>`;
@@ -123,28 +126,130 @@ export function renderShape(s: DiagramShape): string {
 			return `<path d="${d}" fill="none" stroke="${stroke}" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round"/>`;
 		}
 		case 'text': {
-			const fontSize = s.fontSize || 16;
+			const fontSize = s.fontSize || 14;
+			const textColor = stroke === '#38bdf8' ? '#1f2937' : stroke;
 			const lines = (s.text || '').split('\n');
 			const tspans = lines
 				.map((ln, i) => `<tspan x="${s.x}" dy="${i === 0 ? fontSize : fontSize * 1.3}">${escapeXml(ln) || ' '}</tspan>`)
 				.join('');
-			return `<text x="${s.x}" y="${s.y}" fill="${stroke}" font-size="${fontSize}" font-family="Inter, system-ui, sans-serif">${tspans}</text>`;
+			return `<text x="${s.x}" y="${s.y}" fill="${textColor}" font-size="${fontSize}" font-family="system-ui, -apple-system, sans-serif">${tspans}</text>`;
 		}
 		default:
 			return '';
 	}
 }
 
+// Compute bounding box for a single shape
+function shapeBoundingBox(s: DiagramShape): { minX: number; minY: number; maxX: number; maxY: number } {
+	const sw = s.strokeWidth ?? 2;
+	const pad = sw; // Padding for stroke width
+
+	switch (s.type) {
+		case 'rect':
+		case 'diamond':
+			return {
+				minX: s.x - pad,
+				minY: s.y - pad,
+				maxX: s.x + Math.max(1, s.w) + pad,
+				maxY: s.y + Math.max(1, s.h) + pad
+			};
+		case 'ellipse':
+			return {
+				minX: s.x - pad,
+				minY: s.y - pad,
+				maxX: s.x + Math.max(1, s.w) + pad,
+				maxY: s.y + Math.max(1, s.h) + pad
+			};
+		case 'line':
+		case 'arrow': {
+			const x1 = s.x, y1 = s.y, x2 = s.x + s.w, y2 = s.y + s.h;
+			const arrowPad = s.type === 'arrow' ? 15 : 0;
+			return {
+				minX: Math.min(x1, x2) - pad - arrowPad,
+				minY: Math.min(y1, y2) - pad - arrowPad,
+				maxX: Math.max(x1, x2) + pad + arrowPad,
+				maxY: Math.max(y1, y2) + pad + arrowPad
+			};
+		}
+		case 'draw': {
+			const pts = s.points || [];
+			if (pts.length < 2) return { minX: 0, minY: 0, maxX: 0, maxY: 0 };
+			let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+			for (let i = 0; i < pts.length; i += 2) {
+				minX = Math.min(minX, pts[i]);
+				maxX = Math.max(maxX, pts[i]);
+				minY = Math.min(minY, pts[i + 1]);
+				maxY = Math.max(maxY, pts[i + 1]);
+			}
+			return { minX: minX - pad, minY: minY - pad, maxX: maxX + pad, maxY: maxY + pad };
+		}
+		case 'text': {
+			const fontSize = s.fontSize || 16;
+			const lines = (s.text || ' ').split('\n');
+			const textWidth = Math.max(20, Math.max(...lines.map(l => l.length)) * fontSize * 0.6);
+			const textHeight = lines.length * fontSize * 1.3;
+			return {
+				minX: s.x - 2,
+				minY: s.y - 2,
+				maxX: s.x + textWidth + 2,
+				maxY: s.y + textHeight + 2
+			};
+		}
+		default:
+			return { minX: 0, minY: 0, maxX: 0, maxY: 0 };
+	}
+}
+
 // Render the full diagram to a standalone SVG string (used for preview + export).
 export function renderDiagramSVG(data: DiagramData, opts: { maxWidth?: number } = {}): string {
-	const width = data.width || DEFAULT_DIAGRAM.width;
-	const height = data.height || DEFAULT_DIAGRAM.height;
+	// If we have a raw draw.io SVG, clean it up and use it directly
+	if (data.drawioSvg) {
+		try {
+			const parser = new DOMParser();
+			const doc = parser.parseFromString(data.drawioSvg, 'image/svg+xml');
+			const svg = doc.querySelector('svg');
+			if (svg) {
+				// Set white background and responsive styles
+				svg.setAttribute('style', 'max-width:100%; height:auto; background:#ffffff;');
+				svg.removeAttribute('width');
+				svg.removeAttribute('height');
+				const content = svg.getAttribute('content');
+				if (content) svg.removeAttribute('content');
+				return svg.outerHTML;
+			}
+		} catch (e) {
+			console.warn('Failed to parse draw.io SVG, falling back to native rendering');
+		}
+	}
+
+	const canvasWidth = data.width || DEFAULT_DIAGRAM.width;
+	const canvasHeight = data.height || DEFAULT_DIAGRAM.height;
 	const body = data.shapes.map(renderShape).join('');
-	const bg =
-		data.background && data.background !== 'transparent'
-			? `<rect x="0" y="0" width="${width}" height="${height}" fill="${data.background}"/>`
-			: '';
-	const styleMax = opts.maxWidth ? `max-width:${opts.maxWidth}px;` : 'max-width:100%;';
-	return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" style="${styleMax} height:auto;" preserveAspectRatio="xMidYMid meet">${bg}${body}</svg>`;
+	
+	// Calculate actual bounding box of all shapes
+	let minX = 0, minY = 0, maxX = canvasWidth, maxY = canvasHeight;
+	
+	for (const shape of data.shapes) {
+		const bb = shapeBoundingBox(shape);
+		minX = Math.min(minX, bb.minX);
+		minY = Math.min(minY, bb.minY);
+		maxX = Math.max(maxX, bb.maxX);
+		maxY = Math.max(maxY, bb.maxY);
+	}
+	
+	// Add padding
+	const padding = 20;
+	minX -= padding;
+	minY -= padding;
+	maxX += padding;
+	maxY += padding;
+	
+	const viewBoxWidth = maxX - minX;
+	const viewBoxHeight = maxY - minY;
+	
+	// Always use white background for clean look
+	const bg = `<rect x="${minX}" y="${minY}" width="${viewBoxWidth}" height="${viewBoxHeight}" fill="#ffffff"/>`;
+
+	return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${minX} ${minY} ${viewBoxWidth} ${viewBoxHeight}" style="max-width:100%; height:auto; background:#ffffff;" preserveAspectRatio="xMidYMid meet">${bg}${body}</svg>`;
 }
 

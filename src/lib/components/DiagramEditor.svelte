@@ -26,18 +26,18 @@
 	let selectedId = $state<string | null>(null);
 
 	// Current styling applied to new shapes (and the selected shape).
-	let stroke = $state<string>('#38bdf8');
-	let fill = $state<string>('transparent');
+	let stroke = $state<string>('#374151');
+	let fill = $state<string>('#f9fafb');
 	let strokeWidth = $state<number>(2);
-	let fontSize = $state<number>(18);
+	let fontSize = $state<number>(14);
 
 	const palette = [
-		'#e2e8f0', '#0f172a', '#38bdf8', '#22c55e', '#eab308',
-		'#f97316', '#ef4444', '#ec4899', '#a855f7', '#14b8a6'
+		'#1f2937', '#374151', '#6b7280', '#0ea5e9', '#22c55e',
+		'#eab308', '#f97316', '#ef4444', '#ec4899', '#8b5cf6'
 	];
 	const fillPalette = [
-		'transparent', '#1e293b', '#0c4a6e', '#14532d', '#713f12',
-		'#7f1d1d', '#831843', '#4c1d95', '#0f766e', '#334155'
+		'transparent', '#f9fafb', '#e5e7eb', '#dbeafe', '#dcfce7',
+		'#fef3c7', '#ffedd5', '#fee2e2', '#fce7f3', '#ede9fe'
 	];
 
 	let svgEl = $state<SVGSVGElement | null>(null);
@@ -458,7 +458,7 @@
 					<!-- grid -->
 					<defs>
 						<pattern id="dg-grid" width="20" height="20" patternUnits="userSpaceOnUse">
-							<path d="M 20 0 L 0 0 0 20" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="1" />
+							<path d="M 20 0 L 0 0 0 20" fill="none" stroke="rgba(0,0,0,0.06)" stroke-width="1" />
 						</pattern>
 					</defs>
 					<rect x="0" y="0" width={canvasW} height={canvasH} fill="url(#dg-grid)" />
@@ -663,9 +663,7 @@
 	.diagram-canvas-wrap {
 		flex: 1;
 		overflow: auto;
-		background:
-			radial-gradient(circle at 50% 0, rgba(56,189,248,0.05), transparent 60%),
-			var(--bg-base, #0c0e12);
+		background: #e5e7eb;
 		padding: 24px;
 		display: flex;
 		justify-content: center;
@@ -675,23 +673,24 @@
 	.diagram-canvas-inner { position: relative; flex-shrink: 0; }
 
 	.diagram-canvas {
-		background: var(--bg-surface, #16181d);
-		border: 1px solid var(--border-highlight, #2c313a);
+		background: #ffffff;
+		border: 1px solid #d1d5db;
 		border-radius: 8px;
 		touch-action: none;
 		display: block;
+		box-shadow: 0 4px 12px rgba(0,0,0,0.1);
 	}
 
 	.dg-text-input {
 		position: absolute;
 		min-width: 60px;
-		background: rgba(0,0,0,0.35);
-		border: 1px dashed var(--accent, #38bdf8);
+		background: rgba(255,255,255,0.95);
+		border: 2px solid #3b82f6;
 		border-radius: 4px;
-		color: #fff;
-		font-family: Inter, system-ui, sans-serif;
+		color: #1f2937;
+		font-family: system-ui, -apple-system, sans-serif;
 		line-height: 1.3;
-		padding: 0 2px;
+		padding: 2px 4px;
 		resize: none;
 		outline: none;
 		overflow: hidden;

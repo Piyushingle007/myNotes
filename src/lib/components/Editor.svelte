@@ -39,6 +39,7 @@
 	import { debounce } from '../utils/debounce';
 	import GraphView from './GraphView.svelte';
 	import DiagramEditor from './DiagramEditor.svelte';
+	import DrawIOEditor from './DrawIOEditor.svelte';
 	import { renderDiagramSVG, decodeDiagram } from '../utils/diagram';
 
 	let resolvedAssetsMap = new Map<string, string>(); // relative path -> blob URL
@@ -7889,7 +7890,11 @@
 {/if}
 
 {#if diagramModal}
-	<DiagramEditor data={diagramModal.data} onSave={commitDiagram} onCancel={cancelDiagram} />
+	{#if appState.diagramEditorType === 'drawio'}
+		<DrawIOEditor data={diagramModal.data} onSave={commitDiagram} onCancel={cancelDiagram} />
+	{:else}
+		<DiagramEditor data={diagramModal.data} onSave={commitDiagram} onCancel={cancelDiagram} />
+	{/if}
 {/if}
 
 <style>
@@ -11896,40 +11901,62 @@
 		}
 	}
 
-	/* ═══ Diagram node (in-note preview) ═══ */
+	/* ═══ Diagram node - Clean Evernote-style design ═══ */
 	:global(.diagram-block) {
-		display: flex;
-		justify-content: center;
-		margin: 14px 0;
-		padding: 8px;
-		border-radius: 10px;
-		border: 1px solid transparent;
+		display: block;
+		margin: 24px auto;
+		padding: 0;
+		border-radius: 12px;
+		border: 1px solid var(--border-color, #2a2d35);
+		background: #ffffff;
 		cursor: pointer;
-		transition: border-color 0.15s, background 0.15s;
+		transition: all 0.2s ease;
+		overflow: hidden;
+		max-width: 100%;
 	}
+
 	:global(.diagram-block:hover) {
-		border-color: var(--border-highlight, #2c313a);
-		background: rgba(255, 255, 255, 0.02);
+		border-color: var(--accent, #38bdf8);
+		box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
 	}
+
 	:global(.diagram-block.ProseMirror-selectednode) {
 		border-color: var(--accent, #38bdf8);
-		background: var(--accent-light, rgba(56, 189, 248, 0.1));
+		box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.2);
 	}
+
 	:global(.diagram-block svg) {
-		max-width: 100%;
-		height: auto;
-	}
-	:global(.diagram-empty) {
+		display: block;
 		width: 100%;
-		padding: 28px;
-		text-align: center;
-		color: var(--text-tertiary, #7c8290);
-		border: 1px dashed var(--border-highlight, #2c313a);
-		border-radius: 10px;
-		font-size: 13px;
-		font-weight: 500;
+		height: auto;
+		min-height: 120px;
+		max-height: 500px;
+		background: #ffffff;
 	}
+
+	:global(.diagram-empty) {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		padding: 40px 24px;
+		background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+		color: #6c757d;
+		font-size: 14px;
+		font-weight: 500;
+		gap: 8px;
+		min-height: 150px;
+	}
+
+	:global(.diagram-empty::before) {
+		content: '📊';
+		font-size: 28px;
+	}
+
 	@media print {
-		:global(.diagram-block) { border-color: transparent !important; }
+		:global(.diagram-block) {
+			border: 1px solid #ddd !important;
+			box-shadow: none !important;
+		}
 	}
 </style>

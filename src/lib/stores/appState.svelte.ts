@@ -164,6 +164,14 @@ class AppState {
   notelistCollapsed = $state<boolean>(localStorage.getItem('mynotes_notelist_collapsed') === 'true');
   editorCollapsed = $state<boolean>(localStorage.getItem('mynotes_editor_collapsed') === 'true');
 
+  // Diagram Editor Preference: 'native' (built-in) or 'drawio' (embed diagrams.net)
+  diagramEditorType = $state<'native' | 'drawio'>((localStorage.getItem('mynotes_diagram_editor') as 'native' | 'drawio') || 'native');
+
+  setDiagramEditorType(type: 'native' | 'drawio') {
+    this.diagramEditorType = type;
+    localStorage.setItem('mynotes_diagram_editor', type);
+  }
+
   themes = [
     { id: 'steel', name: 'Steel Minimalist', bg: '#111317', accent: '#00adb5' },
     { id: 'nordic', name: 'Nordic Frost', bg: '#0f141c', accent: '#58a6ff' },

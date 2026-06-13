@@ -746,6 +746,46 @@
             {/each}
           </div>
         </div>
+
+        <!-- Diagram Editor Settings -->
+        <div class="form-group flex-col" style="margin-top: 20px; border-top: 1px solid var(--border-color); padding-top: 20px;">
+          <label class="form-label" style="font-weight: 700; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="sync-icon-accent">
+              <rect x="3" y="3" width="7" height="7" rx="1"/>
+              <rect x="14" y="14" width="7" height="7" rx="1"/>
+              <path d="M10 6.5h4a3 3 0 0 1 3 3V14"/>
+            </svg>
+            <span>Diagram Editor</span>
+          </label>
+
+          <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px;">
+            <button
+              class="theme-chip flex-row"
+              style="background-color: var(--bg-mid-dark); border: 1px solid {appState.diagramEditorType === 'native' ? 'var(--accent)' : 'var(--border-color)'}; padding: 12px; border-radius: var(--radius-standard); flex-direction: column; align-items: flex-start; text-align: left; width: 100%; gap: 4px;"
+              onclick={() => appState.setDiagramEditorType('native')}
+            >
+              <span style="font-size: 13px; font-weight: 700; color: {appState.diagramEditorType === 'native' ? 'var(--text-primary)' : 'var(--text-secondary)'};">Native Editor</span>
+              <span style="font-size: 10px; color: var(--text-tertiary);">Built-in, fast, offline-ready</span>
+            </button>
+
+            <button
+              class="theme-chip flex-row"
+              style="background-color: var(--bg-mid-dark); border: 1px solid {appState.diagramEditorType === 'drawio' ? 'var(--accent)' : 'var(--border-color)'}; padding: 12px; border-radius: var(--radius-standard); flex-direction: column; align-items: flex-start; text-align: left; width: 100%; gap: 4px;"
+              onclick={() => appState.setDiagramEditorType('drawio')}
+            >
+              <span style="font-size: 13px; font-weight: 700; color: {appState.diagramEditorType === 'drawio' ? 'var(--text-primary)' : 'var(--text-secondary)'};">Draw.io</span>
+              <span style="font-size: 10px; color: var(--text-tertiary);">Full-featured, requires internet</span>
+            </button>
+          </div>
+
+          <p style="font-size: 11px; color: var(--text-tertiary); margin-top: 10px; line-height: 1.5;">
+            {#if appState.diagramEditorType === 'drawio'}
+              Uses diagrams.net (draw.io) embedded editor for advanced flowcharts, UML, and more.
+            {:else}
+              Lightweight native editor with basic shapes, arrows, and freehand drawing.
+            {/if}
+          </p>
+        </div>
       </div>
     </div>
   </div>
