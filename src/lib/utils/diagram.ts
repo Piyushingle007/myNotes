@@ -208,18 +208,42 @@ function shapeBoundingBox(s: DiagramShape): { minX: number; minY: number; maxX: 
 
 // Render the full diagram to a standalone SVG string (used for preview + export).
 export function renderDiagramSVG(data: DiagramData, opts: { maxWidth?: number } = {}): string {
-	// If we have a raw mermaid SVG, clean it up and use it directly
+	// If we have a raw mermaid SVG, clean it up and use it directly.
+	// Use string manipulation instead of DOMParser('image/svg+xml') because the strict
+	// XML parser silently returns a <parsererror> document for any malformed Mermaid output,
+	// causing the diagram to collapse to 0 height.
 	if (data.mermaidSvg) {
 		try {
-			const parser = new DOMParser();
-			const doc = parser.parseFromString(data.mermaidSvg, 'image/svg+xml');
-			const svg = doc.querySelector('svg');
-			if (svg) {
-				svg.setAttribute('style', 'max-width:100%; height:auto; background:transparent;');
-				return svg.outerHTML;
+			let svgStr = data.mermaidSvg.trim();
+
+			// Extract viewBox dimensions so we can set explicit width/height for correct aspect ratio
+			let widthAttr = '';
+			let heightAttr = '';
+			const vbMatch = svgStr.match(/viewBox\s*=\s*["']([^"']+)["']/i);
+			if (vbMatch) {
+				const parts = vbMatch[1].trim().split(/[\s,]+/);
+				if (parts.length >= 4) {
+					const w = parseFloat(parts[2]);
+					const h = parseFloat(parts[3]);
+					if (!isNaN(w) && !isNaN(h) && w > 0 && h > 0) {
+						widthAttr = `width="${w}" `;
+						heightAttr = `height="${h}" `;
+					}
+				}
 			}
+
+			// Rewrite the opening <svg ...> tag: strip width/height/style, then inject our own
+			svgStr = svgStr.replace(/<svg\b([^>]*)>/i, (_match, attrs) => {
+				const cleaned = attrs
+					.replace(/\s+width="[^"]*"/gi, '')
+					.replace(/\s+height="[^"]*"/gi, '')
+					.replace(/\s+style="[^"]*"/gi, '');
+				return `<svg${cleaned} ${widthAttr}${heightAttr}style="width:100%; height:auto; background:transparent;">`;
+			});
+
+			return svgStr;
 		} catch (e) {
-			console.warn('Failed to parse mermaid SVG, falling back to native rendering');
+			console.warn('Failed to process mermaid SVG, falling back to native rendering', e);
 		}
 	}
 

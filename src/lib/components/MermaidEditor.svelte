@@ -184,7 +184,13 @@
 	onmouseup={isDragging ? handleMouseUp : null} 
 />
 
-<div class="mermaid-overlay flex-row" role="dialog" transition:fade={{ duration: 150 }}>
+<div 
+	class="mermaid-overlay flex-row" 
+	role="dialog" 
+	transition:fade={{ duration: 150 }}
+	onclick={(e) => e.stopPropagation()}
+	onmousedown={(e) => e.stopPropagation()}
+>
 	<div class="mermaid-modal flex-col" transition:fly={{ y: 30, duration: 300, easing: cubicOut }}>
 		
 		<!-- Header Toolbar -->
@@ -230,12 +236,11 @@
 						<Download size={16} />
 					</button>
 				{/if}
-				<button class="btn-cancel" onclick={handleCancel}>Cancel</button>
 				<button class="btn-save" onclick={handleSave} disabled={isSaving || !!errorMsg}>
 					{#if isSaving}
 						Saving...
 					{:else}
-						💾 Save & Close
+						💾 Save
 					{/if}
 				</button>
 			</div>

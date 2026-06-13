@@ -1728,6 +1728,11 @@
 			dom.className = 'diagram-block';
 			try {
 				const d = decodeDiagram(data);
+				if (d.mermaidCode) {
+					dom.setAttribute('data-diagram-type', 'mermaid');
+				} else {
+					dom.removeAttribute('data-diagram-type');
+				}
 				const hasContent = d.shapes.length > 0 || !!d.drawioSvg || !!d.drawioXml || !!d.mermaidSvg || !!d.mermaidCode;
 				if (hasContent) dom.innerHTML = renderDiagramSVG(d);
 			} catch (e) { /* ignore */ }
@@ -1745,6 +1750,11 @@
 					let inner = '';
 					try {
 						const d = decodeDiagram(enc);
+						if (d.mermaidCode) {
+							dom.setAttribute('data-diagram-type', 'mermaid');
+						} else {
+							dom.removeAttribute('data-diagram-type');
+						}
 						const hasContent = d.shapes.length > 0 || !!d.drawioSvg || !!d.drawioXml || !!d.mermaidSvg || !!d.mermaidCode;
 						inner = hasContent ? renderDiagramSVG(d) : '';
 					} catch (e) { /* ignore */ }
@@ -1761,10 +1771,20 @@
 					dom,
 					update(updatedNode: any) {
 						if (updatedNode.type.name !== 'diagram') return false;
-						dom.setAttribute('data-diagram', updatedNode.attrs.data || '');
-						dom.setAttribute('data-size', updatedNode.attrs.size || 'medium');
-						dom.setAttribute('data-align', updatedNode.attrs.align || 'center');
-						render();
+						const newData = updatedNode.attrs.data || '';
+						const newSize = updatedNode.attrs.size || 'medium';
+						const newAlign = updatedNode.attrs.align || 'center';
+						// Only re-render if something actually changed — this prevents a spurious
+						// re-render (which could briefly collapse the SVG) when ProseMirror
+						// re-focuses after the diagram modal is closed without saving.
+						const changed =
+							newData !== (dom.getAttribute('data-diagram') || '') ||
+							newSize !== (dom.getAttribute('data-size') || 'medium') ||
+							newAlign !== (dom.getAttribute('data-align') || 'center');
+						dom.setAttribute('data-diagram', newData);
+						dom.setAttribute('data-size', newSize);
+						dom.setAttribute('data-align', newAlign);
+						if (changed) render();
 						return true;
 					}
 				};
@@ -12026,6 +12046,16 @@
 		width: fit-content; /* hug the diagram size dynamically */
 		max-width: 100%;
 		box-sizing: border-box;
+	}
+
+	:global(.diagram-block[data-diagram-type="mermaid"]) {
+		width: 100% !important; /* Force container to stretch so max-width scales it proportional to page width */
+	}
+
+	:global(.diagram-block[data-diagram-type="mermaid"] svg) {
+		width: 100% !important;
+		height: auto !important;
+		max-width: 100% !important;
 	}
 
 	/* Diagram Sizing */
