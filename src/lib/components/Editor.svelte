@@ -1328,6 +1328,7 @@
 	let tableContextMenu = $state<{ x: number; y: number } | null>(null);
 	let tablePickerHover = $state({ rows: 0, cols: 0 });
 	let imageToolbar = $state<{ pos: number; x: number; y: number; size: string; src: string } | null>(null);
+	let diagramToolbar = $state<{ pos: number; x: number; y: number; size: string; align: string } | null>(null);
 	let copyToast = $state<'copying' | 'done' | null>(null);
 
 	// Math insert/edit modal (opened by /math slash command or double-click on existing math node)
@@ -1697,24 +1698,37 @@
 		atom: true,
 		draggable: true,
 		addAttributes() {
-			return { data: { default: '' } };
+			return {
+				data: { default: '' },
+				size: { default: 'medium' },
+				align: { default: 'center' }
+			};
 		},
 		parseHTML() {
 			return [{
 				tag: 'div[data-diagram]',
-				getAttrs: (el: HTMLElement) => ({ data: el.getAttribute('data-diagram') || '' }),
+				getAttrs: (el: HTMLElement) => ({
+					data: el.getAttribute('data-diagram') || '',
+					size: el.getAttribute('data-size') || 'medium',
+					align: el.getAttribute('data-align') || 'center'
+				}),
 			}];
 		},
 		renderHTML({ HTMLAttributes }) {
 			// Serialize with an embedded SVG so exports (HTML/PDF) display the diagram,
 			// while keeping the JSON in data-diagram for re-editing.
 			const data = HTMLAttributes.data || '';
+			const size = HTMLAttributes.size || 'medium';
+			const align = HTMLAttributes.align || 'center';
 			const dom = document.createElement('div');
 			dom.setAttribute('data-diagram', data);
+			dom.setAttribute('data-size', size);
+			dom.setAttribute('data-align', align);
 			dom.className = 'diagram-block';
 			try {
 				const d = decodeDiagram(data);
-				if (d.shapes.length) dom.innerHTML = renderDiagramSVG(d);
+				const hasContent = d.shapes.length > 0 || !!d.drawioSvg || !!d.drawioXml;
+				if (hasContent) dom.innerHTML = renderDiagramSVG(d);
 			} catch (e) { /* ignore */ }
 			return dom;
 		},
@@ -1723,12 +1737,15 @@
 				const dom = document.createElement('div');
 				dom.className = 'diagram-block';
 				dom.setAttribute('data-diagram', node.attrs.data || '');
+				dom.setAttribute('data-size', node.attrs.size || 'medium');
+				dom.setAttribute('data-align', node.attrs.align || 'center');
 				const render = () => {
 					const enc = dom.getAttribute('data-diagram') || '';
 					let inner = '';
 					try {
 						const d = decodeDiagram(enc);
-						inner = d.shapes.length ? renderDiagramSVG(d) : '';
+						const hasContent = d.shapes.length > 0 || !!d.drawioSvg || !!d.drawioXml;
+						inner = hasContent ? renderDiagramSVG(d) : '';
 					} catch (e) { /* ignore */ }
 					dom.innerHTML = inner || '<div class="diagram-empty">✎ Empty diagram — double-click to edit</div>';
 				};
@@ -1744,6 +1761,8 @@
 					update(updatedNode: any) {
 						if (updatedNode.type.name !== 'diagram') return false;
 						dom.setAttribute('data-diagram', updatedNode.attrs.data || '');
+						dom.setAttribute('data-size', updatedNode.attrs.size || 'medium');
+						dom.setAttribute('data-align', updatedNode.attrs.align || 'center');
 						render();
 						return true;
 					}
@@ -4811,6 +4830,7 @@
 		const wikiLinkEl = target.closest('span[data-wiki-link]') as HTMLElement | null;
 		if (wikiLinkEl) {
 			imageToolbar = null;
+			diagramToolbar = null;
 			event.preventDefault();
 			event.stopPropagation();
 			const path = wikiLinkEl.getAttribute('data-path') || '';
@@ -4820,6 +4840,7 @@
 		}
 
 		if (target.tagName === 'IMG' && editor) {
+			diagramToolbar = null;
 			event.preventDefault();
 			event.stopPropagation();
 			const pos = editor.view.posAtDOM(target, 0);
@@ -4842,7 +4863,31 @@
 			return;
 		}
 
+		const diagramEl = target.closest('.diagram-block') as HTMLElement | null;
+		if (diagramEl && editor) {
+			imageToolbar = null;
+			event.preventDefault();
+			event.stopPropagation();
+			const pos = editor.view.posAtDOM(diagramEl, 0);
+			if (diagramToolbar && diagramToolbar.pos === pos) {
+				diagramToolbar = null;
+				return;
+			}
+			const node = editor.state.doc.nodeAt(pos);
+			const currentSize = node?.attrs.size || 'medium';
+			const currentAlign = node?.attrs.align || 'center';
+			const toolbarW = 280;
+			const toolbarH = 38;
+			const x = Math.min(event.clientX, window.innerWidth - toolbarW - 8);
+			const y = Math.min(event.clientY, window.innerHeight - toolbarH - 8);
+			diagramToolbar = { pos, x, y, size: currentSize, align: currentAlign };
+			const afterPos = pos + (node?.nodeSize || 1);
+			editor.chain().setTextSelection(afterPos).run();
+			return;
+		}
+
 		imageToolbar = null;
+		diagramToolbar = null;
 	}
 
 	function setImageSize(size: string) {
@@ -4851,6 +4896,26 @@
 		const tr = editor.state.tr.setNodeAttribute(pos, 'size', size);
 		editor.view.dispatch(tr);
 		imageToolbar = { ...imageToolbar, size };
+		$editorDirty = true;
+		autoSave();
+	}
+
+	function setDiagramSize(size: string) {
+		if (!editor || !diagramToolbar) return;
+		const { pos } = diagramToolbar;
+		const tr = editor.state.tr.setNodeAttribute(pos, 'size', size);
+		editor.view.dispatch(tr);
+		diagramToolbar = { ...diagramToolbar, size };
+		$editorDirty = true;
+		autoSave();
+	}
+
+	function setDiagramAlign(align: string) {
+		if (!editor || !diagramToolbar) return;
+		const { pos } = diagramToolbar;
+		const tr = editor.state.tr.setNodeAttribute(pos, 'align', align);
+		editor.view.dispatch(tr);
+		diagramToolbar = { ...diagramToolbar, align };
 		$editorDirty = true;
 		autoSave();
 	}
@@ -7363,6 +7428,48 @@
 					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
 				</button>
 			{/if}
+		</div>
+	</div>
+{/if}
+
+{#if diagramToolbar}
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div class="img-toolbar-overlay" onclick={() => (diagramToolbar = null)}>
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div class="img-toolbar" style="left: {diagramToolbar.x}px; top: {diagramToolbar.y}px" onclick={(e) => e.stopPropagation()}>
+			<!-- Sizing options -->
+			<button class:active={diagramToolbar.size === 'small'} onclick={() => setDiagramSize('small')} title="Small (33%)">S</button>
+			<button class:active={diagramToolbar.size === 'medium'} onclick={() => setDiagramSize('medium')} title="Medium (65%)">M</button>
+			<button class:active={diagramToolbar.size === 'full'} onclick={() => setDiagramSize('full')} title="Full width">L</button>
+			
+			<span class="img-toolbar-sep"></span>
+			
+			<!-- Alignment options -->
+			<button class:active={diagramToolbar.align === 'left'} onclick={() => setDiagramAlign('left')} title="Align left">
+				<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="17" y1="10" x2="3" y2="10"/><line x1="21" y1="6" x2="3" y2="6"/><line x1="21" y1="14" x2="3" y2="14"/><line x1="17" y1="18" x2="3" y2="18"/></svg>
+			</button>
+			<button class:active={diagramToolbar.align === 'center'} onclick={() => setDiagramAlign('center')} title="Align center">
+				<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="10" x2="6" y2="10"/><line x1="21" y1="6" x2="3" y2="6"/><line x1="21" y1="14" x2="3" y2="14"/><line x1="18" y1="18" x2="6" y2="18"/></svg>
+			</button>
+			<button class:active={diagramToolbar.align === 'right'} onclick={() => setDiagramAlign('right')} title="Align right">
+				<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="21" y1="10" x2="7" y2="10"/><line x1="21" y1="6" x2="3" y2="6"/><line x1="21" y1="14" x2="3" y2="14"/><line x1="21" y1="18" x2="7" y2="18"/></svg>
+			</button>
+			
+			<span class="img-toolbar-sep"></span>
+			
+			<!-- Edit option -->
+			<button onclick={() => {
+				const pos = diagramToolbar?.pos;
+				if (pos !== undefined && pos !== null && editor) {
+					const node = editor.state.doc.nodeAt(pos);
+					if (node) {
+						openDiagramEditor(pos, node.attrs.data || '');
+					}
+				}
+				diagramToolbar = null;
+			}} title="Edit diagram">
+				<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+			</button>
 		</div>
 	</div>
 {/if}
@@ -11905,14 +12012,42 @@
 	:global(.diagram-block) {
 		display: block;
 		margin: 24px auto;
-		padding: 0;
+		padding: 16px; /* 16px padding on all 4 sides */
 		border-radius: 12px;
 		border: 1px solid var(--border-color, #2a2d35);
 		background: #ffffff;
 		cursor: pointer;
 		transition: all 0.2s ease;
 		overflow: hidden;
+		width: fit-content; /* hug the diagram size dynamically */
 		max-width: 100%;
+		box-sizing: border-box;
+	}
+
+	/* Diagram Sizing */
+	:global(.diagram-block[data-size="small"]) {
+		max-width: 33%;
+	}
+	:global(.diagram-block[data-size="medium"]) {
+		max-width: 65%;
+	}
+	:global(.diagram-block[data-size="full"]) {
+		max-width: 100%;
+		width: 100%;
+	}
+
+	/* Diagram Alignment */
+	:global(.diagram-block[data-align="left"]) {
+		margin-left: 0;
+		margin-right: auto;
+	}
+	:global(.diagram-block[data-align="center"]) {
+		margin-left: auto;
+		margin-right: auto;
+	}
+	:global(.diagram-block[data-align="right"]) {
+		margin-left: auto;
+		margin-right: 0;
 	}
 
 	:global(.diagram-block:hover) {
@@ -11927,11 +12062,14 @@
 
 	:global(.diagram-block svg) {
 		display: block;
-		width: 100%;
+		max-width: 100%;
 		height: auto;
-		min-height: 120px;
-		max-height: 500px;
-		background: #ffffff;
+		background: transparent;
+	}
+
+	/* Automatically invert colors in dark themes for dark mode rendering (white bg -> dark, dark lines -> light) */
+	:global(:root:not(.theme-paper):not(.theme-sakura):not(.theme-mint):not(.theme-lavender):not(.theme-cottoncandy):not(.theme-matcha):not(.theme-barbie):not(.theme-sundae) .diagram-block) {
+		filter: invert(0.9) hue-rotate(180deg);
 	}
 
 	:global(.diagram-empty) {

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { encodeDiagram, decodeDiagram, type DiagramData } from '../utils/diagram';
+	import { appState } from '../stores/appState.svelte';
 
 	interface Props {
 		data: string;
@@ -11,6 +12,8 @@
 	let iframeRef = $state<HTMLIFrameElement | null>(null);
 	let isLoading = $state(true);
 	let isSaving = $state(false);
+	let isDirty = $state(false);
+	let isOnline = $state(typeof window !== 'undefined' ? navigator.onLine : true);
 
 	// Convert our format to draw.io XML
 	function toDrawioXml(diagramData: DiagramData): string {
@@ -131,7 +134,9 @@
 			if (msg.event === 'init') {
 				isLoading = false;
 				const diagramData = decodeDiagram(data);
-				const xml = toDrawioXml(diagramData);
+				// Prioritize raw drawioXml (lossless round-trip) if it exists
+				const xml = diagramData.drawioXml || toDrawioXml(diagramData);
+				lastXml = xml;
 
 				iframeRef?.contentWindow?.postMessage(JSON.stringify({
 					action: 'load',
@@ -140,35 +145,37 @@
 				}), '*');
 			}
 			else if (msg.event === 'autosave' || msg.event === 'save') {
-				// Store the latest XML whenever autosave fires
 				if (msg.xml) {
 					lastXml = msg.xml;
+					isDirty = true;
 					console.log('[DrawIO] Stored autosave XML');
 				}
 			}
 			else if (msg.event === 'export') {
-				// Export completed
-				if (msg.data && isSaving) {
+				if (isSaving) {
 					console.log('[DrawIO] Export received, saving...');
+					const xml = msg.xml || lastXml || '';
 					try {
 						// Decode base64 SVG
 						const svgData = atob(msg.data.split(',').pop() || msg.data);
-						const diagramData = fromDrawioXml(lastXml || '');
-						(diagramData as any).drawioSvg = svgData;
+						const diagramData = fromDrawioXml(xml);
+						diagramData.drawioSvg = svgData;
+						diagramData.drawioXml = xml;
 						onSave(encodeDiagram(diagramData));
 					} catch (e) {
-						console.error('[DrawIO] Export parse failed:', e);
-						// Fallback to XML only
-						if (lastXml) {
-							const diagramData = fromDrawioXml(lastXml);
-							onSave(encodeDiagram(diagramData));
-						}
+						console.error('[DrawIO] Export parse failed, saving fallback:', e);
+						const diagramData = fromDrawioXml(xml);
+						diagramData.drawioXml = xml;
+						// Keep old SVG if parse failed
+						const oldData = decodeDiagram(data);
+						diagramData.drawioSvg = oldData.drawioSvg;
+						onSave(encodeDiagram(diagramData));
 					}
 					isSaving = false;
 				}
 			}
 			else if (msg.event === 'exit') {
-				onCancel();
+				handleCancel();
 			}
 		} catch {
 			// Ignore non-JSON messages
@@ -178,42 +185,39 @@
 	let lastXml = '';
 
 	function saveAndClose() {
-		if (!lastXml) {
-			// Request current state
-			iframeRef?.contentWindow?.postMessage(JSON.stringify({
-				action: 'export',
-				format: 'xmlsvg'
-			}), '*');
-			isSaving = true;
+		isSaving = true;
+		iframeRef?.contentWindow?.postMessage(JSON.stringify({
+			action: 'export',
+			format: 'xmlsvg'
+		}), '*');
 
-			// Timeout fallback
-			setTimeout(() => {
-				if (isSaving) {
-					console.log('[DrawIO] Export timeout, using last known XML');
-					if (lastXml) {
-						const diagramData = fromDrawioXml(lastXml);
-						onSave(encodeDiagram(diagramData));
-					}
-					isSaving = false;
-				}
-			}, 3000);
-		} else {
-			// Use last autosaved XML
-			const diagramData = fromDrawioXml(lastXml);
-			iframeRef?.contentWindow?.postMessage(JSON.stringify({
-				action: 'export',
-				format: 'xmlsvg'
-			}), '*');
-			isSaving = true;
+		// Fallback timeout in case export fails
+		setTimeout(() => {
+			if (isSaving) {
+				console.log('[DrawIO] Export timeout, saving with last known state');
+				const xml = lastXml || '';
+				const diagramData = fromDrawioXml(xml);
+				diagramData.drawioXml = xml;
+				const oldData = decodeDiagram(data);
+				diagramData.drawioSvg = oldData.drawioSvg;
+				onSave(encodeDiagram(diagramData));
+				isSaving = false;
+			}
+		}, 3000);
+	}
 
-			// Quick save with existing data if export takes too long
-			setTimeout(() => {
-				if (isSaving) {
-					onSave(encodeDiagram(diagramData));
-					isSaving = false;
-				}
-			}, 2000);
+	function handleCancel() {
+		if (isDirty) {
+			if (!confirm('Are you sure you want to discard unsaved changes?')) {
+				return;
+			}
 		}
+		onCancel();
+	}
+
+	function switchToNative() {
+		appState.setDiagramEditorType('native');
+		onCancel();
 	}
 
 	$effect(() => {
@@ -221,12 +225,24 @@
 		return () => window.removeEventListener('message', handleMessage);
 	});
 
+	$effect(() => {
+		const updateOnline = () => { isOnline = navigator.onLine; };
+		window.addEventListener('online', updateOnline);
+		window.addEventListener('offline', updateOnline);
+		return () => {
+			window.removeEventListener('online', updateOnline);
+			window.removeEventListener('offline', updateOnline);
+		};
+	});
+
 	const drawioUrl = $derived.by(() => {
+		// Detect light theme to configure draw.io theme dynamically
+		const isLightTheme = ['paper', 'sakura', 'mint', 'lavender', 'cottoncandy', 'matcha', 'barbie', 'sundae'].includes(appState.theme);
 		const params = new URLSearchParams({
 			embed: '1',
 			proto: 'json',
 			spin: '1',
-			dark: '1',
+			dark: isLightTheme ? '0' : '1',
 			ui: 'kennedy',
 			libraries: '1',
 			saveAndExit: '0',
@@ -242,8 +258,8 @@
 		<div class="drawio-header">
 			<span class="title">✏️ Edit Diagram</span>
 			<div class="actions">
-				<button class="btn-cancel" onclick={onCancel}>Cancel</button>
-				<button class="btn-save" onclick={saveAndClose} disabled={isSaving}>
+				<button class="btn-cancel" onclick={handleCancel}>Cancel</button>
+				<button class="btn-save" onclick={saveAndClose} disabled={isSaving || !isOnline}>
 					{#if isSaving}
 						Saving...
 					{:else}
@@ -253,20 +269,29 @@
 			</div>
 		</div>
 
-		{#if isLoading}
-			<div class="loading">
-				<div class="spinner"></div>
-				<span>Loading editor...</span>
+		{#if !isOnline}
+			<div class="offline-state">
+				<div class="offline-icon">🌐❌</div>
+				<h3 class="offline-title">Offline Mode</h3>
+				<p class="offline-desc">Draw.io requires an active internet connection to load and edit diagrams.</p>
+				<button class="btn-switch" onclick={switchToNative}>Switch to Native Editor (Offline)</button>
 			</div>
-		{/if}
+		{:else}
+			{#if isLoading}
+				<div class="loading">
+					<div class="spinner"></div>
+					<span>Loading editor...</span>
+				</div>
+			{/if}
 
-		<iframe
-			bind:this={iframeRef}
-			src={drawioUrl}
-			title="Diagram Editor"
-			class="drawio-frame"
-			class:hidden={isLoading}
-		></iframe>
+			<iframe
+				bind:this={iframeRef}
+				src={drawioUrl}
+				title="Diagram Editor"
+				class="drawio-frame"
+				class:hidden={isLoading}
+			></iframe>
+		{/if}
 	</div>
 </div>
 
@@ -382,6 +407,55 @@
 
 	@keyframes spin {
 		to { transform: rotate(360deg); }
+	}
+
+	/* Offline State Styling */
+	.offline-state {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		padding: 40px;
+		text-align: center;
+		background: #1a1a1a;
+		color: #ccc;
+	}
+
+	.offline-icon {
+		font-size: 48px;
+		margin-bottom: 16px;
+	}
+
+	.offline-title {
+		font-size: 20px;
+		font-weight: 600;
+		color: #fff;
+		margin-bottom: 8px;
+	}
+
+	.offline-desc {
+		font-size: 14px;
+		color: #aaa;
+		max-width: 400px;
+		margin-bottom: 24px;
+		line-height: 1.5;
+	}
+
+	.btn-switch {
+		padding: 10px 24px;
+		border-radius: 8px;
+		font-size: 14px;
+		font-weight: 600;
+		background: #3b82f6;
+		color: #fff;
+		border: none;
+		cursor: pointer;
+		transition: background 0.15s;
+	}
+
+	.btn-switch:hover {
+		background: #2563eb;
 	}
 </style>
 

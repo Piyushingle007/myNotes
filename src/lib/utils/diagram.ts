@@ -32,6 +32,7 @@ export interface DiagramData {
 	height: number;
 	background?: string;
 	drawioSvg?: string; // Raw SVG from draw.io for faithful rendering
+	drawioXml?: string; // Raw XML from draw.io for lossless editing
 }
 
 export const DEFAULT_DIAGRAM: DiagramData = {
@@ -63,7 +64,8 @@ export function decodeDiagram(encoded: string): DiagramData {
 			width: parsed.width || DEFAULT_DIAGRAM.width,
 			height: parsed.height || DEFAULT_DIAGRAM.height,
 			background: parsed.background || 'transparent',
-			drawioSvg: parsed.drawioSvg // Preserve draw.io SVG if present
+			drawioSvg: parsed.drawioSvg, // Preserve draw.io SVG if present
+			drawioXml: parsed.drawioXml  // Preserve draw.io XML if present
 		};
 	} catch {
 		return structuredCloneSafe(DEFAULT_DIAGRAM);
@@ -209,10 +211,9 @@ export function renderDiagramSVG(data: DiagramData, opts: { maxWidth?: number } 
 			const doc = parser.parseFromString(data.drawioSvg, 'image/svg+xml');
 			const svg = doc.querySelector('svg');
 			if (svg) {
-				// Set white background and responsive styles
-				svg.setAttribute('style', 'max-width:100%; height:auto; background:#ffffff;');
-				svg.removeAttribute('width');
-				svg.removeAttribute('height');
+				// Set responsive styles but keep background transparent (inherited from diagram-block)
+				svg.setAttribute('style', 'max-width:100%; height:auto; background:transparent;');
+				// We do NOT remove width/height attributes so the container can dynamically size using fit-content!
 				const content = svg.getAttribute('content');
 				if (content) svg.removeAttribute('content');
 				return svg.outerHTML;
@@ -247,9 +248,7 @@ export function renderDiagramSVG(data: DiagramData, opts: { maxWidth?: number } 
 	const viewBoxWidth = maxX - minX;
 	const viewBoxHeight = maxY - minY;
 	
-	// Always use white background for clean look
-	const bg = `<rect x="${minX}" y="${minY}" width="${viewBoxWidth}" height="${viewBoxHeight}" fill="#ffffff"/>`;
-
-	return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${minX} ${minY} ${viewBoxWidth} ${viewBoxHeight}" style="max-width:100%; height:auto; background:#ffffff;" preserveAspectRatio="xMidYMid meet">${bg}${body}</svg>`;
+	// Transparent background (inherited from container) with natural dimensions
+	return `<svg xmlns="http://www.w3.org/2000/svg" width="${viewBoxWidth}" height="${viewBoxHeight}" viewBox="${minX} ${minY} ${viewBoxWidth} ${viewBoxHeight}" style="max-width:100%; height:auto; background:transparent;" preserveAspectRatio="xMidYMid meet">${body}</svg>`;
 }
 
