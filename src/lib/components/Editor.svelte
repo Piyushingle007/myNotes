@@ -7436,7 +7436,7 @@
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div class="img-toolbar-overlay" onclick={() => (imageToolbar = null)}>
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
-		<div class="img-toolbar" style="left: {imageToolbar.x}px; top: {imageToolbar.y}px" onclick={(e) => e.stopPropagation()}>
+		<div class="img-toolbar" class:mobile={isMobile} style={isMobile ? '' : `left: {imageToolbar.x}px; top: {imageToolbar.y}px`} onclick={(e) => e.stopPropagation()}>
 			<button class:active={imageToolbar.size === 'small'} onclick={() => setImageSize('small')} title="Small (33%)">S</button>
 			<button class:active={imageToolbar.size === 'medium'} onclick={() => setImageSize('medium')} title="Medium (50%)">M</button>
 			<button class:active={imageToolbar.size === 'full'} onclick={() => setImageSize('full')} title="Full width">L</button>
@@ -7457,7 +7457,7 @@
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div class="img-toolbar-overlay" onclick={() => (diagramToolbar = null)}>
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
-		<div class="img-toolbar" style="left: {diagramToolbar.x}px; top: {diagramToolbar.y}px" onclick={(e) => e.stopPropagation()}>
+		<div class="img-toolbar" class:mobile={isMobile} style={isMobile ? '' : `left: {diagramToolbar.x}px; top: {diagramToolbar.y}px`} onclick={(e) => e.stopPropagation()}>
 			<!-- Sizing options -->
 			<button class:active={diagramToolbar.size === 'small'} onclick={() => setDiagramSize('small')} title="Small (33%)">S</button>
 			<button class:active={diagramToolbar.size === 'medium'} onclick={() => setDiagramSize('medium')} title="Medium (65%)">M</button>
@@ -10047,6 +10047,27 @@
 		box-shadow: var(--shadow-lg);
 		padding: 3px;
 		z-index: 1501;
+		transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s;
+	}
+
+	.img-toolbar.mobile {
+		left: 50% !important;
+		right: auto !important;
+		bottom: 80px !important;
+		top: auto !important;
+		transform: translateX(-50%) !important;
+		width: calc(100% - 32px) !important;
+		max-width: 320px !important;
+		justify-content: space-around !important;
+		padding: 6px 8px !important;
+		border-radius: 12px !important;
+		border: 1px solid var(--border-color) !important;
+		box-shadow: var(--shadow-xl) !important;
+	}
+
+	.img-toolbar.mobile button {
+		padding: 6px 10px !important;
+		font-size: 13px !important;
 	}
 
 	.img-toolbar button {
@@ -10066,8 +10087,9 @@
 	}
 
 	.img-toolbar button.active {
-		background: var(--accent);
-		color: white;
+		background: var(--accent-light) !important;
+		color: var(--text-accent) !important;
+		font-weight: 700;
 	}
 
 	.img-toolbar-sep {
