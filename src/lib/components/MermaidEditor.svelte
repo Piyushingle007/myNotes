@@ -30,6 +30,16 @@
 	let startPanX = 0;
 	let startPanY = 0;
 
+	// Touch interaction state
+	let isTouchDragging = $state(false);
+	let touchStartX = 0;
+	let touchStartY = 0;
+	let touchStartPanX = 0;
+	let touchStartPanY = 0;
+	let isPinching = false;
+	let startPinchDist = 0;
+	let startPinchZoom = 1;
+
 	let mermaidInstance: any = null;
 	let renderCounter = 0;
 
@@ -40,6 +50,10 @@
 		const decoded = decodeDiagram(data);
 		mermaidCode = decoded.mermaidCode || DEFAULT_MERMAID;
 		originalCode = mermaidCode;
+
+		if (typeof window !== 'undefined' && window.innerWidth <= 600) {
+			viewMode = 'preview';
+		}
 
 		try {
 			const mod = await import('mermaid');
@@ -94,6 +108,12 @@
 			renderPreview();
 		}, 150);
 		return () => clearTimeout(timer);
+	});
+
+	$effect(() => {
+		if (typeof window !== 'undefined' && window.innerWidth <= 600 && viewMode === 'split') {
+			viewMode = 'preview';
+		}
 	});
 
 	function handleSave() {
@@ -176,6 +196,69 @@
 		a.download = 'mermaid_diagram.svg';
 		a.click();
 		URL.revokeObjectURL(url);
+	}
+
+	// Helper for touch pinch distance
+	function getDistance(t1: Touch, t2: Touch): number {
+		const dx = t1.clientX - t2.clientX;
+		const dy = t1.clientY - t2.clientY;
+		return Math.sqrt(dx * dx + dy * dy);
+	}
+
+	function handleTouchStart(e: TouchEvent) {
+		if ((e.target as HTMLElement).closest('.preview-controls')) return;
+
+		if (e.touches.length === 1) {
+			isTouchDragging = true;
+			isPinching = false;
+			touchStartX = e.touches[0].clientX;
+			touchStartY = e.touches[0].clientY;
+			touchStartPanX = panX;
+			touchStartPanY = panY;
+		} else if (e.touches.length === 2) {
+			isTouchDragging = false;
+			isPinching = true;
+			startPinchDist = getDistance(e.touches[0], e.touches[1]);
+			startPinchZoom = zoomLevel;
+		}
+	}
+
+	function handleTouchMove(e: TouchEvent) {
+		if (e.cancelable) {
+			e.preventDefault();
+		}
+
+		if (isTouchDragging && e.touches.length === 1) {
+			const dx = e.touches[0].clientX - touchStartX;
+			const dy = e.touches[0].clientY - touchStartY;
+			panX = touchStartPanX + dx;
+			panY = touchStartPanY + dy;
+		} else if (isPinching && e.touches.length === 2) {
+			const dist = getDistance(e.touches[0], e.touches[1]);
+			if (startPinchDist > 0) {
+				const factor = dist / startPinchDist;
+				zoomLevel = Math.max(0.1, Math.min(10, startPinchZoom * factor));
+			}
+		}
+	}
+
+	function handleTouchEnd() {
+		isTouchDragging = false;
+		isPinching = false;
+	}
+
+	function touchInteraction(node: HTMLElement) {
+		node.addEventListener('touchstart', handleTouchStart, { passive: false });
+		node.addEventListener('touchmove', handleTouchMove, { passive: false });
+		node.addEventListener('touchend', handleTouchEnd, { passive: true });
+
+		return {
+			destroy() {
+				node.removeEventListener('touchstart', handleTouchStart);
+				node.removeEventListener('touchmove', handleTouchMove);
+				node.removeEventListener('touchend', handleTouchEnd);
+			}
+		};
 	}
 </script>
 
@@ -292,9 +375,10 @@
 					</div>
 					<div 
 						class="svg-container flex-row"
+						use:touchInteraction
 						onwheel={handleWheel}
 						onmousedown={handleMouseDown}
-						style="overflow: hidden; cursor: {isDragging ? 'grabbing' : (zoomLevel !== 1 || panX !== 0 || panY !== 0 ? 'move' : 'grab')}; position: relative; width: 100%; height: 100%;"
+						style="overflow: hidden; cursor: {isDragging || isTouchDragging ? 'grabbing' : (zoomLevel !== 1 || panX !== 0 || panY !== 0 ? 'move' : 'grab')}; position: relative; width: 100%; height: 100%;"
 					>
 						{#if svgContent}
 							<div 
@@ -372,6 +456,53 @@
 		font-weight: 700;
 		color: #ffffff;
 		letter-spacing: -0.2px;
+	}
+
+	@media (max-width: 600px) {
+		.mermaid-overlay {
+			padding: 8px;
+		}
+
+		.mermaid-modal {
+			width: 100vw;
+			height: 100vh;
+			border-radius: 0;
+			border: none;
+		}
+
+		.mermaid-header {
+			padding: 10px 12px;
+			gap: 8px;
+		}
+
+		.mermaid-header .logo,
+		.mermaid-header .title {
+			display: none;
+		}
+
+		.segmented-control button:nth-child(2) {
+			display: none;
+		}
+
+		.mermaid-workspace {
+			grid-template-columns: 1fr !important;
+		}
+
+		.preview-controls {
+			bottom: 12px;
+			right: 12px;
+			padding: 2px 6px;
+		}
+
+		.btn-save {
+			padding: 6px 12px;
+			font-size: 12px;
+		}
+
+		.code-textarea {
+			padding: 12px;
+			font-size: 12px;
+		}
 	}
 
 
