@@ -759,18 +759,46 @@
           </div>
         {/if}
 
+      </div>
+    </div>
+  </div>
+{/if}
+
+<!-- Preferences & Themes Modal Overlay -->
+{#if appState.showPreferences}
+  <div 
+    class="settings-backdrop flex-row" 
+    transition:fade={{ duration: 150 }}
+    onclick={(e) => { if (e.target === e.currentTarget) appState.showPreferences = false; }} 
+    role="presentation"
+  >
+    <div 
+      class="settings-modal flex-col"
+      transition:fly={{ y: 20, duration: 250, easing: cubicOut }}
+    >
+      <div class="settings-header flex-row">
+        <div class="settings-title flex-row">
+          <Palette size={20} class="sync-icon-accent" />
+          <span>App Preferences</span>
+        </div>
+        <button class="close-btn flex-row" onclick={() => appState.showPreferences = false} aria-label="Close preferences">
+          <X size={18} />
+        </button>
+      </div>
+
+      <div class="settings-content flex-col" style="max-height: 70vh; overflow-y: auto; gap: 20px;">
         <!-- Appearance Settings -->
-        <div class="form-group flex-col" style="margin-top: 20px; border-top: 1px solid var(--border-color); padding-top: 20px;">
+        <div class="form-group flex-col">
           <label class="form-label" style="font-weight: 700; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
             <Palette size={18} class="sync-icon-accent" />
-            <span>Appearance Settings</span>
+            <span>Appearance Themes</span>
           </label>
           
           <div class="theme-grid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px;">
             {#each appState.themes as t}
               <button 
                 class="theme-chip flex-row" 
-                style="background-color: var(--bg-mid-dark); border: 1px solid {appState.theme === t.id ? 'var(--accent)' : 'var(--border-color)'}; padding: 10px; border-radius: var(--radius-standard); justify-content: space-between; text-align: left; width: 100%;"
+                style="background-color: var(--bg-mid-dark); border: 1px solid {appState.theme === t.id ? 'var(--accent)' : 'var(--border-color)'}; padding: 10px; border-radius: var(--radius-standard); justify-content: space-between; text-align: left; width: 100%; transition: border-color 0.2s;"
                 onclick={() => appState.setTheme(t.id)}
               >
                 <span style="font-size: 12px; font-weight: 600; color: {appState.theme === t.id ? 'var(--text-primary)' : 'var(--text-secondary)'};">{t.name}</span>
@@ -784,20 +812,20 @@
         </div>
 
         <!-- Diagram Editor Settings -->
-        <div class="form-group flex-col" style="margin-top: 20px; border-top: 1px solid var(--border-color); padding-top: 20px;">
+        <div class="form-group flex-col" style="margin-top: 10px; border-top: 1px dashed var(--border-color); padding-top: 20px;">
           <label class="form-label" style="font-weight: 700; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="sync-icon-accent">
               <rect x="3" y="3" width="7" height="7" rx="1"/>
               <rect x="14" y="14" width="7" height="7" rx="1"/>
               <path d="M10 6.5h4a3 3 0 0 1 3 3V14"/>
             </svg>
-            <span>Diagram Editor</span>
+            <span>Default Diagram Editor</span>
           </label>
 
           <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px;">
             <button
               class="theme-chip flex-row"
-              style="background-color: var(--bg-mid-dark); border: 1px solid {appState.diagramEditorType === 'native' ? 'var(--accent)' : 'var(--border-color)'}; padding: 12px; border-radius: var(--radius-standard); flex-direction: column; align-items: flex-start; text-align: left; width: 100%; gap: 4px;"
+              style="background-color: var(--bg-mid-dark); border: 1px solid {appState.diagramEditorType === 'native' ? 'var(--accent)' : 'var(--border-color)'}; padding: 12px; border-radius: var(--radius-standard); flex-direction: column; align-items: flex-start; text-align: left; width: 100%; gap: 4px; transition: border-color 0.2s;"
               onclick={() => appState.setDiagramEditorType('native')}
             >
               <span style="font-size: 13px; font-weight: 700; color: {appState.diagramEditorType === 'native' ? 'var(--text-primary)' : 'var(--text-secondary)'};">Native Editor</span>
@@ -806,7 +834,7 @@
 
             <button
               class="theme-chip flex-row"
-              style="background-color: var(--bg-mid-dark); border: 1px solid {appState.diagramEditorType === 'drawio' ? 'var(--accent)' : 'var(--border-color)'}; padding: 12px; border-radius: var(--radius-standard); flex-direction: column; align-items: flex-start; text-align: left; width: 100%; gap: 4px;"
+              style="background-color: var(--bg-mid-dark); border: 1px solid {appState.diagramEditorType === 'drawio' ? 'var(--accent)' : 'var(--border-color)'}; padding: 12px; border-radius: var(--radius-standard); flex-direction: column; align-items: flex-start; text-align: left; width: 100%; gap: 4px; transition: border-color 0.2s;"
               onclick={() => appState.setDiagramEditorType('drawio')}
             >
               <span style="font-size: 13px; font-weight: 700; color: {appState.diagramEditorType === 'drawio' ? 'var(--text-primary)' : 'var(--text-secondary)'};">Draw.io</span>

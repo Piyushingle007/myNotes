@@ -12073,7 +12073,7 @@
 	}
 
 	/* Automatically invert colors in dark themes for dark mode rendering (white bg -> dark, dark lines -> light) */
-	:global(:root:not(.theme-paper):not(.theme-sakura):not(.theme-mint):not(.theme-lavender):not(.theme-cottoncandy):not(.theme-matcha):not(.theme-barbie):not(.theme-sundae) .diagram-block) {
+	:global(:root:not(.theme-paper):not(.theme-sakura):not(.theme-matcha) .diagram-block) {
 		filter: invert(0.9) hue-rotate(180deg);
 	}
 

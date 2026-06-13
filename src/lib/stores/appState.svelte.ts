@@ -150,6 +150,7 @@ class AppState {
   favorites = $state<string[]>(JSON.parse(localStorage.getItem('mynotes_favorites') || '[]'));
   searchQuery = $state<string>('');
   showSettings = $state<boolean>(false);
+  showPreferences = $state<boolean>(false);
   editorDirty = $state<boolean>(false);
   theme = $state<string>(localStorage.getItem('mynotes_theme') || 'steel');
   customDriveFolderId = $state<string | null>(localStorage.getItem('mynotes_custom_drive_folder_id') || null);
@@ -173,43 +174,15 @@ class AppState {
   }
 
   themes = [
-    { id: 'steel', name: 'Steel Minimalist', bg: '#111317', accent: '#00adb5' },
-    { id: 'nordic', name: 'Nordic Frost', bg: '#0f141c', accent: '#58a6ff' },
-    { id: 'dracula', name: 'Dracula Vampire', bg: '#1e1f29', accent: '#ff79c6' },
-    { id: 'sepia', name: 'Sepia Warmth', bg: '#1b1712', accent: '#d97706' },
-    { id: 'emerald', name: 'Emerald Forest', bg: '#0a0f0d', accent: '#10b981' },
-    { id: 'black', name: 'Amoled Black', bg: '#000000', accent: '#ffffff' },
-    { id: 'dark', name: 'Standard Dark', bg: '#121212', accent: '#1ed760' },
-    // Dark & Vibrant Themes
+    { id: 'steel', name: 'Steel Minimalist 🛡️', bg: '#111317', accent: '#00adb5' },
+    { id: 'nordic', name: 'Nordic Frost 🏔️', bg: '#0f141c', accent: '#58a6ff' },
+    { id: 'dracula', name: 'Dracula Vampire 🧛', bg: '#1e1f29', accent: '#ff79c6' },
+    { id: 'synthwave', name: 'Synthwave 1984 🎸', bg: '#170621', accent: '#ff007f' },
     { id: 'cyberpunk', name: 'Cyberpunk Neon ⚡', bg: '#0b0813', accent: '#00ffff' },
-    { id: 'cherry', name: 'Midnight Cherry 🍒', bg: '#0a0404', accent: '#ff2a2a' },
-    { id: 'space', name: 'Aether Space 🌌', bg: '#080b12', accent: '#8b5cf6' },
-    { id: 'abyss', name: 'Ocean Abyss 🌊', bg: '#050c0f', accent: '#14b8a6' },
-    { id: 'sunset', name: 'Sunset Horizon 🌅', bg: '#120c17', accent: '#f43f5e' },
-    { id: 'gold', name: 'Golden Obsidian 👑', bg: '#0d0d0d', accent: '#d4af37' },
-    { id: 'solarized', name: 'Solarized Dark ☀️', bg: '#002b36', accent: '#2aa198' },
-    { id: 'norddeep', name: 'Nord Deep 🏔️', bg: '#1e222a', accent: '#88c0d0' },
-    { id: 'slate', name: 'Monochrome Slate 🏁', bg: '#18181b', accent: '#fafafa' },
-    { id: 'toxic', name: 'Toxic Glow ☣️', bg: '#0e100f', accent: '#39ff14' },
-    // Light Themes
+    { id: 'black', name: 'Amoled Black 🌌', bg: '#000000', accent: '#ffffff' },
     { id: 'paper', name: 'Paper Lite 📝', bg: '#fcfbf9', accent: '#2b2a27' },
     { id: 'sakura', name: 'Sakura Breeze 🌸', bg: '#fff0f3', accent: '#ff758f' },
-    { id: 'mint', name: 'Minty Fresh 🍃', bg: '#f0fdf4', accent: '#16a34a' },
-    { id: 'lavender', name: 'Lavender Dream 🔮', bg: '#faf5ff', accent: '#9333ea' },
-    { id: 'matrix', name: 'Retro Terminal 📟', bg: '#051a05', accent: '#33ff33' },
-    // Multicolor & Gradient Themes
-    { id: 'prism', name: 'Prism Rainbow 🌈', bg: '#101014', accent: '#a78bfa' },
-    { id: 'solarflare', name: 'Solar Flare 🔥', bg: '#140c06', accent: '#f97316' },
-    { id: 'synthwave', name: 'Synthwave 1984 🎸', bg: '#170621', accent: '#ff007f' },
-    { id: 'aurora', name: 'Northern Lights 🌌', bg: '#030f12', accent: '#34d399' },
-    { id: 'bubblegum', name: 'Bubblegum Pop 🍬', bg: '#0f0914', accent: '#f472b6' },
-    { id: 'cottoncandy', name: 'Cotton Candy 🍧', bg: '#fff5f7', accent: '#ec4899' },
-    { id: 'volcano', name: 'Volcanic Ash 🌋', bg: '#111111', accent: '#ff4500' },
-    { id: 'glitch', name: 'Glitch Matrix 👾', bg: '#000000', accent: '#00ff66' },
-    { id: 'matcha', name: 'Matcha Latte 🍵', bg: '#f7f4eb', accent: '#606c38' },
-    { id: 'barbie', name: 'Barbie World 🎀', bg: '#fff0f6', accent: '#ff007f' },
-    { id: 'sundae', name: 'Ice Cream Sundae 🍦', bg: '#fefefa', accent: '#fb7185' },
-    { id: 'vaporwave', name: 'Retro Vaporwave 🕹️', bg: '#1c0a35', accent: '#00ffff' }
+    { id: 'matcha', name: 'Matcha Latte 🍵', bg: '#f7f4eb', accent: '#606c38' }
   ];
 
   // Google Drive Sync Reactive States

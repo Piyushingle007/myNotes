@@ -237,7 +237,7 @@
 
 	const drawioUrl = $derived.by(() => {
 		// Detect light theme to configure draw.io theme dynamically
-		const isLightTheme = ['paper', 'sakura', 'mint', 'lavender', 'cottoncandy', 'matcha', 'barbie', 'sundae'].includes(appState.theme);
+		const isLightTheme = ['paper', 'sakura', 'matcha'].includes(appState.theme);
 		const params = new URLSearchParams({
 			embed: '1',
 			proto: 'json',

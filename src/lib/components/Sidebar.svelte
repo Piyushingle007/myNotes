@@ -109,13 +109,6 @@
       await appState.deleteNotebook(notebook);
     }
   }
-
-  function toggleTheme() {
-    const themeIds = appState.themes.map(t => t.id);
-    const currentIndex = themeIds.indexOf(appState.theme);
-    const nextIndex = (currentIndex + 1) % themeIds.length;
-    appState.setTheme(themeIds[nextIndex]);
-  }
 </script>
 
 <div 
@@ -322,9 +315,9 @@
       <span>Open Local Directory</span>
     </button>
     
-    <button class="footer-btn flex-row" onclick={toggleTheme}>
+    <button class="footer-btn flex-row" onclick={() => appState.showPreferences = true}>
       <Palette size={16} />
-      <span>Theme: {appState.themes.find(t => t.id === appState.theme)?.name || appState.theme}</span>
+      <span>Preferences & Themes</span>
     </button>
 
     <button 
