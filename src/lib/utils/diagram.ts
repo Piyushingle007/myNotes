@@ -33,6 +33,8 @@ export interface DiagramData {
 	background?: string;
 	drawioSvg?: string; // Raw SVG from draw.io for faithful rendering
 	drawioXml?: string; // Raw XML from draw.io for lossless editing
+	mermaidCode?: string; // Raw Mermaid source code
+	mermaidSvg?: string;  // Rendered Mermaid SVG
 }
 
 export const DEFAULT_DIAGRAM: DiagramData = {
@@ -58,14 +60,16 @@ export function decodeDiagram(encoded: string): DiagramData {
 	if (!encoded) return structuredCloneSafe(DEFAULT_DIAGRAM);
 	try {
 		const parsed = JSON.parse(decodeURIComponent(encoded));
-		if (!parsed || !Array.isArray(parsed.shapes)) return structuredCloneSafe(DEFAULT_DIAGRAM);
+		if (!parsed) return structuredCloneSafe(DEFAULT_DIAGRAM);
 		return {
-			shapes: parsed.shapes,
+			shapes: parsed.shapes || [],
 			width: parsed.width || DEFAULT_DIAGRAM.width,
 			height: parsed.height || DEFAULT_DIAGRAM.height,
 			background: parsed.background || 'transparent',
 			drawioSvg: parsed.drawioSvg, // Preserve draw.io SVG if present
-			drawioXml: parsed.drawioXml  // Preserve draw.io XML if present
+			drawioXml: parsed.drawioXml,  // Preserve draw.io XML if present
+			mermaidCode: parsed.mermaidCode, // Preserve mermaid code if present
+			mermaidSvg: parsed.mermaidSvg    // Preserve mermaid SVG if present
 		};
 	} catch {
 		return structuredCloneSafe(DEFAULT_DIAGRAM);
@@ -204,6 +208,21 @@ function shapeBoundingBox(s: DiagramShape): { minX: number; minY: number; maxX: 
 
 // Render the full diagram to a standalone SVG string (used for preview + export).
 export function renderDiagramSVG(data: DiagramData, opts: { maxWidth?: number } = {}): string {
+	// If we have a raw mermaid SVG, clean it up and use it directly
+	if (data.mermaidSvg) {
+		try {
+			const parser = new DOMParser();
+			const doc = parser.parseFromString(data.mermaidSvg, 'image/svg+xml');
+			const svg = doc.querySelector('svg');
+			if (svg) {
+				svg.setAttribute('style', 'max-width:100%; height:auto; background:transparent;');
+				return svg.outerHTML;
+			}
+		} catch (e) {
+			console.warn('Failed to parse mermaid SVG, falling back to native rendering');
+		}
+	}
+
 	// If we have a raw draw.io SVG, clean it up and use it directly
 	if (data.drawioSvg) {
 		try {

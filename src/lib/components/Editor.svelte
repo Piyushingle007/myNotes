@@ -40,6 +40,7 @@
 	import GraphView from './GraphView.svelte';
 	import DiagramEditor from './DiagramEditor.svelte';
 	import DrawIOEditor from './DrawIOEditor.svelte';
+	import MermaidEditor from './MermaidEditor.svelte';
 	import { renderDiagramSVG, decodeDiagram } from '../utils/diagram';
 
 	let resolvedAssetsMap = new Map<string, string>(); // relative path -> blob URL
@@ -1727,7 +1728,7 @@
 			dom.className = 'diagram-block';
 			try {
 				const d = decodeDiagram(data);
-				const hasContent = d.shapes.length > 0 || !!d.drawioSvg || !!d.drawioXml;
+				const hasContent = d.shapes.length > 0 || !!d.drawioSvg || !!d.drawioXml || !!d.mermaidSvg || !!d.mermaidCode;
 				if (hasContent) dom.innerHTML = renderDiagramSVG(d);
 			} catch (e) { /* ignore */ }
 			return dom;
@@ -1744,7 +1745,7 @@
 					let inner = '';
 					try {
 						const d = decodeDiagram(enc);
-						const hasContent = d.shapes.length > 0 || !!d.drawioSvg || !!d.drawioXml;
+						const hasContent = d.shapes.length > 0 || !!d.drawioSvg || !!d.drawioXml || !!d.mermaidSvg || !!d.mermaidCode;
 						inner = hasContent ? renderDiagramSVG(d) : '';
 					} catch (e) { /* ignore */ }
 					dom.innerHTML = inner || '<div class="diagram-empty">✎ Empty diagram — double-click to edit</div>';
@@ -7997,7 +7998,10 @@
 {/if}
 
 {#if diagramModal}
-	{#if appState.diagramEditorType === 'drawio'}
+	{@const d = decodeDiagram(diagramModal.data)}
+	{#if d.mermaidCode || (appState.diagramEditorType === 'mermaid' && !d.drawioXml && d.shapes.length === 0)}
+		<MermaidEditor data={diagramModal.data} onSave={commitDiagram} onCancel={cancelDiagram} />
+	{:else if d.drawioXml || (appState.diagramEditorType === 'drawio' && d.shapes.length === 0)}
 		<DrawIOEditor data={diagramModal.data} onSave={commitDiagram} onCancel={cancelDiagram} />
 	{:else}
 		<DiagramEditor data={diagramModal.data} onSave={commitDiagram} onCancel={cancelDiagram} />

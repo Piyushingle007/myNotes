@@ -822,7 +822,7 @@
             <span>Default Diagram Editor</span>
           </label>
 
-          <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px;">
+          <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;">
             <button
               class="theme-chip flex-row"
               style="background-color: var(--bg-mid-dark); border: 1px solid {appState.diagramEditorType === 'native' ? 'var(--accent)' : 'var(--border-color)'}; padding: 12px; border-radius: var(--radius-standard); flex-direction: column; align-items: flex-start; text-align: left; width: 100%; gap: 4px; transition: border-color 0.2s;"
@@ -838,13 +838,24 @@
               onclick={() => appState.setDiagramEditorType('drawio')}
             >
               <span style="font-size: 13px; font-weight: 700; color: {appState.diagramEditorType === 'drawio' ? 'var(--text-primary)' : 'var(--text-secondary)'};">Draw.io</span>
-              <span style="font-size: 10px; color: var(--text-tertiary);">Full-featured, requires internet</span>
+              <span style="font-size: 10px; color: var(--text-tertiary);">Full-featured, online</span>
+            </button>
+
+            <button
+              class="theme-chip flex-row"
+              style="background-color: var(--bg-mid-dark); border: 1px solid {appState.diagramEditorType === 'mermaid' ? 'var(--accent)' : 'var(--border-color)'}; padding: 12px; border-radius: var(--radius-standard); flex-direction: column; align-items: flex-start; text-align: left; width: 100%; gap: 4px; transition: border-color 0.2s;"
+              onclick={() => appState.setDiagramEditorType('mermaid')}
+            >
+              <span style="font-size: 13px; font-weight: 700; color: {appState.diagramEditorType === 'mermaid' ? 'var(--text-primary)' : 'var(--text-secondary)'};">Mermaid</span>
+              <span style="font-size: 10px; color: var(--text-tertiary);">Text-to-diagram, syntax-based</span>
             </button>
           </div>
 
           <p style="font-size: 11px; color: var(--text-tertiary); margin-top: 10px; line-height: 1.5;">
             {#if appState.diagramEditorType === 'drawio'}
               Uses diagrams.net (draw.io) embedded editor for advanced flowcharts, UML, and more.
+            {:else if appState.diagramEditorType === 'mermaid'}
+              Uses text syntax to write graphs, sequence flows, ER tables, and roadmaps with AI support.
             {:else}
               Lightweight native editor with basic shapes, arrows, and freehand drawing.
             {/if}

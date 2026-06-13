@@ -165,10 +165,10 @@ class AppState {
   notelistCollapsed = $state<boolean>(localStorage.getItem('mynotes_notelist_collapsed') === 'true');
   editorCollapsed = $state<boolean>(localStorage.getItem('mynotes_editor_collapsed') === 'true');
 
-  // Diagram Editor Preference: 'native' (built-in) or 'drawio' (embed diagrams.net)
-  diagramEditorType = $state<'native' | 'drawio'>((localStorage.getItem('mynotes_diagram_editor') as 'native' | 'drawio') || 'drawio');
+  // Diagram Editor Preference: 'native' (built-in), 'drawio' (embed diagrams.net), or 'mermaid'
+  diagramEditorType = $state<'native' | 'drawio' | 'mermaid'>((localStorage.getItem('mynotes_diagram_editor') as 'native' | 'drawio' | 'mermaid') || 'drawio');
 
-  setDiagramEditorType(type: 'native' | 'drawio') {
+  setDiagramEditorType(type: 'native' | 'drawio' | 'mermaid') {
     this.diagramEditorType = type;
     localStorage.setItem('mynotes_diagram_editor', type);
   }
