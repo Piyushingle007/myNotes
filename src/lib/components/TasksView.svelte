@@ -394,14 +394,14 @@
 		display: block;
 		width: 18px;
 		height: 18px;
-		border: 2px solid var(--border-color, rgba(255,255,255,0.2));
+		border: 2px solid #a855f7;
 		border-radius: 50%;
 		position: relative;
 		transition: all 0.2s ease;
 	}
 	.task-check.checked {
-		background: var(--accent, #00adb5);
-		border-color: var(--accent, #00adb5);
+		background: #a855f7;
+		border-color: #a855f7;
 	}
 	.task-check.checked::after {
 		content: '';

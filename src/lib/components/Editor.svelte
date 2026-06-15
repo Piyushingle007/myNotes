@@ -903,27 +903,34 @@
 		
 		try {
 			const pos = activeTaskItem.pos;
-			const coords = editor.view.coordsAtPos(pos);
-			
 			const editorBody = document.querySelector('.editor-body') as HTMLElement | null;
 			if (!editorBody) return;
 			const rect = editorBody.getBoundingClientRect();
+			
+			const activeElement = editor.view.nodeDOM(pos) as HTMLElement | null;
+			if (!activeElement) return;
+			const activeRect = activeElement.getBoundingClientRect();
+			
 			const computedStyle = window.getComputedStyle(editorBody);
 			const paddingTop = parseFloat(computedStyle.paddingTop) || 0;
 			const paddingLeft = parseFloat(computedStyle.paddingLeft) || 0;
 			const borderTop = parseFloat(computedStyle.borderTopWidth) || 0;
 			const borderLeft = parseFloat(computedStyle.borderLeftWidth) || 0;
 
-			// Left align with the task item
-			const left = coords.left;
-			const top = coords.top;
-			
-			const x = left - rect.left - borderLeft - paddingLeft + editorBody.scrollLeft;
-			const y = top - rect.top - borderTop - paddingTop + editorBody.scrollTop - 44; // 44px above task
-			
-			// Clamp coordinates so it doesn't float offscreen
-			const clampedX = Math.max(10, Math.min(x, rect.width - 380));
-			taskBarCoords = { x: clampedX, y };
+			if (isMobile) {
+				const left = activeRect.left;
+				const top = activeRect.top;
+				const x = left - rect.left - borderLeft - paddingLeft + editorBody.scrollLeft;
+				const y = top - rect.top - borderTop - paddingTop + editorBody.scrollTop - 44; // 44px above task
+				const clampedX = Math.max(10, Math.min(x, rect.width - 380));
+				taskBarCoords = { x: clampedX, y };
+			} else {
+				// Inline on the right side of the active task row
+				const y = activeRect.top - rect.top - borderTop - paddingTop + editorBody.scrollTop + (activeRect.height - 38) / 2;
+				const x = activeRect.right - rect.left - borderLeft - paddingLeft + editorBody.scrollLeft - 390;
+				const clampedX = Math.max(10, Math.min(x, rect.width - 390));
+				taskBarCoords = { x: clampedX, y };
+			}
 		} catch (e) {
 			taskBarCoords = null;
 		}
@@ -5107,10 +5114,21 @@
 				StarterKit.configure({ codeBlock: false }),
 				Placeholder.configure({
 					includeChildren: true,
-					placeholder: ({ node }) => {
+					placeholder: ({ node, pos, editor }) => {
 						if (node.type.name === 'detailsSummary') return 'Section title...';
 						if (node.type.name === 'detailsContent') return 'Content...';
 						if (node.type.name === 'codeBlock') return '';
+						try {
+							const resolvedPos = editor.state.doc.resolve(pos);
+							let isInsideTask = false;
+							for (let depth = resolvedPos.depth; depth >= 0; depth--) {
+								if (resolvedPos.node(depth).type.name === 'taskItem') {
+									isInsideTask = true;
+									break;
+								}
+							}
+							if (isInsideTask) return 'Untitled task';
+						} catch (e) {}
 						return 'Start writing...';
 					},
 				}),
@@ -7277,16 +7295,6 @@
 				{#if activeTaskItem && !$readOnly && taskBarCoords}
 					<!-- svelte-ignore a11y_no_static_element_interactions -->
 					<div class="task-action-bar-hud flex-row" style="left: {taskBarCoords.x}px; top: {taskBarCoords.y}px;" onclick={(e) => e.stopPropagation()}>
-						<span class="task-drag-handle">⋮⋮</span>
-						
-						<!-- Task status checkbox -->
-						<button 
-							class="task-bar-check" 
-							class:checked={activeTaskItem.attrs.checked}
-							onclick={() => updateActiveTaskMeta({ checked: !activeTaskItem.attrs.checked })}
-							title={activeTaskItem.attrs.checked ? "Mark uncompleted" : "Mark completed"}
-						></button>
-
 						<!-- Quick Date options -->
 						<button 
 							class="task-bar-capsule" 
@@ -9075,73 +9083,53 @@
 	/* ── Task Action Bar (HUD) ── */
 	.task-action-bar-hud {
 		position: absolute;
-		background: #1a1a1e;
-		border: 1px solid rgba(255, 255, 255, 0.12);
-		border-radius: 8px;
-		padding: 4px 10px;
 		display: flex;
 		flex-direction: row;
 		align-items: center;
 		gap: 6px;
-		box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
 		z-index: 99;
 		height: 38px;
 		transition: top 0.1s ease, left 0.1s ease;
+		box-sizing: border-box;
 	}
 
-	.task-drag-handle {
-		color: rgba(255, 255, 255, 0.2);
-		font-size: 14px;
-		cursor: grab;
-		user-select: none;
-		margin-right: 2px;
-	}
-
-	.task-bar-check {
-		width: 18px;
-		height: 18px;
-		border: 2px solid rgba(255, 255, 255, 0.4);
-		border-radius: 50%;
-		cursor: pointer;
+	/* Desktop layout styling: seamless inline overlay */
+	.editor-container:not(.mobile) .task-action-bar-hud {
 		background: transparent;
-		position: relative;
-		transition: all 0.2s;
+		border: none;
+		box-shadow: none;
+		padding: 0;
 	}
-	.task-bar-check.checked {
-		background: #a855f7; /* Purple checkbox matching Evernote */
-		border-color: #a855f7;
-	}
-	.task-bar-check.checked::after {
-		content: '';
-		position: absolute;
-		top: 2px;
-		left: 5px;
-		width: 4px;
-		height: 7px;
-		border: solid white;
-		border-width: 0 2px 2px 0;
-		transform: rotate(45deg);
+
+	/* Mobile layout styling: floating card overlay */
+	.editor-container.mobile .task-action-bar-hud {
+		background: #1e1e24;
+		border: 1px solid rgba(255, 255, 255, 0.12);
+		border-radius: 8px;
+		padding: 4px 10px;
+		box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
 	}
 
 	.task-bar-capsule {
 		background: transparent;
-		border: 1px dashed rgba(255, 255, 255, 0.2);
+		border: 1px dashed rgba(255, 255, 255, 0.25);
 		color: rgba(255, 255, 255, 0.7);
 		font-size: 11px;
-		padding: 3px 8px;
+		padding: 4px 10px;
 		border-radius: 12px;
 		cursor: pointer;
 		transition: all 0.15s;
 		white-space: nowrap;
 	}
 	.task-bar-capsule:hover {
-		border-color: rgba(255, 255, 255, 0.4);
+		border-color: rgba(255, 255, 255, 0.45);
 		color: white;
+		background: rgba(255, 255, 255, 0.05);
 	}
 	.task-bar-capsule.active {
-		background: rgba(255, 255, 255, 0.08);
-		border-color: var(--accent);
-		color: var(--accent);
+		background: rgba(168, 85, 247, 0.12);
+		border-color: #a855f7;
+		color: #a855f7;
 	}
 
 	.task-icon-btn-wrap {
@@ -11360,53 +11348,95 @@
 		padding-left: 0;
 	}
 
-	:global(.tiptap-wrapper .tiptap ul[data-type="taskList"] li) {
+	:global(.tiptap-wrapper .tiptap ul[data-type="taskList"] li[data-type="taskItem"]) {
 		display: flex;
-		align-items: flex-start;
-		gap: 8px;
-		margin: 4px 0;
+		align-items: center;
+		padding: 6px 10px;
+		border-radius: 8px;
+		border: 1px solid transparent;
+		transition: all 0.2s ease;
+		background: transparent;
+		position: relative;
+		margin: 6px 0;
+	}
+	:global(.tiptap-wrapper .tiptap ul[data-type="taskList"] li[data-type="taskItem"]:hover) {
+		background: rgba(255, 255, 255, 0.02);
+		border-color: rgba(255, 255, 255, 0.04);
+	}
+	:global(.tiptap-wrapper .tiptap ul[data-type="taskList"] li[data-type="taskItem"]:focus-within) {
+		background: rgba(255, 255, 255, 0.05) !important;
+		border-color: rgba(255, 255, 255, 0.12) !important;
+		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+	}
+	@media (min-width: 768px) {
+		:global(.tiptap-wrapper .tiptap ul[data-type="taskList"] li[data-type="taskItem"]:focus-within) {
+			padding-right: 390px; /* Leave space for inline HUD options on the right */
+		}
+	}
+
+	/* Drag handle ::before */
+	:global(.tiptap-wrapper .tiptap ul[data-type="taskList"] li[data-type="taskItem"]::before) {
+		content: "⋮⋮";
+		color: rgba(255, 255, 255, 0.2);
+		font-family: monospace;
+		font-size: 14px;
+		cursor: grab;
+		margin-right: 6px;
+		opacity: 0;
+		transition: opacity 0.2s ease;
+		display: inline-flex;
+		align-items: center;
+		user-select: none;
+		flex-shrink: 0;
+	}
+	:global(.tiptap-wrapper .tiptap ul[data-type="taskList"] li[data-type="taskItem"]:hover::before),
+	:global(.tiptap-wrapper .tiptap ul[data-type="taskList"] li[data-type="taskItem"]:focus-within::before) {
+		opacity: 1;
 	}
 
 	:global(.tiptap-wrapper .tiptap ul[data-type="taskList"] li label) {
 		display: flex;
 		align-items: center;
-		margin-top: 4px;
 		flex-shrink: 0;
 	}
 
 	:global(.tiptap-wrapper .tiptap ul[data-type="taskList"] li label input[type="checkbox"]) {
 		appearance: none;
 		-webkit-appearance: none;
-		width: 16px;
-		height: 16px;
-		border: 2px solid var(--border-color);
-		border-radius: 4px;
+		width: 18px;
+		height: 18px;
+		border: 2px solid #a855f7; /* Signature purple/violet matching Evernote */
+		border-radius: 50%;
 		cursor: pointer;
 		position: relative;
 		flex-shrink: 0;
-		background: var(--bg-primary);
+		background: transparent;
 		transition: background 0.15s, border-color 0.15s;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
 	}
 
 	:global(.tiptap-wrapper .tiptap ul[data-type="taskList"] li[data-checked="true"] label input[type="checkbox"]) {
-		background: var(--accent);
-		border-color: var(--accent);
+		background: #a855f7;
+		border-color: #a855f7;
 	}
 
 	:global(.tiptap-wrapper .tiptap ul[data-type="taskList"] li[data-checked="true"] label input[type="checkbox"]::after) {
 		content: '';
 		position: absolute;
-		left: 3px;
-		top: 0px;
-		width: 6px;
-		height: 10px;
+		left: 5px;
+		top: 2px;
+		width: 4px;
+		height: 8px;
 		border: solid white;
 		border-width: 0 2px 2px 0;
 		transform: rotate(45deg);
 	}
 
 	:global(.tiptap-wrapper .tiptap ul[data-type="taskList"] li label input[type="checkbox"]:hover) {
-		border-color: var(--accent);
+		background: rgba(168, 85, 247, 0.1);
+		border-color: #a855f7;
 	}
 
 	:global(.tiptap-wrapper .tiptap ul[data-type="taskList"] li > div) {
@@ -11414,12 +11444,16 @@
 		min-width: 0;
 	}
 
-	/* Strike through only the direct paragraph content of a checked task item.
-	   Using > p instead of > div prevents text-decoration from bleeding into
-	   nested task lists, since CSS text-decoration cannot be cancelled by descendants. */
+	/* Strike through only the direct paragraph content of a checked task item. */
 	:global(.tiptap-wrapper .tiptap ul[data-type="taskList"] li[data-checked="true"] > div > p) {
 		text-decoration: line-through;
 		color: var(--text-tertiary);
+	}
+
+	/* Hide pseudo-element metadata badges when the row is focused (to clear space for HUD) */
+	:global(.tiptap-wrapper .tiptap ul[data-type="taskList"] li[data-type="taskItem"]:focus-within > div::after),
+	:global(.tiptap-wrapper .tiptap ul[data-type="taskList"] li[data-type="taskItem"]:focus-within > div::before) {
+		display: none !important;
 	}
 
 	:global(.tiptap-wrapper .tiptap hr) {
