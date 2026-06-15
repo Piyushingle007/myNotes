@@ -8,6 +8,7 @@
 
   function selectNotebook(notebook: string | null) {
     appState.activeNotebook = notebook;
+    appState.activeTab = 'home';
   }
 
   async function handleDesktopDailyNote() {
@@ -174,8 +175,8 @@
           class:active={appState.activeNotePath === note.path}
           role="button"
           tabindex="0"
-          onclick={() => appState.selectNote(note.path)}
-          onkeydown={(e) => e.key === 'Enter' && appState.selectNote(note.path)}
+          onclick={() => { appState.selectNote(note.path); appState.activeTab = 'home'; }}
+          onkeydown={(e) => e.key === 'Enter' && (appState.selectNote(note.path), appState.activeTab = 'home')}
           style="padding: 6px 8px; gap: 8px;"
         >
           <div class="playlist-art" style="width: 28px; height: 28px; font-size: 14px;">⭐</div>
@@ -189,6 +190,33 @@
     </div>
   </div>
 
+  <!-- Tasks Section -->
+  <div class="section-container flex-col tasks-sidebar-container" style="flex-shrink: 0; margin-bottom: 12px;">
+    <div 
+      class="nav-item flex-row" 
+      class:active={appState.activeTab === 'tasks'}
+      role="button"
+      tabindex="0"
+      onclick={() => { appState.activeTab = 'tasks'; }}
+      onkeydown={(e) => e.key === 'Enter' && (appState.activeTab = 'tasks')}
+      style="padding: 8px 12px; gap: 10px; border-radius: 8px; margin: 0 4px;"
+    >
+      <div class="playlist-art" style="font-size: 16px; background: rgba(0, 173, 181, 0.1); color: var(--accent); display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 6px;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+          <polyline points="22 4 12 14.01 9 11.01"/>
+        </svg>
+      </div>
+      <div class="nav-text flex-row" style="justify-content: space-between; flex-grow: 1; align-items: center; width: calc(100% - 38px);">
+        <span class="title" style="font-size: 13px; font-weight: 600;">Tasks</span>
+        {#if appState.openTaskCount > 0}
+          <span class="sidebar-badge" style="background: var(--accent); color: white; font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 10px; margin-left: 6px;">
+            {appState.openTaskCount}
+          </span>
+        {/if}
+      </div>
+    </div>
+  </div>
 
   <!-- Main Library Section -->
   <div class="section-container flex-col">
@@ -272,8 +300,8 @@
           class:active={appState.activeNotePath === note.path}
           role="button"
           tabindex="0"
-          onclick={() => appState.selectNote(note.path)}
-          onkeydown={(e) => e.key === 'Enter' && appState.selectNote(note.path)}
+          onclick={() => { appState.selectNote(note.path); appState.activeTab = 'home'; }}
+          onkeydown={(e) => e.key === 'Enter' && (appState.selectNote(note.path), appState.activeTab = 'home')}
           style="padding: 6px 8px; gap: 8px;"
         >
           <div class="playlist-art" style="width: 28px; height: 28px; font-size: 14px;">🗓️</div>

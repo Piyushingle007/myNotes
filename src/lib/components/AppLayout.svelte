@@ -9,9 +9,11 @@
   import { 
     Home, Search, Library, Calendar, ChevronLeft, Plus, 
     FileText, Tag, FolderPlus, Compass, ArrowRight, Settings,
-    X, Cloud, RefreshCw, LogOut, Palette, ChevronRight, Menu, Folder
+    X, Cloud, RefreshCw, LogOut, Palette, ChevronRight, Menu, Folder,
+    ListTodo
   } from 'lucide-svelte';
   import ResizeHandle from './ResizeHandle.svelte';
+  import TasksView from './TasksView.svelte';
 
   // Responsive state
   let isMobile = $state(false);
@@ -436,6 +438,12 @@
             </div>
           </div>
 
+        <!-- 5. TASKS TAB -->
+        {:else if appState.activeTab === 'tasks'}
+          <div class="mobile-tab-view flex-col" style="height: 100%; overflow: hidden;">
+            <TasksView />
+          </div>
+
         {/if}
       </div>
 
@@ -482,7 +490,7 @@
           <span>Library</span>
         </button>
 
-        <button 
+         <button 
           class="nav-tab flex-col" 
           class:active={appState.activeTab === 'daily'} 
           onclick={() => { appState.activeTab = 'daily'; }}
@@ -491,6 +499,14 @@
           <span>Daily</span>
         </button>
 
+        <button 
+          class="nav-tab flex-col" 
+          class:active={appState.activeTab === 'tasks'} 
+          onclick={() => { appState.activeTab = 'tasks'; }}
+        >
+          <ListTodo size={22} />
+          <span>Tasks</span>
+        </button>
 
       </div>
     {/if}
@@ -503,21 +519,27 @@
     <!-- Left Sidebar (Notebook / Tag Selection) -->
     <Sidebar />
 
-    {#if !appState.sidebarCollapsed && !appState.notelistCollapsed}
+    {#if !appState.sidebarCollapsed && !appState.notelistCollapsed && appState.activeTab !== 'tasks'}
       <ResizeHandle onResize={(delta) => appState.resizeSidebar(delta)} />
     {/if}
 
-    <!-- Middle Panel (Note list) -->
-    <NoteList />
+    {#if appState.activeTab === 'tasks'}
+      <div class="tasks-panel flex-col" style="flex-grow: 1; height: 100%; min-width: 0;">
+        <TasksView />
+      </div>
+    {:else}
+      <!-- Middle Panel (Note list) -->
+      <NoteList />
 
-    {#if !appState.notelistCollapsed && !appState.editorCollapsed}
-      <ResizeHandle onResize={(delta) => appState.resizeNotelist(delta)} />
+      {#if !appState.notelistCollapsed && !appState.editorCollapsed}
+        <ResizeHandle onResize={(delta) => appState.resizeNotelist(delta)} />
+      {/if}
+
+      <!-- Right Panel (Editor) -->
+      <div class="editor-panel flex-row" style="display: {appState.editorCollapsed ? 'none' : 'flex'}; min-width: 0;">
+        <Editor />
+      </div>
     {/if}
-
-    <!-- Right Panel (Editor) -->
-    <div class="editor-panel flex-row" style="display: {appState.editorCollapsed ? 'none' : 'flex'}; min-width: 0;">
-      <Editor />
-    </div>
 
     {#if appState.sidebarCollapsed && appState.notelistCollapsed && appState.editorCollapsed}
       <div class="all-collapsed-placeholder flex-col" style="flex-grow: 1; align-items: center; justify-content: center; gap: 16px; color: var(--text-secondary); background-color: var(--bg-base); height: 100%;">

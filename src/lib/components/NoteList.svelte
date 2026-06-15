@@ -1,6 +1,6 @@
 <script lang="ts">
   import { appState } from '../stores/appState.svelte';
-  import { FileText, Plus, Trash2, Search, Clock, CalendarDays, X, Menu } from 'lucide-svelte';
+  import { FileText, Plus, Trash2, Edit2, Search, Clock, CalendarDays, X, Menu } from 'lucide-svelte';
 
   let searchInput = $state('');
   
@@ -35,6 +35,22 @@
     event.stopPropagation();
     if (confirm('Are you sure you want to delete this note?')) {
       await appState.deleteNote(path);
+    }
+  }
+
+  async function handleRenameNote(path: string, currentName: string, event: Event) {
+    event.stopPropagation();
+    const newTitle = prompt('Rename note title & file name:', currentName);
+    if (!newTitle) return;
+    const trimmed = newTitle.trim();
+    if (!trimmed || trimmed === currentName) return;
+    
+    try {
+      await appState.renameNote(path, trimmed);
+      appState.showToast('Note renamed successfully', 'success');
+    } catch (err) {
+      console.error('Failed to rename note:', err);
+      appState.showToast('Failed to rename note', 'error');
     }
   }
 
@@ -174,11 +190,20 @@
           {formatModified(note.modified)}
         </div>
 
-        <div class="col-actions">
+        <div class="col-actions flex-row" style="gap: 6px; align-items: center;">
+            <button 
+              class="row-edit-btn" 
+              onclick={(e) => handleRenameNote(note.path, note.name, e)}
+              aria-label="Rename note"
+              title="Rename note"
+            >
+              <Edit2 size={16} />
+            </button>
             <button 
               class="row-delete-btn" 
               onclick={(e) => handleDeleteNote(note.path, e)}
               aria-label="Delete note"
+              title="Delete note"
             >
               <Trash2 size={16} />
             </button>
@@ -436,7 +461,7 @@
     white-space: nowrap;
   }
 
-  .row-delete-btn {
+  .row-delete-btn, .row-edit-btn {
     opacity: 0;
     color: var(--text-secondary);
     transition: opacity 0.2s, color 0.2s, transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.2s;
@@ -445,9 +470,13 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    background: none;
+    border: none;
+    cursor: pointer;
   }
 
-  .note-row:hover .row-delete-btn {
+  .note-row:hover .row-delete-btn,
+  .note-row:hover .row-edit-btn {
     opacity: 1;
   }
 
@@ -455,6 +484,12 @@
     color: var(--semantic-error);
     background-color: rgba(255, 255, 255, 0.05);
     transform: scale(1.15) rotate(5deg);
+  }
+
+  .row-edit-btn:hover {
+    color: var(--accent);
+    background-color: rgba(255, 255, 255, 0.05);
+    transform: scale(1.15) rotate(-5deg);
   }
 
   .empty-state {

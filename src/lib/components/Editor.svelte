@@ -1,11 +1,19 @@
 <script lang="ts">
 	import { onDestroy, tick, untrack } from 'svelte';
+	import * as XLSX from 'xlsx-js-style';
 	import { get } from 'svelte/store';
 	import { Editor } from '@tiptap/core';
 	import StarterKit from '@tiptap/starter-kit';
 	import Placeholder from '@tiptap/extension-placeholder';
 	import TaskList from '@tiptap/extension-task-list';
-	import TaskItem from '@tiptap/extension-task-item';
+	import TaskItemExtended from '../extensions/TaskItemExtended';
+	import { 
+		todayStr, 
+		tomorrowStr, 
+		formatDueDate, 
+		formatReminder, 
+		priorityColor 
+	} from '../utils/taskTypes';
 	import { Table } from '@tiptap/extension-table';
 	import { TableRow } from '@tiptap/extension-table-row';
 	import { TableCell } from '@tiptap/extension-table-cell';
@@ -884,6 +892,95 @@
 	let editorState = $state(0);
 	let editorStateRaf = 0; // RAF handle for batching toolbar updates
 
+	let showTaskDetailModal = $state(false);
+	let taskBarCoords = $state<{ x: number; y: number } | null>(null);
+
+	function updateTaskBarMenu() {
+		if (!editor || !activeTaskItem || $readOnly || $sourceMode) {
+			taskBarCoords = null;
+			return;
+		}
+		
+		try {
+			const pos = activeTaskItem.pos;
+			const coords = editor.view.coordsAtPos(pos);
+			
+			const editorBody = document.querySelector('.editor-body') as HTMLElement | null;
+			if (!editorBody) return;
+			const rect = editorBody.getBoundingClientRect();
+			const computedStyle = window.getComputedStyle(editorBody);
+			const paddingTop = parseFloat(computedStyle.paddingTop) || 0;
+			const paddingLeft = parseFloat(computedStyle.paddingLeft) || 0;
+			const borderTop = parseFloat(computedStyle.borderTopWidth) || 0;
+			const borderLeft = parseFloat(computedStyle.borderLeftWidth) || 0;
+
+			// Left align with the task item
+			const left = coords.left;
+			const top = coords.top;
+			
+			const x = left - rect.left - borderLeft - paddingLeft + editorBody.scrollLeft;
+			const y = top - rect.top - borderTop - paddingTop + editorBody.scrollTop - 44; // 44px above task
+			
+			// Clamp coordinates so it doesn't float offscreen
+			const clampedX = Math.max(10, Math.min(x, rect.width - 380));
+			taskBarCoords = { x: clampedX, y };
+		} catch (e) {
+			taskBarCoords = null;
+		}
+	}
+
+	$effect(() => {
+		const _ = activeTaskItem;
+		tick().then(() => {
+			updateTaskBarMenu();
+		});
+	});
+
+	let activeTaskItem = $derived.by(() => {
+		const _ = editorState; // depend on editorState
+		if (!editor) return null;
+		const { selection } = editor.state;
+		const fromNode = selection.$from;
+		for (let depth = fromNode.depth; depth >= 0; depth--) {
+			const node = fromNode.node(depth);
+			if (node.type.name === 'taskItem') {
+				return {
+					pos: fromNode.before(depth),
+					attrs: node.attrs as {
+						checked: boolean;
+						dueDate: string | null;
+						priority: 'low' | 'medium' | 'high' | null;
+						flagged: boolean;
+						reminder: string | null;
+					},
+					text: node.textContent
+				};
+			}
+		}
+		return null;
+	});
+
+	function updateActiveTaskMeta(attrs: {
+		checked?: boolean;
+		dueDate?: string | null;
+		priority?: 'low' | 'medium' | 'high' | null;
+		flagged?: boolean;
+		reminder?: string | null;
+	}) {
+		if (!editor || !activeTaskItem) return;
+		(editor.commands as any).setTaskMeta(attrs);
+		// Force refresh task list in appState
+		editorState++;
+		autoSave();
+	}
+
+	function deleteActiveTask() {
+		if (!editor || !activeTaskItem) return;
+		editor.chain().focus().deleteNode('taskItem').run();
+		editorState++;
+		autoSave();
+	}
+
 	// AI
 	let aiMenu = $state<{ x: number; y: number } | null>(null);
 	let aiLoading = $state(false);
@@ -1617,6 +1714,478 @@
 		},
 	});
 
+	function decodeDataURL(dataUrl: string): string {
+		try {
+			const parts = dataUrl.split(',');
+			if (parts.length < 2) return '';
+			const base64 = parts[1];
+			const binString = atob(base64);
+			const bytes = new Uint8Array(binString.length);
+			for (let i = 0; i < binString.length; i++) {
+				bytes[i] = binString.charCodeAt(i);
+			}
+			return new TextDecoder('utf-8').decode(bytes);
+		} catch (e) {
+			console.error('Failed to decode data URL:', e);
+			return '';
+		}
+	}
+
+	const FileAttachment = TiptapNode.create({
+		name: 'fileAttachment',
+		group: 'block',
+		atom: true,
+		draggable: true,
+		addAttributes() {
+			return {
+				src: { default: null },
+				filename: { default: 'file' },
+				filesize: { default: 0 },
+				filetype: { default: '' }
+			};
+		},
+		parseHTML() {
+			return [{
+				tag: 'div[data-file-attachment]',
+				getAttrs: (el: HTMLElement) => ({
+					src: el.getAttribute('data-file-src'),
+					filename: el.getAttribute('data-file-name') || 'file',
+					filesize: Number(el.getAttribute('data-file-size') || '0'),
+					filetype: el.getAttribute('data-file-type') || ''
+				}),
+			}];
+		},
+		renderHTML({ HTMLAttributes }) {
+			const src = HTMLAttributes.src || '';
+			const filename = HTMLAttributes.filename || 'file';
+			const filesize = HTMLAttributes.filesize || 0;
+			const filetype = HTMLAttributes.filetype || '';
+			return ['div', {
+				'data-file-attachment': '',
+				'data-file-src': src,
+				'data-file-name': filename,
+				'data-file-size': filesize.toString(),
+				'data-file-type': filetype,
+				class: 'file-attachment-block'
+			}];
+		},
+		addNodeView() {
+			return ({ node, getPos }) => {
+				const dom = document.createElement('div');
+				dom.className = 'file-attachment-block';
+
+				const src = node.attrs.src || '';
+				const filename = node.attrs.filename || 'file';
+				const filesize = node.attrs.filesize || 0;
+				const filetype = node.attrs.filetype || '';
+
+				const sizeKB = Math.round(filesize / 1024);
+				const ext = filename.split('.').pop()?.toLowerCase() || '';
+
+				let isText = filetype.startsWith('text/') || ['txt', 'md', 'js', 'ts', 'css', 'html', 'json', 'csv', 'xml', 'yaml', 'yml', 'sql', 'sh', 'py', 'go', 'rs', 'java', 'c', 'cpp'].includes(ext);
+				let isAudio = filetype.startsWith('audio/') || ['mp3', 'wav', 'ogg', 'm4a', 'flac'].includes(ext);
+				let isVideo = filetype.startsWith('video/') || ['mp4', 'webm', 'ogv', 'mov', 'mkv'].includes(ext);
+				let isPdf = filetype === 'application/pdf' || ext === 'pdf';
+
+				let isSpreadsheet = ['xlsx', 'xls', 'csv', 'tsv', 'ods'].includes(ext) || filetype.includes('spreadsheet') || filetype === 'text/csv' || filetype === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+				if (isPdf) {
+					dom.className = 'file-attachment-block pdf-preview-container';
+					const header = document.createElement('div');
+					header.className = 'file-header';
+					const title = document.createElement('div');
+					title.className = 'file-title';
+					title.innerHTML = `<span class="file-icon">📕</span> <span class="file-name">${filename}</span> <span class="file-size">(${sizeKB} KB)</span>`;
+					const actions = document.createElement('div');
+					actions.className = 'file-actions';
+					const downloadBtn = document.createElement('button');
+					downloadBtn.className = 'file-action-btn';
+					downloadBtn.innerHTML = '📥 Download';
+					downloadBtn.onclick = (e) => {
+						e.preventDefault();
+						e.stopPropagation();
+						downloadFile(src);
+					};
+					actions.appendChild(downloadBtn);
+					header.appendChild(title);
+					header.appendChild(actions);
+					dom.appendChild(header);
+
+					const iframeContainer = document.createElement('div');
+					iframeContainer.className = 'pdf-iframe-wrapper';
+					const iframe = document.createElement('iframe');
+					iframe.src = src;
+					iframe.className = 'pdf-preview-iframe';
+					iframe.setAttribute('frameborder', '0');
+					iframeContainer.appendChild(iframe);
+					dom.appendChild(iframeContainer);
+
+				} else if (isSpreadsheet) {
+					dom.className = 'file-attachment-block spreadsheet-preview-container';
+					const header = document.createElement('div');
+					header.className = 'file-header';
+					header.style.background = '#202020';
+					header.style.borderBottom = '1px solid rgba(255,255,255,0.1)';
+					
+					const title = document.createElement('div');
+					title.className = 'file-title';
+					title.style.color = '#ffffff';
+					
+					const excelIcon = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" style="margin-right: 2px; display: block;">
+						<rect x="2" y="2" width="20" height="20" rx="4" fill="#107c41"/>
+						<path d="M7 6h3.5l2 4 2-4H18l-3.5 6 3.5 6h-3.5l-2-4-2 4H7l3.5-6z" fill="#ffffff"/>
+					</svg>`;
+					
+					title.innerHTML = `${excelIcon} <span class="file-name" style="color: #ffffff; max-width: 450px;">${filename}</span>`;
+					
+					const actions = document.createElement('div');
+					actions.className = 'file-actions';
+					actions.style.gap = '12px';
+					
+					const infoIcon = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3498db" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="cursor: pointer; display: block;" title="Download File"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>`;
+					
+					const infoBtn = document.createElement('div');
+					infoBtn.innerHTML = infoIcon;
+					infoBtn.onclick = (e) => {
+						e.preventDefault();
+						e.stopPropagation();
+						downloadFile(src);
+					};
+					
+					const sizeLabel = document.createElement('span');
+					sizeLabel.className = 'file-size';
+					sizeLabel.style.color = '#888888';
+					sizeLabel.textContent = `${sizeKB} kB`;
+					
+					actions.appendChild(infoBtn);
+					actions.appendChild(sizeLabel);
+					header.appendChild(title);
+					header.appendChild(actions);
+					dom.appendChild(header);
+
+					const contentContainer = document.createElement('div');
+					contentContainer.className = 'spreadsheet-preview-content';
+					contentContainer.innerHTML = '<div class="spreadsheet-loading">Loading spreadsheet preview...</div>';
+					dom.appendChild(contentContainer);
+
+					fetch(src)
+						.then(res => res.arrayBuffer())
+						.then(buffer => {
+							const workbook = XLSX.read(new Uint8Array(buffer), { type: 'array', cellStyles: true });
+							contentContainer.innerHTML = '';
+							
+							if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
+								contentContainer.innerHTML = '<div class="spreadsheet-error">No sheets found in workbook.</div>';
+								return;
+							}
+
+							const tableWrapper = document.createElement('div');
+							tableWrapper.className = 'spreadsheet-table-wrapper';
+							
+							const tabsContainer = document.createElement('div');
+							tabsContainer.className = 'spreadsheet-tabs';
+							
+							contentContainer.appendChild(tableWrapper);
+							contentContainer.appendChild(tabsContainer);
+
+							function renderSheet(sheetName: string) {
+								const sheet = workbook.Sheets[sheetName];
+								const ref = sheet['!ref'];
+								if (!ref) {
+									tableWrapper.innerHTML = '<div class="spreadsheet-empty">Empty Sheet</div>';
+									return;
+								}
+								
+								const range = XLSX.utils.decode_range(ref);
+								const merges = sheet['!merges'] || [];
+								const mergeMap = new Set<string>();
+								const mergeAttrs: Record<string, {rowspan?: number, colspan?: number}> = {};
+								
+								merges.forEach(merge => {
+									const startCell = XLSX.utils.encode_cell(merge.s);
+									const rowspan = merge.e.r - merge.s.r + 1;
+									const colspan = merge.e.c - merge.s.c + 1;
+									mergeAttrs[startCell] = {
+										rowspan: rowspan > 1 ? rowspan : undefined,
+										colspan: colspan > 1 ? colspan : undefined
+									};
+									
+									for (let r = merge.s.r; r <= merge.e.r; r++) {
+										for (let c = merge.s.c; c <= merge.e.c; c++) {
+											if (r === merge.s.r && c === merge.s.c) continue;
+											mergeMap.add(`${r},${c}`);
+										}
+									}
+								});
+
+								let maxRow = range.s.r;
+								let maxCol = range.s.c;
+								for (let r = range.s.r; r <= range.e.r; r++) {
+									for (let c = range.s.c; c <= range.e.c; c++) {
+										const cellRef = XLSX.utils.encode_cell({ r, c });
+										if (sheet[cellRef]) {
+											maxRow = Math.max(maxRow, r);
+											maxCol = Math.max(maxCol, c);
+										}
+									}
+								}
+
+								const cols = sheet['!cols'] || [];
+								let html = '<table class="spreadsheet-table"><colgroup>';
+								for (let c = range.s.c; c <= maxCol; c++) {
+									const colWidth = cols[c]?.wpx || cols[c]?.width || 120;
+									const widthVal = typeof colWidth === 'number' ? Math.max(colWidth * 8, 80) : 120;
+									html += `<col style="width: ${widthVal}px; min-width: ${widthVal}px;" />`;
+								}
+								html += '</colgroup>';
+
+								for (let r = range.s.r; r <= maxRow; r++) {
+									html += '<tr>';
+									for (let c = range.s.c; c <= maxCol; c++) {
+										if (mergeMap.has(`${r},${c}`)) continue;
+										
+										const cellRef = XLSX.utils.encode_cell({ r, c });
+										const cell = sheet[cellRef];
+										
+										let content = '';
+										let cellStyle = '';
+										let attrs = '';
+										
+										if (cell) {
+											content = cell.w || cell.v || '';
+											content = String(content)
+												.replace(/&/g, '&amp;')
+												.replace(/</g, '&lt;')
+												.replace(/>/g, '&gt;')
+												.replace(/"/g, '&quot;');
+												
+											if (cell.s) {
+												const s = cell.s;
+												if (s.fill && s.fill.fgColor && s.fill.fgColor.rgb) {
+													const rgb = s.fill.fgColor.rgb;
+													const colorHex = rgb.length === 8 ? rgb.substring(2) : rgb;
+													cellStyle += `background-color: #${colorHex} !important;`;
+												}
+												if (s.font) {
+													if (s.font.bold) cellStyle += 'font-weight: bold;';
+													if (s.font.italic) cellStyle += 'font-style: italic;';
+													if (s.font.color && s.font.color.rgb) {
+														const rgb = s.font.color.rgb;
+														const colorHex = rgb.length === 8 ? rgb.substring(2) : rgb;
+														cellStyle += `color: #${colorHex} !important;`;
+													}
+												}
+												if (s.alignment) {
+													if (s.alignment.horizontal) {
+														cellStyle += `text-align: ${s.alignment.horizontal};`;
+													}
+													if (s.alignment.vertical) {
+														cellStyle += `vertical-align: ${s.alignment.vertical};`;
+													}
+												}
+											}
+										}
+										
+										const mAttr = mergeAttrs[cellRef];
+										if (mAttr) {
+											if (mAttr.rowspan) attrs += ` rowspan="${mAttr.rowspan}"`;
+											if (mAttr.colspan) attrs += ` colspan="${mAttr.colspan}"`;
+										}
+										
+										if (cellStyle) {
+											attrs += ` style="${cellStyle}"`;
+										}
+										
+										html += `<td${attrs}>${content}</td>`;
+									}
+									html += '</tr>';
+								}
+								html += '</table>';
+								tableWrapper.innerHTML = html;
+							}
+
+							if (workbook.SheetNames.length > 1) {
+								workbook.SheetNames.forEach((sheetName, index) => {
+									const tab = document.createElement('button');
+									tab.className = 'spreadsheet-tab-btn' + (index === 0 ? ' active' : '');
+									tab.textContent = sheetName;
+									tab.onclick = (e) => {
+										e.preventDefault();
+										e.stopPropagation();
+										tabsContainer.querySelectorAll('.spreadsheet-tab-btn').forEach(btn => btn.classList.remove('active'));
+										tab.classList.add('active');
+										renderSheet(sheetName);
+									};
+									tabsContainer.appendChild(tab);
+								});
+							} else {
+								tabsContainer.style.display = 'none';
+							}
+
+							renderSheet(workbook.SheetNames[0]);
+						})
+						.catch(err => {
+							console.error('Error loading Excel preview:', err);
+							contentContainer.innerHTML = '<div class="spreadsheet-error">Could not display excel preview. Click Download to open.</div>';
+						});
+
+				} else if (isText) {
+					dom.className = 'file-attachment-block text-preview-container';
+					const header = document.createElement('div');
+					header.className = 'file-header';
+					const title = document.createElement('div');
+					title.className = 'file-title';
+					title.innerHTML = `<span class="file-icon">📝</span> <span class="file-name">${filename}</span> <span class="file-size">(${sizeKB} KB)</span>`;
+					const actions = document.createElement('div');
+					actions.className = 'file-actions';
+					const copyBtn = document.createElement('button');
+					copyBtn.className = 'file-action-btn';
+					copyBtn.innerHTML = '📋 Copy Text';
+					copyBtn.onclick = (e) => {
+						e.preventDefault();
+						e.stopPropagation();
+						let text = '';
+						if (src.startsWith('data:')) {
+							text = decodeDataURL(src);
+						} else {
+							text = src;
+						}
+						navigator.clipboard.writeText(text);
+						appState.showToast('Text copied to clipboard!', 'success');
+					};
+					const downloadBtn = document.createElement('button');
+					downloadBtn.className = 'file-action-btn';
+					downloadBtn.innerHTML = '📥 Download';
+					downloadBtn.onclick = (e) => {
+						e.preventDefault();
+						e.stopPropagation();
+						downloadFile(src);
+					};
+					actions.appendChild(copyBtn);
+					actions.appendChild(downloadBtn);
+					header.appendChild(title);
+					header.appendChild(actions);
+					dom.appendChild(header);
+
+					const textContentContainer = document.createElement('pre');
+					textContentContainer.className = 'text-preview-content';
+					let decodedText = 'Loading contents...';
+					if (src.startsWith('data:')) {
+						decodedText = decodeDataURL(src);
+					} else {
+						decodedText = src;
+					}
+					textContentContainer.textContent = decodedText;
+					dom.appendChild(textContentContainer);
+
+				} else if (isAudio) {
+					dom.className = 'file-attachment-block audio-preview-container';
+					const header = document.createElement('div');
+					header.className = 'file-header';
+					const title = document.createElement('div');
+					title.className = 'file-title';
+					title.innerHTML = `<span class="file-icon">🎵</span> <span class="file-name">${filename}</span> <span class="file-size">(${sizeKB} KB)</span>`;
+					const actions = document.createElement('div');
+					actions.className = 'file-actions';
+					const downloadBtn = document.createElement('button');
+					downloadBtn.className = 'file-action-btn';
+					downloadBtn.innerHTML = '📥 Download';
+					downloadBtn.onclick = (e) => {
+						e.preventDefault();
+						e.stopPropagation();
+						downloadFile(src);
+					};
+					actions.appendChild(downloadBtn);
+					header.appendChild(title);
+					header.appendChild(actions);
+					dom.appendChild(header);
+
+					const audioContainer = document.createElement('div');
+					audioContainer.className = 'audio-player-wrapper';
+					const audio = document.createElement('audio');
+					audio.src = src;
+					audio.controls = true;
+					audio.className = 'audio-preview-element';
+					audioContainer.appendChild(audio);
+					dom.appendChild(audioContainer);
+
+				} else if (isVideo) {
+					dom.className = 'file-attachment-block video-preview-container';
+					const header = document.createElement('div');
+					header.className = 'file-header';
+					const title = document.createElement('div');
+					title.className = 'file-title';
+					title.innerHTML = `<span class="file-icon">🎥</span> <span class="file-name">${filename}</span> <span class="file-size">(${sizeKB} KB)</span>`;
+					const actions = document.createElement('div');
+					actions.className = 'file-actions';
+					const downloadBtn = document.createElement('button');
+					downloadBtn.className = 'file-action-btn';
+					downloadBtn.innerHTML = '📥 Download';
+					downloadBtn.onclick = (e) => {
+						e.preventDefault();
+						e.stopPropagation();
+						downloadFile(src);
+					};
+					actions.appendChild(downloadBtn);
+					header.appendChild(title);
+					header.appendChild(actions);
+					dom.appendChild(header);
+
+					const videoContainer = document.createElement('div');
+					videoContainer.className = 'video-player-wrapper';
+					const video = document.createElement('video');
+					video.src = src;
+					video.controls = true;
+					video.className = 'video-preview-element';
+					videoContainer.appendChild(video);
+					dom.appendChild(videoContainer);
+
+				} else {
+					dom.className = 'file-attachment-block card-preview-container';
+					const card = document.createElement('div');
+					let icon = '📎';
+					let colorClass = 'other';
+					if (['zip', 'rar', 'tar', 'gz', '7z'].includes(ext)) {
+						icon = '📦';
+						colorClass = 'archive';
+					} else if (['doc', 'docx', 'rtf', 'odt'].includes(ext)) {
+						icon = '📘';
+						colorClass = 'document';
+					} else if (['xls', 'xlsx', 'ods', 'csv'].includes(ext)) {
+						icon = '📊';
+						colorClass = 'spreadsheet';
+					} else if (['ppt', 'pptx', 'odp'].includes(ext)) {
+						icon = '📙';
+						colorClass = 'presentation';
+					}
+
+					card.className = `file-card ${colorClass}`;
+					card.innerHTML = `
+						<div class="file-card-left">
+							<span class="file-card-icon">${icon}</span>
+						</div>
+						<div class="file-card-middle">
+							<div class="file-card-name">${filename}</div>
+							<div class="file-card-meta">${sizeKB} KB • ${ext.toUpperCase()} File</div>
+						</div>
+						<div class="file-card-right">
+							<button class="file-card-download-btn" title="Download File">📥</button>
+						</div>
+					`;
+
+					card.onclick = (e) => {
+						e.preventDefault();
+						e.stopPropagation();
+						downloadFile(src);
+					};
+					dom.appendChild(card);
+				}
+
+				return { dom };
+			};
+		}
+	});
+
 	const MathBlock = TiptapNode.create({
 		name: 'mathBlock',
 		group: 'block',
@@ -2344,7 +2913,7 @@
 		},
 	});
 
-	let codeLangDropdown = $state<{ pos: number; x: number; y: number; current: string } | null>(null);
+	let codeLangDropdown = $state<{ pos: number; x: number; y: number; current: string; openUp?: boolean } | null>(null);
 	let codeLangSearchQuery = $state('');
 	let filteredCodeLanguages = $derived.by(() => {
 		const q = codeLangSearchQuery.trim().toLowerCase();
@@ -2354,18 +2923,33 @@
 
 	function openCodeLangDropdown(pos: number, current: string, triggerEl: HTMLElement) {
 		const rect = triggerEl.getBoundingClientRect();
-		codeLangDropdown = { pos, x: rect.right, y: rect.bottom + 4, current };
+		const spaceBelow = window.innerHeight - rect.bottom;
+		const openUp = spaceBelow < 280 && rect.top > 280;
+		codeLangDropdown = { 
+			pos, 
+			x: rect.right, 
+			y: openUp ? rect.top - 4 : rect.bottom + 4, 
+			current,
+			openUp
+		};
 		codeLangSearchQuery = '';
 	}
 
 	function selectCodeLang(lang: string) {
 		if (!editor || !codeLangDropdown) return;
 		const { pos } = codeLangDropdown;
-		// Find the codeBlock node at this position
-		const resolved = editor.state.doc.resolve(pos);
-		const node = resolved.parent;
-		if (node.type.name === 'codeBlock') {
-			editor.chain().focus().updateAttributes('codeBlock', { language: lang || null }).run();
+		const startPos = pos - 1; // Start of the codeBlock node
+
+		const node = editor.state.doc.nodeAt(startPos);
+		if (node && node.type.name === 'codeBlock') {
+			const tr = editor.state.tr.setNodeMarkup(startPos, undefined, {
+				...node.attrs,
+				language: lang || null
+			});
+			editor.view.dispatch(tr);
+			
+			// Force refocusing editor cursor inside the code block safely
+			editor.commands.focus();
 		}
 		codeLangDropdown = null;
 	}
@@ -2537,67 +3121,125 @@
 		},
 	});
 
-	const CodeBlockLanguageSelect = Extension.create({
-		name: 'codeBlockLanguageSelect',
-		addGlobalAttributes() {
-			return [{
-				types: ['codeBlock'],
-				attributes: {
-					language: {
-						renderHTML: (attributes) => {
-							return { 'data-language': attributes.language || '' };
-						},
-					},
-				},
-			}];
-		},
-		addProseMirrorPlugins() {
-			return [
-				new Plugin({
-					key: new PluginKey('codeBlockLanguageSelect'),
-					props: {
-						handleDOMEvents: {
-							click: (view, event) => {
-								const target = event.target as HTMLElement;
-								const pre = target.closest('pre');
-								if (!pre) return false;
-								// Check if click is in the top-right corner (language button area)
-								const rect = pre.getBoundingClientRect();
-								if (event.clientX < rect.right - 100 || event.clientY > rect.top + 36) return false;
-								// Find the code block position
-								const pos = view.posAtDOM(pre, 0);
-								const resolved = view.state.doc.resolve(pos);
-								let cbNode = resolved.parent;
-								let cbPos = resolved.before(resolved.depth);
-								if (cbNode.type.name !== 'codeBlock') {
-									for (let d = resolved.depth; d >= 0; d--) {
-										if (resolved.node(d).type.name === 'codeBlock') {
-											cbNode = resolved.node(d);
-											cbPos = resolved.before(d);
-											break;
-										}
-									}
-								}
-								if (cbNode.type.name !== 'codeBlock') return false;
-								event.preventDefault();
-								event.stopPropagation();
-								// Virtual trigger for dropdown positioning
-								const triggerEl = document.createElement('div');
-								triggerEl.getBoundingClientRect = () => ({
-									top: rect.top + 6, bottom: rect.top + 26,
-									left: rect.right - 60, right: rect.right - 6,
-									width: 54, height: 20,
-									x: rect.right - 60, y: rect.top + 6,
-									toJSON() { return this; },
-								});
-								openCodeLangDropdown(cbPos + 1, cbNode.attrs.language || '', triggerEl as any);
-								return true;
-							},
-						},
-					},
-				}),
-			];
-		},
+	const CustomCodeBlockLowlight = CodeBlockLowlight.extend({
+		addNodeView() {
+			return ({ node, getPos }) => {
+				const dom = document.createElement('div');
+				dom.className = 'code-block-container';
+
+				const header = document.createElement('div');
+				header.className = 'code-block-header';
+
+				const langBtn = document.createElement('button');
+				langBtn.type = 'button';
+				langBtn.className = 'code-block-lang-btn';
+				
+				const lang = node.attrs.language || '';
+				const langLabel = lang ? lang.charAt(0).toUpperCase() + lang.slice(1) : 'Auto';
+				langBtn.innerHTML = `<span>${langLabel}</span> <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="margin-left: 4px; display: inline-block; vertical-align: middle;"><polyline points="6 9 12 15 18 9"/></svg>`;
+
+				langBtn.onclick = (e) => {
+					e.preventDefault();
+					e.stopPropagation();
+					const pos = getPos();
+					if (typeof pos === 'number') {
+						openCodeLangDropdown(pos + 1, node.attrs.language || '', langBtn);
+					}
+				};
+
+				const clearBtn = document.createElement('button');
+				clearBtn.type = 'button';
+				clearBtn.className = 'code-block-clear-btn';
+				clearBtn.title = 'Clear Code';
+				
+				const clearIcon = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>`;
+				clearBtn.innerHTML = clearIcon;
+
+				clearBtn.onclick = (e) => {
+					e.preventDefault();
+					e.stopPropagation();
+					if (!editor) return;
+					if (confirm('Clear all code in this block?')) {
+						const pos = getPos();
+						if (typeof pos === 'number') {
+							const node = editor.state.doc.nodeAt(pos);
+							if (node) {
+								const tr = editor.state.tr.delete(pos + 1, pos + node.nodeSize - 1);
+								editor.view.dispatch(tr);
+								editor.commands.focus();
+								appState.showToast('Code cleared', 'info');
+							}
+						}
+					}
+				};
+
+				const copyBtn = document.createElement('button');
+				copyBtn.type = 'button';
+				copyBtn.className = 'code-block-copy-btn';
+				copyBtn.title = 'Copy Code';
+
+				const copyIcon = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`;
+				const checkIcon = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#27c93f" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+
+				copyBtn.innerHTML = copyIcon;
+
+				copyBtn.onclick = (e) => {
+					e.preventDefault();
+					e.stopPropagation();
+					const codeText = node.textContent;
+					navigator.clipboard.writeText(codeText);
+					copyBtn.innerHTML = checkIcon;
+					copyBtn.classList.add('copied');
+					setTimeout(() => {
+						copyBtn.innerHTML = copyIcon;
+						copyBtn.classList.remove('copied');
+					}, 1500);
+					appState.showToast('Code copied to clipboard!', 'success');
+				};
+
+				const actionsWrapper = document.createElement('div');
+				actionsWrapper.className = 'code-block-actions';
+				actionsWrapper.style.display = 'flex';
+				actionsWrapper.style.alignItems = 'center';
+				actionsWrapper.style.gap = '8px';
+
+				actionsWrapper.appendChild(clearBtn);
+				actionsWrapper.appendChild(copyBtn);
+
+				header.appendChild(langBtn);
+				header.appendChild(actionsWrapper);
+
+				const pre = document.createElement('pre');
+				const code = document.createElement('code');
+				
+				if (node.attrs.language) {
+					code.classList.add(`language-${node.attrs.language}`);
+				}
+				
+				pre.appendChild(code);
+				dom.appendChild(header);
+				dom.appendChild(pre);
+
+				return {
+					dom,
+					contentDOM: code,
+					update(updatedNode) {
+						if (updatedNode.type.name !== 'codeBlock') return false;
+						
+						const newLang = updatedNode.attrs.language || '';
+						const newLangLabel = newLang ? newLang.charAt(0).toUpperCase() + newLang.slice(1) : 'Auto';
+						langBtn.querySelector('span')!.textContent = newLangLabel;
+						
+						code.className = '';
+						if (newLang) {
+							code.classList.add(`language-${newLang}`);
+						}
+						
+						return true;
+					}
+				};
+			};
+		}
 	});
 
 	function executeSlashCommand(index: number) {
@@ -3500,6 +4142,7 @@
 
 	export function loadNote(path: string, content: string) {
 		clearResolvedAssets();
+		content = content || '';
 		loadedPath = path;
 		lastSourceMode = $sourceMode;
 		isLoadingNote = true;
@@ -4366,6 +5009,16 @@
 		}
 	});
 
+	// Register the editor's forceSave function with appState
+	$effect(() => {
+		appState.onForceSave = forceSave;
+		return () => {
+			if (appState.onForceSave === forceSave) {
+				appState.onForceSave = null;
+			}
+		};
+	});
+
 	// Close formatting dropdowns when clicking outside the formatting bar or export dropdown
 	$effect(() => {
 		if (!anyDropdownOpen) return;
@@ -4405,8 +5058,16 @@
 			loadedPath = '';
 			return;
 		}
-		if (note && note.path === path && path !== loadedPath) {
-			loadNote(path, note.content);
+		if (note && note.path === path) {
+			if (path !== loadedPath) {
+				// Detect if this is an atomic rename of the currently loaded note
+				if (loadedPath && appState.lastRenamedPath && appState.lastRenamedPath.oldPath === loadedPath && appState.lastRenamedPath.newPath === path) {
+					appState.lastRenamedPath = null; // Reset tracker
+					loadedPath = path;
+					return;
+				}
+				loadNote(path, note.content);
+			}
 		}
 	});
 
@@ -4449,11 +5110,12 @@
 					placeholder: ({ node }) => {
 						if (node.type.name === 'detailsSummary') return 'Section title...';
 						if (node.type.name === 'detailsContent') return 'Content...';
+						if (node.type.name === 'codeBlock') return '';
 						return 'Start writing...';
 					},
 				}),
 				TaskList,
-				TaskItem.configure({ nested: true }),
+				TaskItemExtended.configure({ nested: true }),
 				Table.configure({ resizable: true }),
 				TableRow,
 				CustomTableCell,
@@ -4469,10 +5131,10 @@
 				FontFamily,
 				FontSize,
 				Color,
-				CodeBlockLowlight.configure({ lowlight, enableTabIndentation: true, defaultLanguage: 'text' }),
-				CodeBlockLanguageSelect,
+				CustomCodeBlockLowlight.configure({ lowlight, enableTabIndentation: true, defaultLanguage: 'text' }),
 				MermaidRenderer,
 				PdfEmbed,
+				FileAttachment,
 				MathBlock,
 				MathInline,
 				Diagram,
@@ -4710,9 +5372,11 @@
 				if (!isMobile || slashMenu || slashTypedByUser) updateSlashMenu();
 				if (!isMobile || wikiLinkMenu || wikiLinkTypedByUser) updateWikiLinkMenu();
 				updateBubbleMenu();
+				updateTaskBarMenu();
 			},
 			onBlur: () => {
 				bubbleMenuCoords = null;
+				taskBarCoords = null;
 			},
 			onUpdate: () => {
 				if (ignoreNextUpdate || isLoadingNote) {
@@ -5687,30 +6351,36 @@
 		}
 	}
 
+	function getMimeType(filename: string): string {
+		const ext = filename.split('.').pop()?.toLowerCase() || '';
+		const mimes: Record<string, string> = {
+			pdf: 'application/pdf',
+			txt: 'text/plain',
+			md: 'text/markdown',
+			html: 'text/html',
+			json: 'application/json',
+			js: 'application/javascript',
+			ts: 'application/typescript',
+			css: 'text/css',
+			csv: 'text/csv',
+			mp3: 'audio/mpeg',
+			wav: 'audio/wav',
+			ogg: 'audio/ogg',
+			m4a: 'audio/mp4',
+			mp4: 'video/mp4',
+			webm: 'video/webm',
+			mov: 'video/quicktime',
+			zip: 'application/zip',
+			png: 'image/png',
+			jpg: 'image/jpeg',
+			jpeg: 'image/jpeg',
+			gif: 'image/gif'
+		};
+		return mimes[ext] || 'application/octet-stream';
+	}
+
 	async function insertPdf(file: File) {
-		try {
-			const reader = new FileReader();
-			reader.onload = () => {
-				const base64 = reader.result as string;
-				if (!editor) return;
-				const usePdfPreview = !isMobile && ($appConfig?.pdf_preview ?? false);
-				if (usePdfPreview) {
-					editor.chain().focus().insertContent({
-						type: 'pdfEmbed',
-						attrs: { src: base64, name: file.name },
-					}).run();
-				} else {
-					const sizeKB = Math.round(file.size / 1024);
-					const label = `${file.name} (${sizeKB} kB)`;
-					editor.chain().focus()
-						.insertContent(`<a href="${base64}" download="${file.name}">${label}</a> `)
-						.run();
-				}
-			};
-			reader.readAsDataURL(file);
-		} catch (e) {
-			console.error('Failed to insert PDF:', e);
-		}
+		await insertFileAttachment(file);
 	}
 
 	async function saveBlobImage(blobUrl: string): Promise<string | null> {
@@ -5762,11 +6432,15 @@
 			reader.onload = () => {
 				const base64 = reader.result as string;
 				if (editor) {
-					const sizeKB = Math.round(file.size / 1024);
-					const label = `${file.name} (${sizeKB} kB)`;
-					editor.chain().focus()
-						.insertContent(`<a href="${base64}" download="${file.name}">${label}</a> `)
-						.run();
+					editor.chain().focus().insertContent({
+						type: 'fileAttachment',
+						attrs: {
+							src: base64,
+							filename: file.name,
+							filesize: file.size,
+							filetype: file.type || getMimeType(file.name)
+						}
+					}).run();
 				}
 			};
 			reader.readAsDataURL(file);
@@ -5831,15 +6505,16 @@
 				} else if (ext === 'pdf') {
 					readFile(filePath).then((data) => {
 						saveAttachment(name, Array.from(data)).then((relativePath) => {
-							if (!editor) return;
-							const usePdfPreview = !isMobile && ($appConfig?.pdf_preview ?? false);
-							if (usePdfPreview) {
+							if (editor) {
 								editor.chain().focus().insertContent({
-									type: 'pdfEmbed',
-									attrs: { src: relativePath, name },
+									type: 'fileAttachment',
+									attrs: {
+										src: relativePath,
+										filename: name,
+										filesize: data.length,
+										filetype: 'application/pdf'
+									}
 								}).run();
-							} else {
-								editor.chain().focus().insertContent(`<a href="${relativePath}">${name}</a> `).run();
 							}
 						});
 					}).catch((e) => console.error('Failed to drop PDF:', e));
@@ -5847,7 +6522,15 @@
 					readFile(filePath).then((data) => {
 						saveAttachment(name, Array.from(data)).then((relativePath) => {
 							if (editor) {
-								editor.chain().focus().insertContent(`<a href="${relativePath}">${name}</a> `).run();
+								editor.chain().focus().insertContent({
+									type: 'fileAttachment',
+									attrs: {
+										src: relativePath,
+										filename: name,
+										filesize: data.length,
+										filetype: getMimeType(name)
+									}
+								}).run();
 							}
 						});
 					}).catch((e) => console.error('Failed to drop file:', e));
@@ -6589,6 +7272,132 @@
 						</button>
 					</div>
 				{/if}
+
+				<!-- Floating Task Action Bar (HUD) -->
+				{#if activeTaskItem && !$readOnly && taskBarCoords}
+					<!-- svelte-ignore a11y_no_static_element_interactions -->
+					<div class="task-action-bar-hud flex-row" style="left: {taskBarCoords.x}px; top: {taskBarCoords.y}px;" onclick={(e) => e.stopPropagation()}>
+						<span class="task-drag-handle">⋮⋮</span>
+						
+						<!-- Task status checkbox -->
+						<button 
+							class="task-bar-check" 
+							class:checked={activeTaskItem.attrs.checked}
+							onclick={() => updateActiveTaskMeta({ checked: !activeTaskItem.attrs.checked })}
+							title={activeTaskItem.attrs.checked ? "Mark uncompleted" : "Mark completed"}
+						></button>
+
+						<!-- Quick Date options -->
+						<button 
+							class="task-bar-capsule" 
+							class:active={activeTaskItem.attrs.dueDate === todayStr()}
+							onclick={() => updateActiveTaskMeta({ dueDate: activeTaskItem.attrs.dueDate === todayStr() ? null : todayStr() })}
+						>Today</button>
+						<button 
+							class="task-bar-capsule" 
+							class:active={activeTaskItem.attrs.dueDate === tomorrowStr()}
+							onclick={() => updateActiveTaskMeta({ dueDate: activeTaskItem.attrs.dueDate === tomorrowStr() ? null : tomorrowStr() })}
+						>Tomorrow</button>
+
+						<!-- Custom Date Picker -->
+						<div class="task-icon-btn-wrap">
+							<button class="task-bar-icon-btn" class:active={!!activeTaskItem.attrs.dueDate} title="Due Date">
+								<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+									<rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+									<line x1="16" y1="2" x2="16" y2="6"/>
+									<line x1="8" y1="2" x2="8" y2="6"/>
+									<line x1="3" y1="10" x2="21" y2="10"/>
+								</svg>
+								<input 
+									type="date" 
+									class="task-overlay-input" 
+									value={activeTaskItem.attrs.dueDate || ''}
+									onchange={(e) => updateActiveTaskMeta({ dueDate: (e.target as HTMLInputElement).value || null })}
+								/>
+							</button>
+							{#if activeTaskItem.attrs.dueDate}
+								<span class="task-badge-label">{formatDueDate(activeTaskItem.attrs.dueDate)}</span>
+							{/if}
+						</div>
+
+						<!-- Repeat Button -->
+						<button class="task-bar-icon-btn" title="Repeat (future)">
+							<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+								<path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+							</svg>
+						</button>
+
+						<!-- Reminder picker -->
+						<div class="task-icon-btn-wrap">
+							<button class="task-bar-icon-btn" class:active={!!activeTaskItem.attrs.reminder} title="Set Reminder">
+								<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+									<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+									<path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+								</svg>
+								<input 
+									type="datetime-local" 
+									class="task-overlay-input"
+									value={activeTaskItem.attrs.reminder ? activeTaskItem.attrs.reminder.substring(0, 16) : ''}
+									onchange={(e) => {
+										const val = (e.target as HTMLInputElement).value;
+										updateActiveTaskMeta({ reminder: val ? new Date(val).toISOString() : null });
+									}}
+								/>
+							</button>
+							{#if activeTaskItem.attrs.reminder}
+								<span class="task-badge-label">{formatReminder(activeTaskItem.attrs.reminder)}</span>
+							{/if}
+						</div>
+
+						<!-- Flag / Star Toggle -->
+						<button 
+							class="task-bar-icon-btn" 
+							class:active={activeTaskItem.attrs.flagged}
+							onclick={() => updateActiveTaskMeta({ flagged: !activeTaskItem.attrs.flagged })}
+							title="Flag Task"
+						>
+							<svg width="15" height="15" viewBox="0 0 24 24" fill={activeTaskItem.attrs.flagged ? "currentColor" : "none"} stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="color: {activeTaskItem.attrs.flagged ? '#f59e0b' : 'inherit'}">
+								<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/>
+								<line x1="4" y1="22" x2="4" y2="15"/>
+							</svg>
+						</button>
+
+						<!-- Person Icon (Assignee) -->
+						<button class="task-bar-icon-btn" title="Assign (Personal app)" disabled style="opacity: 0.5;">
+							<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+								<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+								<circle cx="12" cy="7" r="4"/>
+							</svg>
+						</button>
+
+						<!-- More Options -->
+						<button 
+							class="task-bar-icon-btn" 
+							onclick={() => showTaskDetailModal = true}
+							title="More Options"
+						>
+							<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+								<circle cx="12" cy="12" r="1"/>
+								<circle cx="19" cy="12" r="1"/>
+								<circle cx="5" cy="12" r="1"/>
+							</svg>
+						</button>
+
+						<!-- Delete Task -->
+						<button 
+							class="task-bar-trash" 
+							onclick={deleteActiveTask}
+							title="Delete Task Node"
+						>
+							<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+								<polyline points="3 6 5 6 21 6"/>
+								<path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+								<path d="M10 11v6M14 11v6"/>
+								<path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+							</svg>
+						</button>
+					</div>
+				{/if}
 			</div>
 
 			{#if showHistory}
@@ -6672,7 +7481,7 @@
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<div class="editor-formatting-bar" 
 				style={isMobile ? `${keyboardHeight > 0 ? `bottom: ${keyboardHeight}px;` : ''}${anyDropdownOpen ? 'overflow: visible;' : ''}` : ''} 
-				onclick={() => { headingDropdown = false; colorDropdown = false; highlightDropdown = false; tablePickerOpen = false; alignDropdown = false; insertDropdown = false; }}
+				onclick={() => { headingDropdown = false; colorDropdown = false; highlightDropdown = false; tablePickerOpen = false; alignDropdown = false; insertDropdown = false; fontDropdown = false; fontSizeDropdown = false; }}
 			>
 
 				<!-- ═══ DESKTOP formatting bar: full feature set ═══ -->
@@ -6696,6 +7505,13 @@
 							<button onclick={() => { insertDropdown = false; tablePickerOpen = true; }}>
 								<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18"/><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/></svg>
 								Table
+							</button>
+							<button onclick={() => { insertDropdown = false; editor?.chain().focus().toggleTaskList().run(); }}>
+								<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+									<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+									<polyline points="22 4 12 14.01 9 11.01"/>
+								</svg>
+								Task
 							</button>
 							<button onclick={() => { insertDropdown = false; editor?.chain().focus().setHorizontalRule().run(); }}>
 								<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14"/></svg>
@@ -6790,8 +7606,13 @@
 				<!-- Font Family dropdown -->
 				<div class="fmt-dropdown-wrap">
 					<button class="fmt-btn font-select-btn" onclick={(e) => { e.stopPropagation(); fontDropdown = !fontDropdown; fontSizeDropdown = false; headingDropdown = false; colorDropdown = false; highlightDropdown = false; tablePickerOpen = false; alignDropdown = false; insertDropdown = false; }} title="Font Family">
+						<svg class="font-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+							<polyline points="4 7 4 4 20 4 20 7"/>
+							<line x1="9" y1="20" x2="15" y2="20"/>
+							<line x1="12" y1="4" x2="12" y2="20"/>
+						</svg>
 						<span class="font-label">{activeFontLabel}</span>
-						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+						<svg class="dropdown-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
 					</button>
 					{#if fontDropdown}
 						<!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -6830,8 +7651,14 @@
 				<!-- Font Size dropdown -->
 				<div class="fmt-dropdown-wrap">
 					<button class="fmt-btn font-select-btn" onclick={(e) => { e.stopPropagation(); fontSizeDropdown = !fontSizeDropdown; fontDropdown = false; headingDropdown = false; colorDropdown = false; highlightDropdown = false; tablePickerOpen = false; alignDropdown = false; insertDropdown = false; }} title="Font Size">
+						<svg class="font-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+							<path d="M3 17L7 5L11 17" />
+							<path d="M5 13H9" />
+							<path d="M12 17L15 9L18 17" />
+							<path d="M13.5 14.5H16.5" />
+						</svg>
 						<span class="font-label">{activeSizeLabel}</span>
-						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+						<svg class="dropdown-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
 					</button>
 					{#if fontSizeDropdown}
 						<!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -7512,6 +8339,129 @@
 	</div>
 {/if}
 
+<!-- Old task bar removed, replaced with floating HUD -->
+
+{#if showTaskDetailModal && activeTaskItem}
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div class="settings-backdrop flex-row" onclick={() => showTaskDetailModal = false} role="presentation">
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div class="task-detail-modal flex-col" onclick={(e) => e.stopPropagation()} role="dialog" aria-label="Task Details">
+			<div class="task-detail-header flex-row" style="justify-content: space-between;">
+				<div class="flex-row" style="gap: 8px; align-items: center;">
+					<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+						<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+						<polyline points="22 4 12 14.01 9 11.01"/>
+					</svg>
+					<span style="font-weight: 600; font-size: 16px;">Edit Task Details</span>
+				</div>
+				<button class="close-btn flex-row" onclick={() => showTaskDetailModal = false} aria-label="Close">
+					<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+				</button>
+			</div>
+
+			<div class="task-detail-body flex-col" style="gap: 16px; margin-top: 16px;">
+				<!-- Task Text Display -->
+				<div class="task-detail-section flex-col" style="gap: 6px;">
+					<span class="detail-label">Task Text (edit in editor)</span>
+					<div class="detail-text-display">{activeTaskItem.text || 'Untitled Task'}</div>
+				</div>
+
+				<!-- Due Date Section -->
+				<div class="task-detail-section flex-col" style="gap: 6px;">
+					<span class="detail-label">Due Date</span>
+					<div class="flex-row" style="gap: 8px;">
+						<button 
+							class="task-detail-btn" 
+							class:active={activeTaskItem.attrs.dueDate === todayStr()}
+							onclick={() => updateActiveTaskMeta({ dueDate: activeTaskItem.attrs.dueDate === todayStr() ? null : todayStr() })}
+						>Today</button>
+						<button 
+							class="task-detail-btn" 
+							class:active={activeTaskItem.attrs.dueDate === tomorrowStr()}
+							onclick={() => updateActiveTaskMeta({ dueDate: activeTaskItem.attrs.dueDate === tomorrowStr() ? null : tomorrowStr() })}
+						>Tomorrow</button>
+						<input 
+							type="date" 
+							class="task-detail-date-input" 
+							value={activeTaskItem.attrs.dueDate || ''}
+							onchange={(e) => updateActiveTaskMeta({ dueDate: (e.target as HTMLInputElement).value || null })}
+						/>
+					</div>
+				</div>
+
+				<!-- Priority Section -->
+				<div class="task-detail-section flex-col" style="gap: 6px;">
+					<span class="detail-label">Priority</span>
+					<div class="flex-row" style="gap: 8px;">
+						{#each [['low', 'Low'], ['medium', 'Medium'], ['high', 'High']] as [val, label]}
+							<button 
+								class="task-detail-btn priority-btn-{val}" 
+								class:active={activeTaskItem.attrs.priority === val}
+								onclick={() => updateActiveTaskMeta({ priority: (activeTaskItem.attrs.priority === val ? null : val) as any })}
+							>
+								<span class="priority-dot" style="background: {priorityColor(val)}"></span>
+								{label}
+							</button>
+						{/each}
+					</div>
+				</div>
+
+				<!-- Flag / Star Toggle -->
+				<div class="task-detail-section flex-row" style="justify-content: space-between; align-items: center;">
+					<div class="flex-col">
+						<span class="detail-label">Flagged</span>
+						<span class="detail-sub">Mark this task as important</span>
+					</div>
+					<button 
+						class="task-detail-flag-btn" 
+						class:active={activeTaskItem.attrs.flagged}
+						onclick={() => updateActiveTaskMeta({ flagged: !activeTaskItem.attrs.flagged })}
+					>
+						<svg width="16" height="16" viewBox="0 0 24 24" fill={activeTaskItem.attrs.flagged ? "currentColor" : "none"} stroke="currentColor" stroke-width="2">
+							<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/>
+							<line x1="4" y1="22" x2="4" y2="15"/>
+						</svg>
+						{activeTaskItem.attrs.flagged ? 'Flagged' : 'Flag'}
+					</button>
+				</div>
+
+				<!-- Reminder Section -->
+				<div class="task-detail-section flex-col" style="gap: 6px;">
+					<span class="detail-label">Reminder</span>
+					<div class="flex-row" style="gap: 8px; align-items: center;">
+						<input 
+							type="datetime-local" 
+							class="task-detail-datetime-input"
+							value={activeTaskItem.attrs.reminder ? activeTaskItem.attrs.reminder.substring(0, 16) : ''}
+							onchange={(e) => {
+								const val = (e.target as HTMLInputElement).value;
+								updateActiveTaskMeta({ reminder: val ? new Date(val).toISOString() : null });
+							}}
+						/>
+						{#if activeTaskItem.attrs.reminder}
+							<span style="font-size: 12px; color: var(--text-secondary);">
+								({formatReminder(activeTaskItem.attrs.reminder)})
+							</span>
+						{/if}
+					</div>
+				</div>
+			</div>
+
+			<div class="task-detail-footer flex-row" style="margin-top: 24px; justify-content: flex-end; gap: 8px;">
+				<button 
+					class="task-detail-delete-btn flex-row" 
+					onclick={() => { deleteActiveTask(); showTaskDetailModal = false; }}
+					style="margin-right: auto;"
+				>
+					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+					Delete
+				</button>
+				<button class="task-detail-close-btn" onclick={() => showTaskDetailModal = false}>Close</button>
+			</div>
+		</div>
+	</div>
+{/if}
+
 {#if mathModal}
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div class="math-modal-overlay" onclick={cancelMathModal}>
@@ -7582,7 +8532,7 @@
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div class="code-lang-overlay" onclick={closeCodeLangDropdown}>
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
-		<div class="code-lang-dropdown" style="left: {codeLangDropdown.x}px; top: {codeLangDropdown.y}px" onclick={(e) => e.stopPropagation()}>
+		<div class="code-lang-dropdown" class:open-up={codeLangDropdown.openUp} style="left: {codeLangDropdown.x}px; top: {codeLangDropdown.y}px" onclick={(e) => e.stopPropagation()}>
 			<div class="code-lang-search-wrapper">
 				<input
 					type="text"
@@ -8116,16 +9066,316 @@
 		.editor-container.readonly .editor-toolbar {
 			max-width: 800px;
 			margin: 0 auto;
-			width: 100%;
+					width: 100%;
 			padding-left: 40px;
 			padding-right: 40px;
 		}
+	}
+
+	/* ── Task Action Bar (HUD) ── */
+	.task-action-bar-hud {
+		position: absolute;
+		background: #1a1a1e;
+		border: 1px solid rgba(255, 255, 255, 0.12);
+		border-radius: 8px;
+		padding: 4px 10px;
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		gap: 6px;
+		box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+		z-index: 99;
+		height: 38px;
+		transition: top 0.1s ease, left 0.1s ease;
+	}
+
+	.task-drag-handle {
+		color: rgba(255, 255, 255, 0.2);
+		font-size: 14px;
+		cursor: grab;
+		user-select: none;
+		margin-right: 2px;
+	}
+
+	.task-bar-check {
+		width: 18px;
+		height: 18px;
+		border: 2px solid rgba(255, 255, 255, 0.4);
+		border-radius: 50%;
+		cursor: pointer;
+		background: transparent;
+		position: relative;
+		transition: all 0.2s;
+	}
+	.task-bar-check.checked {
+		background: #a855f7; /* Purple checkbox matching Evernote */
+		border-color: #a855f7;
+	}
+	.task-bar-check.checked::after {
+		content: '';
+		position: absolute;
+		top: 2px;
+		left: 5px;
+		width: 4px;
+		height: 7px;
+		border: solid white;
+		border-width: 0 2px 2px 0;
+		transform: rotate(45deg);
+	}
+
+	.task-bar-capsule {
+		background: transparent;
+		border: 1px dashed rgba(255, 255, 255, 0.2);
+		color: rgba(255, 255, 255, 0.7);
+		font-size: 11px;
+		padding: 3px 8px;
+		border-radius: 12px;
+		cursor: pointer;
+		transition: all 0.15s;
+		white-space: nowrap;
+	}
+	.task-bar-capsule:hover {
+		border-color: rgba(255, 255, 255, 0.4);
+		color: white;
+	}
+	.task-bar-capsule.active {
+		background: rgba(255, 255, 255, 0.08);
+		border-color: var(--accent);
+		color: var(--accent);
+	}
+
+	.task-icon-btn-wrap {
+		position: relative;
+		display: flex;
+		align-items: center;
+		gap: 4px;
+	}
+
+	.task-bar-icon-btn {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 28px;
+		height: 28px;
+		border-radius: 50%;
+		background: transparent;
+		border: none;
+		color: rgba(255, 255, 255, 0.6);
+		cursor: pointer;
+		position: relative;
+		overflow: hidden;
+		transition: all 0.15s;
+	}
+	.task-bar-icon-btn:hover {
+		background: rgba(255, 255, 255, 0.08);
+		color: white;
+	}
+	.task-bar-icon-btn.active {
+		color: var(--accent);
+	}
+
+	.task-overlay-input {
+		position: absolute;
+		top: 0;
+		left: 0;
+		width: 100%;
+		height: 100%;
+		opacity: 0;
+		cursor: pointer;
+	}
+
+	.task-badge-label {
+		font-size: 11px;
+		color: var(--accent);
+		font-weight: 500;
+		max-width: 80px;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.task-bar-trash {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 28px;
+		height: 28px;
+		border-radius: 6px;
+		background: transparent;
+		border: none;
+		color: rgba(255, 255, 255, 0.4);
+		cursor: pointer;
+		margin-left: auto;
+		transition: all 0.15s;
+	}
+	.task-bar-trash:hover {
+		background: rgba(239, 68, 68, 0.15);
+		color: #ef4444;
+	}
+
+	/* ── Task Detail Modal ── */
+	.task-detail-modal {
+		background: rgba(18, 22, 28, 0.95);
+		backdrop-filter: blur(20px);
+		-webkit-backdrop-filter: blur(20px);
+		border: 1px solid rgba(255, 255, 255, 0.08);
+		border-radius: 12px;
+		padding: 24px;
+		width: 450px;
+		max-width: 90vw;
+		box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+		color: var(--text-primary);
+	}
+
+	.task-detail-header {
+		align-items: center;
+		padding-bottom: 12px;
+		border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+	}
+
+	.detail-label {
+		font-size: 11px;
+		text-transform: uppercase;
+		font-weight: 600;
+		color: var(--text-muted);
+		letter-spacing: 0.5px;
+	}
+
+	.detail-sub {
+		font-size: 11px;
+		color: var(--text-muted);
+	}
+
+	.detail-text-display {
+		background: rgba(0, 0, 0, 0.2);
+		border: 1px solid rgba(255, 255, 255, 0.04);
+		padding: 10px 12px;
+		border-radius: 6px;
+		font-size: 13px;
+		color: var(--text-secondary);
+		line-height: 1.4;
+	}
+
+	.task-detail-date-input, .task-detail-datetime-input {
+		opacity: 1;
+		position: static;
+		background: rgba(0, 0, 0, 0.2);
+		border: 1px solid rgba(255, 255, 255, 0.08);
+		color: var(--text-primary);
+		padding: 4px 8px;
+		border-radius: 6px;
+		outline: none;
+		font-size: 12px;
+	}
+
+	.priority-dot {
+		display: inline-block;
+		width: 6px;
+		height: 6px;
+		border-radius: 50%;
+		margin-right: 6px;
+	}
+
+	.task-detail-flag-btn {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		background: rgba(255, 255, 255, 0.04);
+		border: 1px solid rgba(255, 255, 255, 0.08);
+		color: var(--text-secondary);
+		padding: 6px 12px;
+		border-radius: 6px;
+		font-size: 12px;
+		cursor: pointer;
+		transition: all 0.15s;
+	}
+	.task-detail-flag-btn:hover {
+		background: rgba(255, 255, 255, 0.08);
+		color: var(--text-primary);
+	}
+	.task-detail-flag-btn.active {
+		background: rgba(245, 158, 11, 0.15);
+		border-color: #f59e0b;
+		color: #f59e0b;
+	}
+
+	.task-detail-delete-btn {
+		background: rgba(239, 68, 68, 0.15);
+		border: 1px solid rgba(239, 68, 68, 0.25);
+		color: #ef4444;
+		padding: 6px 12px;
+		border-radius: 6px;
+		font-size: 12px;
+		cursor: pointer;
+		align-items: center;
+		gap: 4px;
+	}
+	.task-detail-delete-btn:hover {
+		background: #ef4444;
+		color: white;
+	}
+
+	.task-detail-close-btn {
+		background: rgba(255, 255, 255, 0.06);
+		border: 1px solid rgba(255, 255, 255, 0.08);
+		color: var(--text-primary);
+		padding: 6px 16px;
+		border-radius: 6px;
+		font-size: 12px;
+		cursor: pointer;
+	}
+	.task-detail-close-btn:hover {
+		background: rgba(255, 255, 255, 0.1);
+	}
+
+	/* ── TipTap Metadata Badges in Editor ── */
+	:global(.tiptap-wrapper .tiptap ul[data-type="taskList"] li[data-due-date] > div::after) {
+		content: " 📅 " attr(data-due-date);
+		font-size: 10px;
+		font-weight: 500;
+		padding: 1px 5px;
+		background: rgba(255, 255, 255, 0.08);
+		border-radius: 4px;
+		margin-left: 8px;
+		color: var(--text-secondary);
+		display: inline-block;
+		white-space: nowrap;
+		pointer-events: none;
+	}
+	:global(.tiptap-wrapper .tiptap ul[data-type="taskList"] li[data-priority="high"] > div::before) {
+		content: "●";
+		color: #ef4444;
+		margin-right: 4px;
+		font-size: 12px;
+		pointer-events: none;
+	}
+	:global(.tiptap-wrapper .tiptap ul[data-type="taskList"] li[data-priority="medium"] > div::before) {
+		content: "●";
+		color: #f59e0b;
+		margin-right: 4px;
+		font-size: 12px;
+		pointer-events: none;
+	}
+	:global(.tiptap-wrapper .tiptap ul[data-type="taskList"] li[data-priority="low"] > div::before) {
+		content: "●";
+		color: #3b82f6;
+		margin-right: 4px;
+		font-size: 12px;
+		pointer-events: none;
+	}
+	:global(.tiptap-wrapper .tiptap ul[data-type="taskList"] li[data-flagged="true"] > div::after) {
+		content: " 🚩";
+		margin-left: 4px;
+		color: #f59e0b;
+		pointer-events: none;
 	}
 
 	.editor-container {
 		display: flex;
 		flex-direction: column;
 		height: 100%;
+		width: 100%;
+		flex-grow: 1;
 		background: var(--bg-editor);
 	}
 
@@ -8500,13 +9750,106 @@
 		flex-wrap: wrap;
 	}
 
+	@media (min-width: 768px) {
+		.editor-container {
+			display: grid;
+			grid-template-columns: 1fr auto;
+			grid-template-rows: auto auto 1fr;
+			height: 100%;
+			width: 100%;
+			flex-grow: 1;
+		}
+
+		.editor-toolbar {
+			grid-column: 1 / span 2;
+			grid-row: 1;
+		}
+
+		.note-meta-bar {
+			grid-column: 1;
+			grid-row: 2;
+		}
+
+		.editor-body-wrapper {
+			grid-column: 1;
+			grid-row: 3;
+			overflow: hidden;
+			height: 100%;
+		}
+
+		.editor-formatting-bar {
+			grid-column: 2;
+			grid-row: 2 / span 2;
+			display: flex;
+			flex-direction: column;
+			width: 44px;
+			height: 100%;
+			border-top: none !important;
+			border-left: 1px solid var(--border-light);
+			padding: 10px 4px !important;
+			flex-wrap: nowrap !important;
+			overflow: visible !important;
+			scrollbar-width: none;
+			gap: 8px;
+			align-items: center;
+			justify-content: flex-start;
+			background: var(--bg-surface);
+		}
+
+		.editor-formatting-bar::-webkit-scrollbar {
+			display: none;
+		}
+
+		.editor-formatting-bar .fmt-sep {
+			width: 24px !important;
+			height: 3px !important;
+			background: var(--text-tertiary) !important;
+			opacity: 1 !important;
+			margin: 6px 0 !important;
+		}
+
+		.editor-formatting-bar .fmt-dropdown {
+			left: auto !important;
+			right: calc(100% + 8px) !important;
+			top: -6px !important;
+			bottom: auto !important;
+		}
+
+		/* Align specific lower dropdowns to bottom to prevent viewport overflow */
+		.editor-formatting-bar .table-picker-dropdown,
+		.editor-formatting-bar .color-picker-dropdown,
+		.editor-formatting-bar .align-dropdown {
+			bottom: -6px !important;
+			top: auto !important;
+		}
+
+		/* Style font select button as square icon-only button in vertical bar */
+		.editor-formatting-bar .font-select-btn {
+			min-width: 30px !important;
+			max-width: 30px !important;
+			width: 30px !important;
+			height: 30px !important;
+			padding: 0 !important;
+			justify-content: center !important;
+		}
+
+		.editor-formatting-bar .font-select-btn .font-label,
+		.editor-formatting-bar .font-select-btn .dropdown-arrow {
+			display: none !important;
+		}
+
+		.editor-formatting-bar .font-select-btn .font-icon {
+			display: block !important;
+		}
+	}
+
 	.fmt-btn {
 		background: none;
 		border: none;
 		color: var(--text-secondary);
 		cursor: pointer;
 		padding: 5px 7px;
-		border-radius: 4px;
+		border-radius: 6px;
 		font-size: 13px;
 		display: flex;
 		align-items: center;
@@ -8770,6 +10113,10 @@
 		min-width: 80px;
 		max-width: 120px;
 		justify-content: space-between;
+	}
+
+	.font-select-btn .font-icon {
+		display: none;
 	}
 
 	.font-select-btn .font-label {
@@ -9296,7 +10643,7 @@
 		font-size: 0.9em;
 	}
 
-	:global(.tiptap-wrapper .tiptap pre) {
+	:global(.tiptap-wrapper .tiptap pre:not(.text-preview-content)) {
 		background: var(--bg-surface);
 		border: 1px solid var(--border-highlight);
 		border-radius: 8px;
@@ -9307,7 +10654,7 @@
 		box-shadow: var(--shadow-medium, 0 4px 12px rgba(0, 0, 0, 0.15));
 	}
 
-	:global(.tiptap-wrapper .tiptap pre code) {
+	:global(.tiptap-wrapper .tiptap pre:not(.text-preview-content) code) {
 		display: block;
 		overflow-x: auto;
 		background: none;
@@ -9317,7 +10664,7 @@
 	}
 
 	/* Terminal window header bar */
-	:global(.tiptap-wrapper .tiptap pre)::before {
+	:global(.tiptap-wrapper .tiptap pre:not(.text-preview-content))::before {
 		content: "";
 		position: absolute;
 		top: 0;
@@ -9335,7 +10682,7 @@
 		pointer-events: none;
 	}
 
-	:global(.tiptap-wrapper .tiptap pre)::after {
+	:global(.tiptap-wrapper .tiptap pre:not(.text-preview-content))::after {
 		content: attr(data-language) ' ▾';
 		position: absolute;
 		top: 4px;
@@ -9355,15 +10702,136 @@
 		transition: background-color 0.15s, border-color 0.15s, opacity 0.15s;
 	}
 
-	:global(.tiptap-wrapper .tiptap pre[data-language=""])::after {
+	:global(.tiptap-wrapper .tiptap pre:not(.text-preview-content)[data-language=""])::after {
 		content: 'Plain Text ▾';
 	}
 
-	:global(.tiptap-wrapper .tiptap pre:hover)::after {
+	:global(.tiptap-wrapper .tiptap pre:not(.text-preview-content):hover)::after {
 		opacity: 1;
 		background: var(--bg-card-hover);
 		border-color: var(--accent);
 		color: var(--text-primary);
+	}
+
+	/* Premium Custom Code Block Styles */
+	:global(.code-block-container) {
+		margin: 1.5em 0;
+		border: 1px solid rgba(255, 255, 255, 0.08);
+		border-radius: 8px;
+		overflow: hidden;
+		background: #1e1e1e !important; /* Force a premium dark theme for code blocks */
+		box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+	}
+
+	:global(.code-block-header) {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 6px 12px;
+		background: #252526 !important;
+		border-bottom: 2px solid rgba(255, 255, 255, 0.15);
+		user-select: none;
+	}
+
+	:global(.code-block-lang-btn) {
+		display: flex;
+		align-items: center;
+		padding: 4px 8px;
+		font-size: 11px;
+		font-weight: 600;
+		border: none;
+		background: transparent;
+		color: #b0b0b0;
+		cursor: pointer;
+		border-radius: 4px;
+		transition: background-color 0.15s, color 0.15s;
+		font-family: var(--font-sans, sans-serif);
+	}
+
+	:global(.code-block-lang-btn:hover) {
+		background: rgba(255, 255, 255, 0.06);
+		color: #ffffff;
+	}
+
+	:global(.code-block-copy-btn) {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 6px;
+		border: none;
+		background: transparent;
+		color: #b0b0b0;
+		cursor: pointer;
+		border-radius: 4px;
+		transition: background-color 0.15s, color 0.15s, transform 0.1s;
+	}
+
+	:global(.code-block-copy-btn:hover) {
+		background: rgba(255, 255, 255, 0.06);
+		color: #ffffff;
+	}
+
+	:global(.code-block-copy-btn:active) {
+		transform: scale(0.95);
+	}
+
+	:global(.code-block-copy-btn.copied) {
+		color: #27c93f;
+	}
+
+	:global(.code-block-clear-btn) {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 6px;
+		border: none;
+		background: transparent;
+		color: #b0b0b0;
+		cursor: pointer;
+		border-radius: 4px;
+		transition: background-color 0.15s, color 0.15s, transform 0.1s;
+	}
+
+	:global(.code-block-clear-btn:hover) {
+		background: rgba(255, 255, 255, 0.06);
+		color: #ff5f56;
+	}
+
+	:global(.code-block-clear-btn:active) {
+		transform: scale(0.95);
+	}
+
+	.code-lang-dropdown.open-up {
+		transform: translate(-100%, -100%) !important;
+	}
+
+	:global(.code-block-container pre) {
+		margin: 0 !important;
+		padding: 14px 16px !important;
+		background: transparent !important;
+		border: none !important;
+		border-radius: 0 !important;
+		box-shadow: none !important;
+		overflow: hidden;
+	}
+
+	:global(.code-block-container pre::before) {
+		display: none !important;
+	}
+
+	:global(.code-block-container pre::after) {
+		display: none !important;
+	}
+
+	:global(.code-block-container pre code) {
+		display: block;
+		overflow-x: auto;
+		background: none;
+		padding: 0;
+		font-size: 13px;
+		line-height: 1.5;
+		color: #d4d4d4 !important;
+		font-family: 'JetBrains Mono', 'Fira Code', var(--font-mono, monospace);
 	}
 
 	/* Syntax highlighting - light mode */
@@ -9398,37 +10866,37 @@
 	:global(.tiptap pre code .hljs-selector-id) { color: #005cc5; }
 	:global(.tiptap pre code .hljs-operator) { color: #d73a49; }
 
-	/* Syntax highlighting - dark mode */
-	:global(.dark .tiptap pre code .hljs-keyword),
-	:global(.dark .tiptap pre code .hljs-selector-tag),
-	:global(.dark .tiptap pre code .hljs-built_in) { color: #ff7b72; }
-	:global(.dark .tiptap pre code .hljs-string),
-	:global(.dark .tiptap pre code .hljs-addition) { color: #a5d6ff; }
-	:global(.dark .tiptap pre code .hljs-number),
-	:global(.dark .tiptap pre code .hljs-literal) { color: #79c0ff; }
-	:global(.dark .tiptap pre code .hljs-comment),
-	:global(.dark .tiptap pre code .hljs-quote) { color: #8b949e; font-style: italic; }
-	:global(.dark .tiptap pre code .hljs-function),
-	:global(.dark .tiptap pre code .hljs-title) { color: #d2a8ff; }
-	:global(.dark .tiptap pre code .hljs-type),
-	:global(.dark .tiptap pre code .hljs-title.class_) { color: #ffa657; }
-	:global(.dark .tiptap pre code .hljs-variable),
-	:global(.dark .tiptap pre code .hljs-template-variable) { color: #ffa657; }
-	:global(.dark .tiptap pre code .hljs-attr),
-	:global(.dark .tiptap pre code .hljs-attribute) { color: #79c0ff; }
-	:global(.dark .tiptap pre code .hljs-tag) { color: #7ee787; }
-	:global(.dark .tiptap pre code .hljs-name) { color: #7ee787; }
-	:global(.dark .tiptap pre code .hljs-meta) { color: #79c0ff; }
-	:global(.dark .tiptap pre code .hljs-deletion) { color: #ffdcd7; background: #67060c; }
-	:global(.dark .tiptap pre code .hljs-symbol),
-	:global(.dark .tiptap pre code .hljs-bullet) { color: #79c0ff; }
-	:global(.dark .tiptap pre code .hljs-regexp) { color: #a5d6ff; }
-	:global(.dark .tiptap pre code .hljs-params) { color: #c9d1d9; }
-	:global(.dark .tiptap pre code .hljs-punctuation) { color: #c9d1d9; }
-	:global(.dark .tiptap pre code .hljs-property) { color: #79c0ff; }
-	:global(.dark .tiptap pre code .hljs-selector-class) { color: #d2a8ff; }
-	:global(.dark .tiptap pre code .hljs-selector-id) { color: #79c0ff; }
-	:global(.dark .tiptap pre code .hljs-operator) { color: #ff7b72; }
+	/* Syntax highlighting - dark mode and custom dark code block container */
+	:global(.dark .tiptap pre code .hljs-keyword), :global(.code-block-container pre code .hljs-keyword),
+	:global(.dark .tiptap pre code .hljs-selector-tag), :global(.code-block-container pre code .hljs-selector-tag),
+	:global(.dark .tiptap pre code .hljs-built_in), :global(.code-block-container pre code .hljs-built_in) { color: #ff7b72; }
+	:global(.dark .tiptap pre code .hljs-string), :global(.code-block-container pre code .hljs-string),
+	:global(.dark .tiptap pre code .hljs-addition), :global(.code-block-container pre code .hljs-addition) { color: #a5d6ff; }
+	:global(.dark .tiptap pre code .hljs-number), :global(.code-block-container pre code .hljs-number),
+	:global(.dark .tiptap pre code .hljs-literal), :global(.code-block-container pre code .hljs-literal) { color: #79c0ff; }
+	:global(.dark .tiptap pre code .hljs-comment), :global(.code-block-container pre code .hljs-comment),
+	:global(.dark .tiptap pre code .hljs-quote), :global(.code-block-container pre code .hljs-quote) { color: #8b949e; font-style: italic; }
+	:global(.dark .tiptap pre code .hljs-function), :global(.code-block-container pre code .hljs-function),
+	:global(.dark .tiptap pre code .hljs-title), :global(.code-block-container pre code .hljs-title) { color: #d2a8ff; }
+	:global(.dark .tiptap pre code .hljs-type), :global(.code-block-container pre code .hljs-type),
+	:global(.dark .tiptap pre code .hljs-title.class_), :global(.code-block-container pre code .hljs-title.class_) { color: #ffa657; }
+	:global(.dark .tiptap pre code .hljs-variable), :global(.code-block-container pre code .hljs-variable),
+	:global(.dark .tiptap pre code .hljs-template-variable), :global(.code-block-container pre code .hljs-template-variable) { color: #ffa657; }
+	:global(.dark .tiptap pre code .hljs-attr), :global(.code-block-container pre code .hljs-attr),
+	:global(.dark .tiptap pre code .hljs-attribute), :global(.code-block-container pre code .hljs-attribute) { color: #79c0ff; }
+	:global(.dark .tiptap pre code .hljs-tag), :global(.code-block-container pre code .hljs-tag) { color: #7ee787; }
+	:global(.dark .tiptap pre code .hljs-name), :global(.code-block-container pre code .hljs-name) { color: #7ee787; }
+	:global(.dark .tiptap pre code .hljs-meta), :global(.code-block-container pre code .hljs-meta) { color: #79c0ff; }
+	:global(.dark .tiptap pre code .hljs-deletion), :global(.code-block-container pre code .hljs-deletion) { color: #ffdcd7; background: #67060c; }
+	:global(.dark .tiptap pre code .hljs-symbol), :global(.code-block-container pre code .hljs-symbol),
+	:global(.dark .tiptap pre code .hljs-bullet), :global(.code-block-container pre code .hljs-bullet) { color: #79c0ff; }
+	:global(.dark .tiptap pre code .hljs-regexp), :global(.code-block-container pre code .hljs-regexp) { color: #a5d6ff; }
+	:global(.dark .tiptap pre code .hljs-params), :global(.code-block-container pre code .hljs-params) { color: #c9d1d9; }
+	:global(.dark .tiptap pre code .hljs-punctuation), :global(.code-block-container pre code .hljs-punctuation) { color: #c9d1d9; }
+	:global(.dark .tiptap pre code .hljs-property), :global(.code-block-container pre code .hljs-property) { color: #79c0ff; }
+	:global(.dark .tiptap pre code .hljs-selector-class), :global(.code-block-container pre code .hljs-selector-class) { color: #d2a8ff; }
+	:global(.dark .tiptap pre code .hljs-selector-id), :global(.code-block-container pre code .hljs-selector-id) { color: #79c0ff; }
+	:global(.dark .tiptap pre code .hljs-operator), :global(.code-block-container pre code .hljs-operator) { color: #ff7b72; }
 
 	.math-modal-overlay {
 		position: fixed;
@@ -9956,8 +11424,9 @@
 
 	:global(.tiptap-wrapper .tiptap hr) {
 		border: none;
-		border-top: 1px solid var(--border-color);
-		margin: 1.5em 0;
+		border-top: 2.5px solid var(--border-highlight, var(--border-color, #ccc));
+		margin: 2em 0;
+		opacity: 0.85;
 	}
 
 	:global(.tiptap-wrapper .tiptap a) {
@@ -12157,5 +13626,341 @@
 			border: 1px solid #ddd !important;
 			box-shadow: none !important;
 		}
+	}
+
+	/* Rich File Attachment Styles */
+	:global(.file-attachment-block) {
+		margin: 16px 0;
+		max-width: 850px;
+		width: 100%;
+		border: 1px solid var(--border-highlight, rgba(0, 0, 0, 0.1));
+		border-radius: 8px;
+		background: var(--bg-surface, #f9f9f9);
+		overflow: hidden;
+		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+		transition: transform 0.2s ease, box-shadow 0.2s ease;
+		box-sizing: border-box;
+	}
+
+	:global(.file-attachment-block:hover) {
+		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+	}
+
+	:global(.file-header) {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 10px 16px;
+		background: var(--bg-primary, #ffffff);
+		border-bottom: 1px solid var(--border-highlight, rgba(0, 0, 0, 0.1));
+		user-select: none;
+	}
+
+	:global(.file-title) {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		font-size: 13px;
+		font-weight: 600;
+		color: var(--text-primary, #333333);
+	}
+
+	:global(.file-icon) {
+		font-size: 16px;
+	}
+
+	:global(.file-name) {
+		max-width: 300px;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	:global(.file-size) {
+		font-weight: normal;
+		font-size: 11px;
+		color: var(--text-secondary, #666666);
+	}
+
+	:global(.file-actions) {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+
+	:global(.file-action-btn) {
+		padding: 4px 8px;
+		font-size: 11px;
+		font-weight: 500;
+		border-radius: 4px;
+		border: 1px solid var(--border-highlight, rgba(0, 0, 0, 0.1));
+		background: var(--bg-surface, #f9f9f9);
+		color: var(--text-primary, #333333);
+		cursor: pointer;
+		transition: background-color 0.15s ease, border-color 0.15s ease;
+	}
+
+	:global(.file-action-btn:hover) {
+		background: var(--bg-mid-dark, #eeeeee);
+		border-color: var(--text-secondary, #666666);
+	}
+
+	/* Text preview specific styles */
+	:global(.text-preview-content) {
+		margin: 0;
+		padding: 12px 16px;
+		font-family: var(--font-mono, monospace);
+		font-size: 12px;
+		line-height: 1.5;
+		color: var(--text-primary, #333333);
+		background: var(--bg-surface, #f9f9f9);
+		max-height: 300px;
+		overflow-y: auto;
+		white-space: pre-wrap;
+		word-break: break-all;
+	}
+
+	/* PDF preview specific styles */
+	:global(.pdf-iframe-wrapper) {
+		width: 100%;
+		max-width: 850px;
+		margin: 0;
+		height: 80vh;
+		min-height: 700px;
+		background: #525659;
+		box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+	}
+
+	:global(.pdf-preview-iframe) {
+		width: 100%;
+		height: 100%;
+		border: none;
+		display: block;
+	}
+
+	/* Audio preview specific styles */
+	:global(.audio-player-wrapper) {
+		padding: 16px;
+		display: flex;
+		justify-content: center;
+		background: var(--bg-surface, #f9f9f9);
+	}
+
+	:global(.audio-preview-element) {
+		width: 100%;
+		max-width: 500px;
+	}
+
+	/* Video preview specific styles */
+	:global(.video-player-wrapper) {
+		padding: 0;
+		background: #000;
+		display: flex;
+		justify-content: center;
+		max-height: 450px;
+	}
+
+	:global(.video-preview-element) {
+		max-width: 100%;
+		max-height: 450px;
+		display: block;
+	}
+
+	/* Spreadsheet preview specific styles */
+	:global(.spreadsheet-preview-content) {
+		background: #ffffff !important;
+		border-top: 1px solid rgba(255, 255, 255, 0.1);
+		padding: 0;
+	}
+
+	:global(.spreadsheet-loading) {
+		padding: 32px;
+		text-align: center;
+		color: #666666;
+		font-size: 13px;
+		font-style: italic;
+		background: #ffffff !important;
+	}
+
+	:global(.spreadsheet-error) {
+		padding: 32px;
+		text-align: center;
+		color: #e74c3c;
+		font-size: 13px;
+		background: #ffffff !important;
+	}
+
+	:global(.spreadsheet-tabs) {
+		display: flex;
+		background: #1a1a1a !important;
+		border-top: 1px solid rgba(255, 255, 255, 0.1);
+		padding: 0 12px;
+		gap: 6px;
+		overflow-x: auto;
+		user-select: none;
+	}
+
+	:global(.spreadsheet-tab-btn) {
+		padding: 10px 16px;
+		font-size: 12px;
+		font-weight: 600;
+		border: none;
+		border-bottom: 2px solid transparent;
+		background: none;
+		color: #888888;
+		cursor: pointer;
+		white-space: nowrap;
+		transition: all 0.2s ease;
+	}
+
+	:global(.spreadsheet-tab-btn:hover) {
+		color: #ffffff;
+		background: rgba(255, 255, 255, 0.05);
+	}
+
+	:global(.spreadsheet-tab-btn.active) {
+		color: #27ae60 !important;
+		border-bottom-color: #27ae60 !important;
+		background: rgba(39, 174, 96, 0.15) !important;
+	}
+
+	:global(.spreadsheet-table-wrapper) {
+		width: 100%;
+		overflow: auto;
+		max-height: 450px;
+		background: #ffffff !important;
+	}
+
+	:global(.spreadsheet-table) {
+		border-collapse: collapse;
+		width: max-content;
+		min-width: 100%;
+		background: #ffffff !important;
+		table-layout: auto !important; /* Critical override of Tiptap's table-layout: fixed! */
+	}
+
+	:global(.spreadsheet-table tr) {
+		background: transparent !important;
+	}
+
+	:global(.spreadsheet-table td), :global(.spreadsheet-table th) {
+		border: 1px solid #d0d0d0 !important;
+		padding: 6px 12px !important;
+		font-size: 12px;
+		min-width: 100px;
+		max-width: 300px;
+		white-space: nowrap !important; /* Force nowrap to prevent vertical word wrapping! */
+		overflow: hidden;
+		text-overflow: ellipsis;
+		background-color: transparent;
+		color: #333333; /* Default dark text color, overridden by inline styles */
+	}
+
+	:global(.spreadsheet-table th) {
+		font-weight: 600;
+		background: #f1f3f4 !important;
+		color: #333333;
+		position: sticky;
+		top: 0;
+		z-index: 1;
+		border-bottom: 2px solid #c0c0c0 !important;
+	}
+
+	:global(.spreadsheet-table tr:hover) {
+		background: rgba(0, 0, 0, 0.02) !important;
+	}
+
+	/* Evernote-style Visual File Card Styles */
+	:global(.file-card) {
+		display: flex;
+		align-items: center;
+		padding: 12px 16px;
+		background: var(--bg-surface, #f9f9f9);
+		cursor: pointer;
+		position: relative;
+		border-left: 4px solid var(--text-secondary, #666666);
+		transition: background-color 0.2s ease;
+	}
+
+	:global(.file-card:hover) {
+		background: var(--bg-primary, #ffffff);
+	}
+
+	:global(.file-card.archive) {
+		border-left-color: #f39c12; /* orange */
+	}
+
+	:global(.file-card.document) {
+		border-left-color: #3498db; /* blue */
+	}
+
+	:global(.file-card.spreadsheet) {
+		border-left-color: #2ecc71; /* green */
+	}
+
+	:global(.file-card.presentation) {
+		border-left-color: #e74c3c; /* red */
+	}
+
+	:global(.file-card-left) {
+		margin-right: 14px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
+
+	:global(.file-card-icon) {
+		font-size: 24px;
+	}
+
+	:global(.file-card-middle) {
+		flex: 1;
+		min-width: 0; /* truncate helper */
+	}
+
+	:global(.file-card-name) {
+		font-size: 13px;
+		font-weight: 600;
+		color: var(--text-primary, #333333);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	:global(.file-card-meta) {
+		font-size: 11px;
+		color: var(--text-secondary, #666666);
+		margin-top: 2px;
+	}
+
+	:global(.file-card-right) {
+		margin-left: 14px;
+		display: flex;
+		align-items: center;
+	}
+
+	:global(.file-card-download-btn) {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 32px;
+		height: 32px;
+		background: rgba(0, 0, 0, 0.04);
+		border: 1px solid var(--border-highlight, rgba(0, 0, 0, 0.08));
+		border-radius: 50%;
+		font-size: 14px;
+		cursor: pointer;
+		opacity: 0.6;
+		transition: all 0.2s ease;
+		color: var(--text-primary, #333333);
+		padding: 0;
+		margin: 0;
+	}
+
+	:global(.file-card:hover .file-card-download-btn) {
+		opacity: 1;
+		background: rgba(0, 0, 0, 0.08);
+		border-color: var(--text-secondary, #666666);
+		transform: scale(1.05);
 	}
 </style>

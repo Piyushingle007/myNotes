@@ -2,6 +2,7 @@ import { type NoteFile, type StorageAdapter, IndexedDBAdapter, FileSystemAccessA
 import { GoogleDriveSync } from '../sync/GoogleDriveSync';
 import MiniSearch from 'minisearch';
 import MarkdownIt from 'markdown-it';
+import { type TaskData, extractTasksFromHtml } from '../utils/taskTypes';
 
 declare const google: any;
 
@@ -146,7 +147,7 @@ class AppState {
   activeNoteContent = $state<string>('');
   activeNoteTitle = $state<string>('');
   activeNotebook = $state<string | null>(null);
-  activeTab = $state<'home' | 'search' | 'library' | 'daily'>('home');
+  activeTab = $state<'home' | 'search' | 'library' | 'daily' | 'tasks'>('home');
   favorites = $state<string[]>(JSON.parse(localStorage.getItem('mynotes_favorites') || '[]'));
   searchQuery = $state<string>('');
   showSettings = $state<boolean>(false);
@@ -157,6 +158,8 @@ class AppState {
   customDriveFolderName = $state<string | null>(localStorage.getItem('mynotes_custom_drive_folder_name') || null);
   googleDriveFolders = $state<any[]>([]);
   fetchingFolders = $state<boolean>(false);
+  onForceSave = null as (() => Promise<void>) | null;
+  lastRenamedPath = null as { oldPath: string; newPath: string } | null;
 
   // Layout States
   sidebarWidth = $state<number>(Number(localStorage.getItem('mynotes_sidebar_width')) || 260);
@@ -197,6 +200,11 @@ class AppState {
   toasts = $state<Toast[]>([]);
   focusModeEnabled = $state<boolean>(localStorage.getItem('mynotes_focus_mode') === 'true');
   typewriterScrollEnabled = $state<boolean>(localStorage.getItem('mynotes_typewriter_scroll') === 'true');
+
+  // ── Task Management State ──
+  allTasks = $state<TaskData[]>([]);
+  private _reminderIntervalId: ReturnType<typeof setInterval> | null = null;
+  private _firedReminders = new Set<string>();
 
 
   showToast(message: string, type: 'success' | 'info' | 'error' | 'warning' = 'info', duration = 4000, title?: string, loading = false): string {
@@ -400,6 +408,7 @@ class AppState {
         console.warn('Google SDK load failed during token restore:', err);
       });
     }
+    this.startReminderChecker();
   }
 
   get notebooks() {
@@ -955,6 +964,7 @@ class AppState {
       content: note.content.replace(/<[^>]+>/g, ' ')
     }));
     this.searchIndex.addAll(searchDocs);
+    this.refreshTasks();
   }
 
   async readBlob(path: string): Promise<Blob | null> {
@@ -1239,13 +1249,23 @@ class AppState {
     }
 
     try {
+      // Force save active editor content before renaming so disk is up-to-date
+      if (this.activeNotePath === oldPath) {
+        if (this.onForceSave) {
+          await this.onForceSave();
+        } else {
+          await this.saveActiveNote(true);
+        }
+      }
+
       // Read note, update title in metadata, write back, rename note
       const notes = await this.storage.listNotes();
       const existing = notes.find(n => n.path === oldPath);
+      let updatedContent = '';
       if (existing) {
         const parsed = parseHtmlMetadata(existing.content);
         parsed.meta.title = cleanTitle;
-        const updatedContent = generateHtmlNote(parsed.meta, parsed.content);
+        updatedContent = generateHtmlNote(parsed.meta, parsed.content);
         await this.storage.writeNote(oldPath, updatedContent);
       }
       // Perform storage rename
@@ -1266,6 +1286,23 @@ class AppState {
         this.driveMappings = mappings;
       }
 
+      // Update in-memory notes array before refreshNotes/selection to prevent transient null activeNote
+      const noteIdx = this.notes.findIndex(n => n.path === oldPath);
+      if (noteIdx !== -1) {
+        this.notes[noteIdx].path = newPath;
+        this.notes[noteIdx].name = cleanTitle;
+        if (updatedContent) {
+          this.notes[noteIdx].content = updatedContent;
+        }
+      }
+
+      // Set tracker and active path BEFORE refreshNotes to avoid transient nulls
+      this.lastRenamedPath = { oldPath, newPath };
+      if (this.activeNotePath === oldPath) {
+        this.activeNotePath = newPath;
+        this.activeNoteTitle = cleanTitle;
+      }
+
       await this.refreshNotes();
       this.selectNote(newPath);
 
@@ -1276,6 +1313,72 @@ class AppState {
     } catch (e) {
       console.error('Failed to rename note:', e);
       alert('Failed to rename note file.');
+    }
+  }
+
+  // ── Task Management Methods ──────────────────────────────────────────────
+
+  /** Scan all notes and extract tasks into allTasks */
+  refreshTasks() {
+    const tasks: TaskData[] = [];
+    for (const note of this.notes) {
+      if (!note.content) continue;
+      try {
+        const { meta, content } = parseHtmlMetadata(note.content);
+        const title = meta.title || note.name || 'Untitled';
+        const extracted = extractTasksFromHtml(note.content, title, note.path);
+        tasks.push(...extracted);
+      } catch (e) {
+        console.error(`Failed to extract tasks from ${note.path}:`, e);
+      }
+    }
+    this.allTasks = tasks;
+  }
+
+  /** Get tasks for a specific note */
+  getTasksForNote(notePath: string): TaskData[] {
+    return this.allTasks.filter(t => t.notePath === notePath);
+  }
+
+  /** Get count of open (uncompleted) tasks */
+  get openTaskCount(): number {
+    return this.allTasks.filter(t => !t.completed).length;
+  }
+
+  /** Start periodic reminder checker (call once on app init) */
+  startReminderChecker() {
+    if (this._reminderIntervalId) return;
+    this._checkReminders();
+    this._reminderIntervalId = setInterval(() => {
+      this._checkReminders();
+    }, 30000); // Check every 30 seconds
+  }
+
+  /** Stop reminder checker */
+  stopReminderChecker() {
+    if (this._reminderIntervalId) {
+      clearInterval(this._reminderIntervalId);
+      this._reminderIntervalId = null;
+    }
+  }
+
+  private _checkReminders() {
+    const now = new Date();
+    for (const task of this.allTasks) {
+      if (!task.reminder || task.completed) continue;
+      const reminderKey = `${task.notePath}:${task.position}:${task.reminder}`;
+      if (this._firedReminders.has(reminderKey)) continue;
+      const reminderTime = new Date(task.reminder);
+      if (isNaN(reminderTime.getTime())) continue;
+      if (reminderTime <= now) {
+        this._firedReminders.add(reminderKey);
+        this.showToast(
+          `Task: ${task.text}`,
+          'warning',
+          8000,
+          '🔔 Reminder'
+        );
+      }
     }
   }
 
