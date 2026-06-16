@@ -1,11 +1,95 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
   import { appState } from './lib/stores/appState.svelte';
   import AppLayout from './lib/components/AppLayout.svelte';
   import { FolderOpen, Play } from 'lucide-svelte';
   import GoogleLogo from './lib/components/GoogleLogo.svelte';
 
   let initializing = $state(true);
+
+  // Browser/Android navigation history synchronization
+  function syncStateToHash() {
+    let newHash = '';
+    if (appState.activeNotePath) {
+      newHash = `#/note/${encodeURIComponent(appState.activeNotePath)}`;
+    } else if (appState.activeTab === 'daily') {
+      newHash = `#/daily`;
+    } else if (appState.activeTab === 'library') {
+      if (appState.activeNotebook) {
+        newHash = `#/library/${encodeURIComponent(appState.activeNotebook)}`;
+      } else {
+        newHash = `#/library`;
+      }
+    } else {
+      newHash = `#/home`;
+    }
+
+    if (window.location.hash !== newHash) {
+      window.location.hash = newHash;
+    }
+  }
+
+  function syncHashToState() {
+    const hash = window.location.hash;
+
+    if (hash.startsWith('#/note/')) {
+      const notePath = decodeURIComponent(hash.slice('#/note/'.length));
+      if (appState.activeNotePath !== notePath) {
+        appState.selectNote(notePath);
+      }
+    } else {
+      if (appState.activeNotePath !== null) {
+        appState.activeNotePath = null;
+      }
+
+      if (hash.startsWith('#/library/')) {
+        const notebook = decodeURIComponent(hash.slice('#/library/'.length));
+        appState.activeTab = 'library';
+        appState.activeNotebook = notebook;
+      } else if (hash === '#/library') {
+        appState.activeTab = 'library';
+        appState.activeNotebook = null;
+      } else if (hash === '#/daily') {
+        appState.activeTab = 'daily';
+        appState.activeNotebook = null;
+      } else {
+        appState.activeTab = 'home';
+        appState.activeNotebook = null;
+      }
+    }
+  }
+
+  // 1. Event listener registration effect (runs exactly once when vaultReady transitions to true)
+  $effect(() => {
+    if (appState.vaultReady) {
+      window.addEventListener('hashchange', syncHashToState);
+      
+      // Perform initial routing on load (untracked to prevent dynamic dependency collection)
+      untrack(() => {
+        if (window.location.hash) {
+          syncHashToState();
+        } else {
+          syncStateToHash();
+        }
+      });
+
+      return () => {
+        window.removeEventListener('hashchange', syncHashToState);
+      };
+    }
+  });
+
+  // 2. Reactive state-to-hash update effect (runs when tab/note/notebook state changes)
+  $effect(() => {
+    if (appState.vaultReady) {
+      // Establish Svelte 5 reactive dependencies
+      const _tab = appState.activeTab;
+      const _notePath = appState.activeNotePath;
+      const _notebook = appState.activeNotebook;
+
+      syncStateToHash();
+    }
+  });
 
   onMount(async () => {
     // Check if we can auto-init sandbox or check active vault
