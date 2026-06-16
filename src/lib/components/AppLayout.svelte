@@ -10,7 +10,7 @@
     Home, Search, Library, Calendar, ChevronLeft, Plus, 
     FileText, Tag, FolderPlus, Compass, ArrowRight, Settings,
     X, Cloud, RefreshCw, LogOut, Palette, ChevronRight, Menu, Folder,
-    Trash2, FolderOpen, Edit3, BookOpen, FileDown, Download
+    Trash2, FolderOpen, Edit3, BookOpen, FileDown, Download, FolderInput, Code
   } from 'lucide-svelte';
   import ResizeHandle from './ResizeHandle.svelte';
 
@@ -73,6 +73,46 @@
       await appState.refreshNotes();
       appState.selectNote(dailyPath);
     }
+  }
+
+  let selectedTargetNotebook = $state<string | null>(null);
+  let newNotebookName = $state<string>('');
+
+  $effect(() => {
+    if (appState.showMoveCopyModal && appState.moveCopyNotePath) {
+      const parts = appState.moveCopyNotePath.split('/');
+      if (parts.length > 1) {
+        selectedTargetNotebook = parts.slice(0, -1).join('/');
+      } else {
+        selectedTargetNotebook = null;
+      }
+      newNotebookName = '';
+    }
+  });
+
+  async function handleCreateNotebookInModal() {
+    const name = newNotebookName.trim();
+    if (!name) return;
+    try {
+      await appState.createNotebook(name);
+      selectedTargetNotebook = name;
+      newNotebookName = '';
+      appState.showToast(`Notebook "${name}" created.`, 'success', 3000);
+    } catch (e) {
+      console.error('Failed to create notebook in modal:', e);
+    }
+  }
+
+  async function handleMoveNoteInModal() {
+    if (!appState.moveCopyNotePath) return;
+    await appState.moveNote(appState.moveCopyNotePath, selectedTargetNotebook);
+    appState.showMoveCopyModal = false;
+  }
+
+  async function handleCopyNoteInModal() {
+    if (!appState.moveCopyNotePath) return;
+    await appState.copyNote(appState.moveCopyNotePath, selectedTargetNotebook);
+    appState.showMoveCopyModal = false;
   }
 
   let fileInput = $state<HTMLInputElement>();
@@ -213,17 +253,18 @@
               </button>
             {/if}
 
-            <!-- 3. Markdown Editor Toggle (Code brackets) Button -->
+            <!-- 3. Typewriter Scroll Toggle Button -->
             {#if !appState.isReadOnly}
               <button
                 class="mobile-action-btn flex-row"
-                class:active={appState.sourceMode}
-                onclick={() => appState.setSourceMode(!appState.sourceMode)}
-                aria-label="Toggle Markdown Editor"
-                style="background: none; border: none; color: {appState.sourceMode ? 'var(--accent)' : 'var(--text-secondary)'}; padding: 4px; cursor: pointer; transition: color 0.15s;"
+                class:active={appState.typewriterScrollEnabled}
+                onclick={() => appState.setTypewriterScroll(!appState.typewriterScrollEnabled)}
+                aria-label="Toggle Typewriter Scroll"
+                style="background: none; border: none; color: {appState.typewriterScrollEnabled ? 'var(--accent)' : 'var(--text-secondary)'}; padding: 4px; cursor: pointer; transition: color 0.15s;"
+                title="Typewriter Scroll"
               >
-                <svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor">
-                  <path d="M5.854 4.854a.5.5 0 10-.708-.708l-3.5 3.5a.5.5 0 000 .708l3.5 3.5a.5.5 0 00.708-.708L2.707 8l3.147-3.146zm4.292 0a.5.5 0 01.708-.708l3.5 3.5a.5.5 0 010 .708l-3.5 3.5a.5.5 0 01-.708-.708L13.293 8l-3.147-3.146z" />
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="4" y1="12" x2="20" y2="12" stroke-dasharray="3,3"/><polyline points="8 7 12 3 16 7"/><polyline points="8 17 12 21 16 17"/>
                 </svg>
               </button>
             {/if}
@@ -274,19 +315,17 @@
                 {/if}
               </button>
 
-              <!-- 2. Typewriter Scroll Toggle -->
+              <!-- 2. Code Mode Toggle -->
               {#if !appState.isReadOnly}
                 <button
                   class="menu-item flex-row"
                   onclick={() => {
-                    appState.setTypewriterScroll(!appState.typewriterScrollEnabled);
+                    appState.setSourceMode(!appState.sourceMode);
                     showMobileMoreMenu = false;
                   }}
                 >
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="menu-item-icon" style="color: {appState.typewriterScrollEnabled ? 'var(--accent)' : 'var(--text-secondary)'}">
-                    <line x1="4" y1="12" x2="20" y2="12" stroke-dasharray="3,3"/><polyline points="8 7 12 3 16 7"/><polyline points="8 17 12 21 16 17"/>
-                  </svg>
-                  <span>Typewriter Scroll</span>
+                  <Code size={15} class="menu-item-icon" style="color: {appState.sourceMode ? 'var(--accent)' : 'var(--text-secondary)'}" />
+                  <span>Code Mode (Markdown)</span>
                 </button>
               {/if}
 
@@ -330,7 +369,23 @@
 
               <div class="menu-divider"></div>
 
-              <!-- 6. Delete Note -->
+              <!-- 6. Move / Copy Note -->
+              <button
+                class="menu-item flex-row"
+                onclick={() => {
+                  showMobileMoreMenu = false;
+                  if (appState.activeNotePath) {
+                    appState.moveCopyNotePath = appState.activeNotePath;
+                    appState.moveCopyNoteName = appState.activeNote?.name || '';
+                    appState.showMoveCopyModal = true;
+                  }
+                }}
+              >
+                <FolderInput size={15} class="menu-item-icon" />
+                <span>Move or Copy Note</span>
+              </button>
+
+              <!-- 7. Delete Note -->
               <button
                 class="menu-item flex-row delete-item"
                 onclick={() => {
@@ -837,6 +892,120 @@
         </button>
       </div>
     {/if}
+  </div>
+{/if}
+
+<!-- Move / Copy Note Modal Overlay -->
+{#if appState.showMoveCopyModal && appState.moveCopyNotePath}
+  <div 
+    class="settings-backdrop flex-row" 
+    transition:fade={{ duration: 150 }}
+    onclick={(e) => { if (e.target === e.currentTarget) appState.showMoveCopyModal = false; }} 
+    role="presentation"
+    style="z-index: 1200;"
+  >
+    <div 
+      class="settings-modal flex-col"
+      transition:fly={{ y: 20, duration: 250, easing: cubicOut }}
+      style="padding: 24px; max-height: 90vh;"
+    >
+      <div class="settings-header flex-row" style="justify-content: space-between; border-bottom: 1px solid var(--border-color); padding-bottom: 12px; margin-bottom: 12px;">
+        <div class="settings-title flex-row" style="gap: 8px; align-items: center;">
+          <FolderOpen size={20} class="sync-icon-accent" style="color: var(--accent);" />
+          <span style="font-weight: 700;">Move or Copy Note</span>
+        </div>
+        <button class="close-btn flex-row" onclick={() => appState.showMoveCopyModal = false} aria-label="Close dialog">
+          <X size={18} />
+        </button>
+      </div>
+
+      <div class="move-copy-body flex-col" style="padding: 8px 0; gap: 16px; overflow-y: auto;">
+        <div class="flex-col" style="gap: 4px;">
+          <span style="font-size: 11px; text-transform: uppercase; color: var(--text-tertiary); font-weight: 700; letter-spacing: 0.5px;">Note to organize</span>
+          <span style="font-size: 14px; font-weight: 600; color: var(--text-primary);">{appState.moveCopyNoteName}</span>
+          <span style="font-size: 12px; color: var(--text-secondary); word-break: break-all; opacity: 0.7;">Current path: {appState.moveCopyNotePath}</span>
+        </div>
+
+        <div class="flex-col" style="gap: 8px;">
+          <span style="font-size: 11px; text-transform: uppercase; color: var(--text-tertiary); font-weight: 700; letter-spacing: 0.5px;">Select Destination Notebook</span>
+          
+          <div class="notebook-select-list flex-col">
+            <!-- Root Folder Option -->
+            <button 
+              class="notebook-select-row flex-row"
+              class:selected={selectedTargetNotebook === null}
+              onclick={() => selectedTargetNotebook = null}
+            >
+              <span class="folder-icon">📂</span>
+              <span class="folder-name">Root / (No notebook)</span>
+              {#if selectedTargetNotebook === null}
+                <span class="selected-checkmark">✓</span>
+              {/if}
+            </button>
+
+            <!-- Available Notebooks -->
+            {#each appState.notebooks as notebook}
+              <button 
+                class="notebook-select-row flex-row"
+                class:selected={selectedTargetNotebook === notebook}
+                onclick={() => selectedTargetNotebook = notebook}
+              >
+                <span class="folder-icon">📁</span>
+                <span class="folder-name">{notebook}</span>
+                {#if selectedTargetNotebook === notebook}
+                  <span class="selected-checkmark">✓</span>
+                {/if}
+              </button>
+            {/each}
+          </div>
+        </div>
+
+        <!-- Create New Notebook Section -->
+        <div class="flex-col" style="gap: 8px; border-top: 1px dashed var(--border-color); padding-top: 16px;">
+          <span style="font-size: 11px; text-transform: uppercase; color: var(--text-tertiary); font-weight: 700; letter-spacing: 0.5px;">Or Create New Notebook</span>
+          <div class="flex-row" style="gap: 8px;">
+            <input 
+              type="text" 
+              placeholder="New notebook name..." 
+              bind:value={newNotebookName}
+              style="flex-grow: 1; background: var(--bg-base); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 6px; padding: 8px 12px; font-size: 13px; outline: none;"
+              onkeydown={(e) => { if (e.key === 'Enter') handleCreateNotebookInModal(); }}
+            />
+            <button 
+              class="btn-pill btn-pill-outline" 
+              style="padding: 0 16px; font-size: 12px; height: 36px;"
+              onclick={handleCreateNotebookInModal}
+            >
+              Create
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="move-copy-actions flex-row" style="justify-content: flex-end; gap: 12px; border-top: 1px solid var(--border-color); padding-top: 16px; margin-top: 16px;">
+        <button 
+          class="btn-pill btn-pill-outline" 
+          style="padding: 8px 16px; height: 38px;"
+          onclick={() => appState.showMoveCopyModal = false}
+        >
+          Cancel
+        </button>
+        <button 
+          class="btn-pill btn-pill-outline" 
+          style="padding: 8px 16px; height: 38px; color: var(--accent); border-color: var(--accent);"
+          onclick={handleCopyNoteInModal}
+        >
+          Copy Note
+        </button>
+        <button 
+          class="btn-pill btn-pill-primary" 
+          style="padding: 8px 20px; height: 38px;"
+          onclick={handleMoveNoteInModal}
+        >
+          Move Note
+        </button>
+      </div>
+    </div>
   </div>
 {/if}
 
@@ -2306,5 +2475,61 @@
   }
   .mobile-action-btn:active {
     transform: scale(0.9);
+  }
+
+  .notebook-select-list {
+    max-height: 180px;
+    overflow-y: auto;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--bg-surface);
+    display: flex;
+    flex-direction: column;
+  }
+
+  .notebook-select-row {
+    background: transparent;
+    border: none;
+    padding: 10px 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    text-align: left;
+    width: 100%;
+    color: var(--text-primary);
+    font-size: 13px;
+    transition: background-color 0.15s;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+    box-sizing: border-box;
+  }
+
+  .notebook-select-row:last-child {
+    border-bottom: none;
+  }
+
+  .notebook-select-row:hover {
+    background: var(--bg-hover);
+  }
+
+  .notebook-select-row.selected {
+    background: color-mix(in srgb, var(--accent) 10%, var(--bg-surface));
+  }
+
+  .folder-icon {
+    font-size: 16px;
+  }
+
+  .folder-name {
+    flex-grow: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .selected-checkmark {
+    color: var(--accent);
+    font-weight: bold;
+    font-size: 14px;
   }
 </style>

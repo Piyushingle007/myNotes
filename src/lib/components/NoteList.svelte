@@ -1,6 +1,6 @@
 <script lang="ts">
   import { appState } from '../stores/appState.svelte';
-  import { FileText, Plus, Trash2, Edit2, Search, Clock, CalendarDays, X, Menu } from 'lucide-svelte';
+  import { FileText, Plus, Trash2, Edit2, Search, Clock, CalendarDays, X, Menu, FolderInput } from 'lucide-svelte';
 
   let searchInput = $state('');
   
@@ -53,7 +53,12 @@
       appState.showToast('Failed to rename note', 'error');
     }
   }
-
+  function handleMoveCopyNote(path: string, currentName: string, event: Event) {
+    event.stopPropagation();
+    appState.moveCopyNotePath = path;
+    appState.moveCopyNoteName = currentName;
+    appState.showMoveCopyModal = true;
+  }
   function clearFilters() {
     appState.activeNotebook = null;
     searchInput = '';
@@ -191,6 +196,14 @@
         </div>
 
         <div class="col-actions flex-row" style="gap: 6px; align-items: center;">
+            <button 
+              class="row-move-btn" 
+              onclick={(e) => handleMoveCopyNote(note.path, note.name, e)}
+              aria-label="Move or copy note"
+              title="Move or copy note"
+            >
+              <FolderInput size={16} />
+            </button>
             <button 
               class="row-edit-btn" 
               onclick={(e) => handleRenameNote(note.path, note.name, e)}
@@ -461,7 +474,7 @@
     white-space: nowrap;
   }
 
-  .row-delete-btn, .row-edit-btn {
+  .row-delete-btn, .row-edit-btn, .row-move-btn {
     opacity: 0;
     color: var(--text-secondary);
     transition: opacity 0.2s, color 0.2s, transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.2s;
@@ -476,7 +489,8 @@
   }
 
   .note-row:hover .row-delete-btn,
-  .note-row:hover .row-edit-btn {
+  .note-row:hover .row-edit-btn,
+  .note-row:hover .row-move-btn {
     opacity: 1;
   }
 
@@ -490,6 +504,12 @@
     color: var(--accent);
     background-color: rgba(255, 255, 255, 0.05);
     transform: scale(1.15) rotate(-5deg);
+  }
+
+  .row-move-btn:hover {
+    color: var(--accent);
+    background-color: rgba(255, 255, 255, 0.05);
+    transform: scale(1.15) translateY(-2px);
   }
 
   .empty-state {

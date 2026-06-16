@@ -878,4 +878,49 @@
 		background: var(--accent) !important;
 		color: #000000 !important;
 	}
+
+	@media (max-width: 600px) {
+		.metrics-card-header {
+			padding: 8px 12px;
+		}
+		.metrics-card-body {
+			padding: 8px 4px;
+		}
+		.metrics-card-row {
+			gap: 4px;
+			padding: 4px;
+		}
+		.row-drag-handle-btn {
+			display: none !important;
+		}
+		.row-label-input {
+			font-size: 12px;
+			padding: 2px;
+		}
+		.row-value-input {
+			max-width: 70px;
+			font-size: 12px;
+			padding: 2px;
+		}
+		.row-delete-action {
+			opacity: 1 !important; /* Always show delete action on touch devices */
+			padding: 4px;
+		}
+		.metrics-card-footer {
+			padding: 8px 12px;
+		}
+		.stats-grid {
+			grid-template-columns: repeat(auto-fit, minmax(75px, 1fr));
+			gap: 4px;
+		}
+		.stat-badge {
+			padding: 4px 6px;
+		}
+		.badge-label {
+			font-size: 9px;
+		}
+		.badge-value {
+			font-size: 11px;
+		}
+	}
 </style>

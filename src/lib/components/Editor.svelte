@@ -961,7 +961,7 @@
 	let showBubbleMenu = $derived(!!bubbleMenuCoords && !$readOnly && !$sourceMode);
 
 	function updateBubbleMenu() {
-		if (!editor || editor.state.selection.empty || $readOnly || $sourceMode) {
+		if (!editor || editor.state.selection.empty || !(editor.state.selection instanceof TextSelection) || $readOnly || $sourceMode) {
 			bubbleMenuCoords = null;
 			return;
 		}
@@ -2291,22 +2291,30 @@
 				};
 				render();
 				let lastTap = 0;
-				let tapTimeout: any = null;
+				let lastTouchTime = 0;
 
-				const handleTap = (e: Event, clientX: number, clientY: number) => {
+				const handleTap = (e: Event, isTouch: boolean) => {
 					const target = e.target as HTMLElement;
 					if (target.closest('button') || target.closest('.mermaid-render-toolbar') || target.closest('input') || target.closest('a')) {
 						return;
 					}
 
-					e.preventDefault();
-					e.stopPropagation();
-
 					const now = Date.now();
+
+					// Throttle simulated/emulated mousedown events that follow touchstart on mobile
+					if (!isTouch && now - lastTouchTime < 800) {
+						return;
+					}
+
+					if (isTouch) {
+						lastTouchTime = now;
+					}
+
 					const DOUBLE_PRESS_DELAY = 300;
 
 					if (now - lastTap < DOUBLE_PRESS_DELAY) {
-						if (tapTimeout) clearTimeout(tapTimeout);
+						e.preventDefault();
+						e.stopPropagation();
 						const pos = typeof getPos === 'function' ? getPos() : null;
 						if (pos !== null && pos !== undefined) {
 							openDiagramEditor(pos, node.attrs.data || '');
@@ -2314,35 +2322,18 @@
 						lastTap = 0;
 					} else {
 						lastTap = now;
-						tapTimeout = setTimeout(() => {
-							const pos = typeof getPos === 'function' ? getPos() : null;
-							if (pos !== null && pos !== undefined) {
-								const currentSize = node.attrs.size || 'medium';
-								const currentAlign = node.attrs.align || 'center';
-								const toolbarW = 280;
-								const toolbarH = 38;
-								const x = Math.min(clientX, window.innerWidth - toolbarW - 8);
-								const y = Math.min(clientY, window.innerHeight - toolbarH - 8);
-								if (diagramToolbar && diagramToolbar.pos === pos) {
-									diagramToolbar = null;
-								} else {
-									diagramToolbar = { pos, x, y, size: currentSize, align: currentAlign };
-								}
-							}
-						}, DOUBLE_PRESS_DELAY);
 					}
 				};
 
 				dom.addEventListener('mousedown', (e) => {
 					if (e.button === 2) return; // Ignore right clicks
-					handleTap(e, e.clientX, e.clientY);
+					handleTap(e, false);
 				});
 
 				dom.addEventListener('touchstart', (e) => {
 					if (e.touches.length > 1) return;
-					const touch = e.touches[0];
-					handleTap(e, touch.clientX, touch.clientY);
-				}, { passive: false });
+					handleTap(e, true);
+				});
 				return {
 					dom,
 					update(updatedNode: any) {
@@ -5243,20 +5234,25 @@
 		};
 	});
 
-	// Close formatting dropdowns when clicking outside the formatting bar or export dropdown
+	// Close formatting dropdowns when clicking/tapping outside the formatting bar or export dropdown
 	$effect(() => {
 		if (!anyDropdownOpen) return;
-		function onClickAway(e: MouseEvent) {
+		function onClickAway(e: Event) {
 			const bar = document.querySelector('.editor-formatting-bar');
 			const exp = document.querySelector('.export-dropdown-wrap');
-			const isInsideBar = bar && bar.contains(e.target as Node);
-			const isInsideExp = exp && exp.contains(e.target as Node);
+			const targetNode = e.target as Node;
+			const isInsideBar = bar && bar.contains(targetNode);
+			const isInsideExp = exp && exp.contains(targetNode);
 			if (!isInsideBar && !isInsideExp) {
 				closeAllDropdowns();
 			}
 		}
 		document.addEventListener('mousedown', onClickAway);
-		return () => document.removeEventListener('mousedown', onClickAway);
+		document.addEventListener('touchstart', onClickAway);
+		return () => {
+			document.removeEventListener('mousedown', onClickAway);
+			document.removeEventListener('touchstart', onClickAway);
+		};
 	});
 
 	// Close in-note search when switching notes
@@ -5758,12 +5754,22 @@
 			const node = editor.state.doc.nodeAt(pos);
 			const currentSize = node?.attrs.size || 'full';
 			const imgSrc = node?.attrs.src || (target as HTMLImageElement).src || '';
-			const toolbarW = isMobile ? 130 : 250;
+			
+			const rect = target.getBoundingClientRect();
+			const toolbarW = isMobile ? 320 : 250;
 			const toolbarH = 38;
-			const x = Math.min(event.clientX, window.innerWidth - toolbarW - 8);
-			const y = Math.min(event.clientY, window.innerHeight - toolbarH - 8);
+			
+			let x = rect.left + (rect.width - toolbarW) / 2;
+			x = Math.max(8, Math.min(x, window.innerWidth - toolbarW - 8));
+			
+			let y = rect.bottom + 8;
+			if (y + toolbarH > window.innerHeight) {
+				y = rect.top - toolbarH - 8;
+			}
+			y = Math.max(8, Math.min(y, window.innerHeight - toolbarH - 8));
+
 			imageToolbar = { pos, x, y, size: currentSize, src: imgSrc };
-			// Move cursor after the image to clear ProseMirror's node selection highlight
+			
 			const afterPos = pos + (node?.nodeSize || 1);
 			editor.chain().setTextSelection(afterPos).run();
 			return;
@@ -5785,10 +5791,20 @@
 			const node = editor.state.doc.nodeAt(pos);
 			const currentSize = node?.attrs.size || 'medium';
 			const currentAlign = node?.attrs.align || 'center';
-			const toolbarW = 280;
+			
+			const rect = diagramEl.getBoundingClientRect();
+			const toolbarW = isMobile ? 320 : 280;
 			const toolbarH = 38;
-			const x = Math.min(event.clientX, window.innerWidth - toolbarW - 8);
-			const y = Math.min(event.clientY, window.innerHeight - toolbarH - 8);
+			
+			let x = rect.left + (rect.width - toolbarW) / 2;
+			x = Math.max(8, Math.min(x, window.innerWidth - toolbarW - 8));
+			
+			let y = rect.bottom + 8;
+			if (y + toolbarH > window.innerHeight) {
+				y = rect.top - toolbarH - 8;
+			}
+			y = Math.max(8, Math.min(y, window.innerHeight - toolbarH - 8));
+
 			diagramToolbar = { pos, x, y, size: currentSize, align: currentAlign };
 			if (!isMobile) {
 				const afterPos = pos + (node?.nodeSize || 1);
@@ -7914,7 +7930,8 @@
 											class="table-picker-cell"
 											class:active={r < tablePickerHover.rows && c < tablePickerHover.cols}
 											onmouseenter={() => tablePickerHover = { rows: r + 1, cols: c + 1 }}
-											onclick={() => insertTable(r + 1, c + 1)}
+											onmousedown={(e) => { e.preventDefault(); insertTable(r + 1, c + 1); }}
+											ontouchstart={(e) => { e.preventDefault(); insertTable(r + 1, c + 1); }}
 										></div>
 									{/each}
 								{/each}
@@ -8346,7 +8363,7 @@
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div class="img-toolbar-overlay" onclick={() => (imageToolbar = null)}>
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
-		<div class="img-toolbar" class:mobile={isMobile} style={isMobile ? '' : `left: {imageToolbar.x}px; top: {imageToolbar.y}px`} onclick={(e) => e.stopPropagation()}>
+		<div class="img-toolbar" class:mobile={isMobile} style="left: {imageToolbar.x}px; top: {imageToolbar.y}px" onclick={(e) => e.stopPropagation()}>
 			<button class:active={imageToolbar.size === 'small'} onclick={() => setImageSize('small')} title="Small (33%)">S</button>
 			<button class:active={imageToolbar.size === 'medium'} onclick={() => setImageSize('medium')} title="Medium (50%)">M</button>
 			<button class:active={imageToolbar.size === 'full'} onclick={() => setImageSize('full')} title="Full width">L</button>
@@ -8367,7 +8384,7 @@
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div class="img-toolbar-overlay" onclick={() => (diagramToolbar = null)}>
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
-		<div class="img-toolbar" class:mobile={isMobile} style={isMobile ? '' : `left: {diagramToolbar.x}px; top: {diagramToolbar.y}px`} onclick={(e) => e.stopPropagation()}>
+		<div class="img-toolbar" class:mobile={isMobile} style="left: {diagramToolbar.x}px; top: {diagramToolbar.y}px" onclick={(e) => e.stopPropagation()}>
 			<!-- Sizing options -->
 			<button class:active={diagramToolbar.size === 'small'} onclick={() => setDiagramSize('small')} title="Small (33%)">S</button>
 			<button class:active={diagramToolbar.size === 'medium'} onclick={() => setDiagramSize('medium')} title="Medium (65%)">M</button>
@@ -8550,6 +8567,7 @@
 									class:active={r < slashTableHover.rows && c < slashTableHover.cols}
 									onmouseenter={() => slashTableHover = { rows: r + 1, cols: c + 1 }}
 									onmousedown={(e) => { e.preventDefault(); slashInsertTable(r + 1, c + 1); }}
+									ontouchstart={(e) => { e.preventDefault(); slashInsertTable(r + 1, c + 1); }}
 								></div>
 							{/each}
 						{/each}
@@ -11510,11 +11528,6 @@
 	}
 
 	.img-toolbar.mobile {
-		left: 50% !important;
-		right: auto !important;
-		bottom: 80px !important;
-		top: auto !important;
-		transform: translateX(-50%) !important;
 		width: calc(100% - 32px) !important;
 		max-width: 320px !important;
 		justify-content: space-around !important;
@@ -13172,15 +13185,30 @@
 		margin: 0 2px;
 	}
 
-	.editor-container.mobile .fmt-dropdown {
-		position: absolute;
-		bottom: calc(100% + 4px);
-		left: 0;
-		right: auto;
-		min-width: 180px;
-		max-width: calc(100vw - 16px);
-		max-height: 60vh;
+	.editor-container.mobile .fmt-dropdown,
+	.editor-container.mobile .insert-dropdown {
+		position: fixed !important;
+		bottom: calc(48px + env(safe-area-inset-bottom)) !important;
+		left: 50% !important;
+		transform: translateX(-50%) !important;
+		right: auto !important;
+		width: calc(100vw - 32px) !important;
+		max-width: 280px !important;
+		max-height: 50vh;
 		overflow-y: auto;
+		z-index: 2000 !important;
+		box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.2), 0 4px 16px rgba(0, 0, 0, 0.2) !important;
+		background: var(--bg-surface) !important;
+		border: 1px solid var(--border-color) !important;
+		border-radius: 8px !important;
+	}
+
+	.editor-container.mobile .table-picker-dropdown {
+		max-width: 220px !important;
+	}
+
+	.editor-container.mobile .color-picker-dropdown {
+		max-width: 240px !important;
 	}
 
 	.editor-container.mobile .fmt-dropdown button {

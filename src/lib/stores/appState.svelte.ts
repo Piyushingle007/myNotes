@@ -211,6 +211,11 @@ class AppState {
   focusModeEnabled = $state<boolean>(localStorage.getItem('mynotes_focus_mode') === 'true');
   typewriterScrollEnabled = $state<boolean>(localStorage.getItem('mynotes_typewriter_scroll') === 'true');
 
+  // Move/Copy Note Dialog States
+  showMoveCopyModal = $state<boolean>(false);
+  moveCopyNotePath = $state<string | null>(null);
+  moveCopyNoteName = $state<string>('');
+
   showToast(message: string, type: 'success' | 'info' | 'error' | 'warning' = 'info', duration = 4000, title?: string, loading = false): string {
     const id = Math.random().toString(36).substring(2, 9);
     const newToast: Toast = { id, message, type, title, loading, duration };
@@ -1315,6 +1320,126 @@ class AppState {
     } catch (e) {
       console.error('Failed to rename note:', e);
       alert('Failed to rename note file.');
+    }
+  }
+
+  async moveNote(oldPath: string, targetNotebook: string | null) {
+    const filename = oldPath.split('/').pop() || '';
+    if (!filename) return;
+
+    const newPath = targetNotebook 
+      ? `${targetNotebook}/${filename}`
+      : filename;
+
+    if (newPath === oldPath) return;
+
+    if (this.notes.some(n => n.path === newPath)) {
+      alert('A note with this name already exists in the destination notebook.');
+      return;
+    }
+
+    try {
+      if (this.activeNotePath === oldPath) {
+        if (this.onForceSave) {
+          await this.onForceSave();
+        } else {
+          await this.saveActiveNote(true);
+        }
+      }
+
+      // Read note, update its meta.id to newPath, write back, rename note
+      const notes = await this.storage.listNotes();
+      const existing = notes.find(n => n.path === oldPath);
+      let updatedContent = '';
+      if (existing) {
+        const parsed = parseHtmlMetadata(existing.content);
+        parsed.meta.id = newPath;
+        updatedContent = generateHtmlNote(parsed.meta, parsed.content);
+        await this.storage.writeNote(oldPath, updatedContent);
+      }
+
+      await this.storage.renameNote(oldPath, newPath);
+
+      if (this.favorites.includes(oldPath)) {
+        this.favorites = this.favorites.map(p => p === oldPath ? newPath : p);
+        localStorage.setItem('mynotes_favorites', JSON.stringify(this.favorites));
+      }
+
+      const mappings = JSON.parse(localStorage.getItem('mynotes_drive_mappings') || '{}');
+      if (mappings[oldPath]) {
+        mappings[newPath] = mappings[oldPath];
+        delete mappings[oldPath];
+        localStorage.setItem('mynotes_drive_mappings', JSON.stringify(mappings));
+        this.driveMappings = mappings;
+      }
+
+      const noteIdx = this.notes.findIndex(n => n.path === oldPath);
+      if (noteIdx !== -1) {
+        this.notes[noteIdx].path = newPath;
+        if (updatedContent) {
+          this.notes[noteIdx].content = updatedContent;
+        }
+      }
+
+      this.lastRenamedPath = { oldPath, newPath };
+      if (this.activeNotePath === oldPath) {
+        this.activeNotePath = newPath;
+      }
+
+      await this.refreshNotes();
+      this.selectNote(newPath);
+      this.showToast(`Moved note to ${targetNotebook || 'Root folder'}.`, 'success', 3000);
+
+      if (this.syncEnabled && this.googleConnected) {
+        this.syncNotes();
+      }
+    } catch (e) {
+      console.error('Failed to move note:', e);
+      alert('Failed to move note.');
+    }
+  }
+
+  async copyNote(notePath: string, targetNotebook: string | null) {
+    const filenameWithExt = notePath.split('/').pop() || '';
+    if (!filenameWithExt) return;
+
+    const extIdx = filenameWithExt.lastIndexOf('.');
+    const baseName = extIdx !== -1 ? filenameWithExt.substring(0, extIdx) : filenameWithExt;
+    const ext = extIdx !== -1 ? filenameWithExt.substring(extIdx) : '.html';
+
+    let targetTitle = baseName;
+    let newPath = targetNotebook ? `${targetNotebook}/${targetTitle}${ext}` : `${targetTitle}${ext}`;
+
+    let version = 1;
+    while (this.notes.some(n => n.path === newPath)) {
+      targetTitle = `${baseName} Copy${version > 1 ? ' ' + version : ''}`;
+      newPath = targetNotebook ? `${targetNotebook}/${targetTitle}${ext}` : `${targetTitle}${ext}`;
+      version++;
+    }
+
+    try {
+      const notes = await this.storage.listNotes();
+      const existing = notes.find(n => n.path === notePath);
+      if (!existing) return;
+
+      const parsed = parseHtmlMetadata(existing.content);
+      parsed.meta.id = newPath;
+      parsed.meta.title = targetTitle;
+      parsed.meta.created = new Date().toISOString();
+      parsed.meta.modified = new Date().toISOString();
+
+      const newContent = generateHtmlNote(parsed.meta, parsed.content);
+      await this.storage.writeNote(newPath, newContent);
+      await this.refreshNotes();
+      this.selectNote(newPath);
+      this.showToast(`Copied note as "${targetTitle}" to ${targetNotebook || 'Root folder'}.`, 'success', 3000);
+
+      if (this.syncEnabled && this.googleConnected) {
+        this.syncNotes();
+      }
+    } catch (e) {
+      console.error('Failed to copy note:', e);
+      alert('Failed to copy note.');
     }
   }
 
