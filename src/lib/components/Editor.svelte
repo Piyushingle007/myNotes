@@ -5,15 +5,7 @@
 	import { Editor } from '@tiptap/core';
 	import StarterKit from '@tiptap/starter-kit';
 	import Placeholder from '@tiptap/extension-placeholder';
-	import TaskList from '@tiptap/extension-task-list';
-	import TaskItemExtended from '../extensions/TaskItemExtended';
-	import { 
-		todayStr, 
-		tomorrowStr, 
-		formatDueDate, 
-		formatReminder, 
-		priorityColor 
-	} from '../utils/taskTypes';
+
 	import { Table } from '@tiptap/extension-table';
 	import { TableRow } from '@tiptap/extension-table-row';
 	import { TableCell } from '@tiptap/extension-table-cell';
@@ -410,8 +402,27 @@
 
 
 	$effect(() => {
+		readOnly.set(appState.isReadOnly);
+	});
+
+	$effect(() => {
+		const unsubscribe = readOnly.subscribe(val => {
+			if (appState.isReadOnly !== val) {
+				appState.isReadOnly = val;
+			}
+		});
+		return unsubscribe;
+	});
+
+	$effect(() => {
+		sourceMode.set(appState.sourceMode);
+	});
+
+	$effect(() => {
 		const unsubscribe = sourceMode.subscribe(val => {
-			localStorage.setItem('mynotes_editor_source_mode', String(val));
+			if (appState.sourceMode !== val) {
+				appState.setSourceMode(val);
+			}
 		});
 		return unsubscribe;
 	});
@@ -500,6 +511,40 @@
 			const path = $activeNotePath;
 			$activeNotePath = null;
 			await appState.deleteNote(path);
+		}
+	}
+
+	async function updateNoteTitle(newTitle: string) {
+		if ($activeNote && $activeNotePath) {
+			const oldPath = $activeNotePath;
+			$activeNote.meta.title = newTitle;
+			if (titleWasStripped) strippedTitle = newTitle;
+			$editorDirty = true;
+			await forceSave();
+			const filename = oldPath.split('/').pop() ?? '';
+			const stem = filename.replace(/\.md$/, '');
+			if (stem !== newTitle) {
+				try {
+					const newPath = await renameNote(oldPath, newTitle);
+					loadedPath = newPath;
+					$activeNotePath = newPath;
+					notes.update(list => list.map(n =>
+						n.path === oldPath
+							? { ...n, path: newPath, relative_path: n.relative_path.replace(/[^/]+$/, newTitle + '.md'), meta: { ...n.meta, title: newTitle } }
+							: n
+					));
+					refreshWikiLinkTitles();
+				} catch (err) {
+					console.error('Failed to rename note file:', err);
+					notes.update(list => list.map(n =>
+						n.path === oldPath ? { ...n, meta: { ...n.meta, title: newTitle } } : n
+					));
+				}
+			} else {
+				notes.update(list => list.map(n =>
+					n.path === oldPath ? { ...n, meta: { ...n.meta, title: newTitle } } : n
+				));
+			}
 		}
 	}
 
@@ -892,101 +937,6 @@
 	let editorState = $state(0);
 	let editorStateRaf = 0; // RAF handle for batching toolbar updates
 
-	let showTaskDetailModal = $state(false);
-	let taskBarCoords = $state<{ x: number; y: number } | null>(null);
-
-	function updateTaskBarMenu() {
-		if (!editor || !activeTaskItem || $readOnly || $sourceMode) {
-			taskBarCoords = null;
-			return;
-		}
-		
-		try {
-			const pos = activeTaskItem.pos;
-			const editorBody = document.querySelector('.editor-body') as HTMLElement | null;
-			if (!editorBody) return;
-			const rect = editorBody.getBoundingClientRect();
-			
-			const activeElement = editor.view.nodeDOM(pos) as HTMLElement | null;
-			if (!activeElement) return;
-			const activeRect = activeElement.getBoundingClientRect();
-			
-			const computedStyle = window.getComputedStyle(editorBody);
-			const paddingTop = parseFloat(computedStyle.paddingTop) || 0;
-			const paddingLeft = parseFloat(computedStyle.paddingLeft) || 0;
-			const borderTop = parseFloat(computedStyle.borderTopWidth) || 0;
-			const borderLeft = parseFloat(computedStyle.borderLeftWidth) || 0;
-
-			if (isMobile) {
-				const left = activeRect.left;
-				const top = activeRect.top;
-				const x = left - rect.left - borderLeft - paddingLeft + editorBody.scrollLeft;
-				const y = top - rect.top - borderTop - paddingTop + editorBody.scrollTop - 44; // 44px above task
-				const clampedX = Math.max(10, Math.min(x, rect.width - 380));
-				taskBarCoords = { x: clampedX, y };
-			} else {
-				// Inline on the right side of the active task row
-				const y = activeRect.top - rect.top - borderTop - paddingTop + editorBody.scrollTop + (activeRect.height - 38) / 2;
-				const x = activeRect.right - rect.left - borderLeft - paddingLeft + editorBody.scrollLeft - 390;
-				const clampedX = Math.max(10, Math.min(x, rect.width - 390));
-				taskBarCoords = { x: clampedX, y };
-			}
-		} catch (e) {
-			taskBarCoords = null;
-		}
-	}
-
-	$effect(() => {
-		const _ = activeTaskItem;
-		tick().then(() => {
-			updateTaskBarMenu();
-		});
-	});
-
-	let activeTaskItem = $derived.by(() => {
-		const _ = editorState; // depend on editorState
-		if (!editor) return null;
-		const { selection } = editor.state;
-		const fromNode = selection.$from;
-		for (let depth = fromNode.depth; depth >= 0; depth--) {
-			const node = fromNode.node(depth);
-			if (node.type.name === 'taskItem') {
-				return {
-					pos: fromNode.before(depth),
-					attrs: node.attrs as {
-						checked: boolean;
-						dueDate: string | null;
-						priority: 'low' | 'medium' | 'high' | null;
-						flagged: boolean;
-						reminder: string | null;
-					},
-					text: node.textContent
-				};
-			}
-		}
-		return null;
-	});
-
-	function updateActiveTaskMeta(attrs: {
-		checked?: boolean;
-		dueDate?: string | null;
-		priority?: 'low' | 'medium' | 'high' | null;
-		flagged?: boolean;
-		reminder?: string | null;
-	}) {
-		if (!editor || !activeTaskItem) return;
-		(editor.commands as any).setTaskMeta(attrs);
-		// Force refresh task list in appState
-		editorState++;
-		autoSave();
-	}
-
-	function deleteActiveTask() {
-		if (!editor || !activeTaskItem) return;
-		editor.chain().focus().deleteNode('taskItem').run();
-		editorState++;
-		autoSave();
-	}
 
 	// AI
 	let aiMenu = $state<{ x: number; y: number } | null>(null);
@@ -1133,14 +1083,7 @@
 				category: 'insert',
 				badge: 'New'
 			},
-			{
-				label: 'Checklist',
-				description: 'Insert an interactive task list item',
-				aliases: ['checklist', 'checkbox', 'todo', 'check', 'task'],
-				icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="6" height="6" rx="1"/><path d="M5 8l1.5 1.5L9 7"/><line x1="13" y1="8" x2="21" y2="8"/><rect x="3" y="14" width="6" height="6" rx="1"/><line x1="13" y1="17" x2="21" y2="17"/></svg>',
-				action: () => editor?.chain().focus().toggleTaskList().run(),
-				category: 'insert'
-			},
+
 			{
 				label: 'Bullet List',
 				description: 'Start a bulleted list',
@@ -2337,12 +2280,59 @@
 					dom.innerHTML = inner || '<div class="diagram-empty">✎ Empty diagram — double-click to edit</div>';
 				};
 				render();
-				dom.addEventListener('dblclick', (e) => {
+				let lastTap = 0;
+				let tapTimeout: any = null;
+
+				const handleTap = (e: Event, clientX: number, clientY: number) => {
+					const target = e.target as HTMLElement;
+					if (target.closest('button') || target.closest('.mermaid-render-toolbar') || target.closest('input') || target.closest('a')) {
+						return;
+					}
+
 					e.preventDefault();
 					e.stopPropagation();
-					const pos = typeof getPos === 'function' ? getPos() : null;
-					if (pos !== null && pos !== undefined) openDiagramEditor(pos, node.attrs.data || '');
+
+					const now = Date.now();
+					const DOUBLE_PRESS_DELAY = 300;
+
+					if (now - lastTap < DOUBLE_PRESS_DELAY) {
+						if (tapTimeout) clearTimeout(tapTimeout);
+						const pos = typeof getPos === 'function' ? getPos() : null;
+						if (pos !== null && pos !== undefined) {
+							openDiagramEditor(pos, node.attrs.data || '');
+						}
+						lastTap = 0;
+					} else {
+						lastTap = now;
+						tapTimeout = setTimeout(() => {
+							const pos = typeof getPos === 'function' ? getPos() : null;
+							if (pos !== null && pos !== undefined) {
+								const currentSize = node.attrs.size || 'medium';
+								const currentAlign = node.attrs.align || 'center';
+								const toolbarW = 280;
+								const toolbarH = 38;
+								const x = Math.min(clientX, window.innerWidth - toolbarW - 8);
+								const y = Math.min(clientY, window.innerHeight - toolbarH - 8);
+								if (diagramToolbar && diagramToolbar.pos === pos) {
+									diagramToolbar = null;
+								} else {
+									diagramToolbar = { pos, x, y, size: currentSize, align: currentAlign };
+								}
+							}
+						}, DOUBLE_PRESS_DELAY);
+					}
+				};
+
+				dom.addEventListener('mousedown', (e) => {
+					if (e.button === 2) return; // Ignore right clicks
+					handleTap(e, e.clientX, e.clientY);
 				});
+
+				dom.addEventListener('touchstart', (e) => {
+					if (e.touches.length > 1) return;
+					const touch = e.touches[0];
+					handleTap(e, touch.clientX, touch.clientY);
+				}, { passive: false });
 				return {
 					dom,
 					update(updatedNode: any) {
@@ -5118,22 +5108,9 @@
 						if (node.type.name === 'detailsSummary') return 'Section title...';
 						if (node.type.name === 'detailsContent') return 'Content...';
 						if (node.type.name === 'codeBlock') return '';
-						try {
-							const resolvedPos = editor.state.doc.resolve(pos);
-							let isInsideTask = false;
-							for (let depth = resolvedPos.depth; depth >= 0; depth--) {
-								if (resolvedPos.node(depth).type.name === 'taskItem') {
-									isInsideTask = true;
-									break;
-								}
-							}
-							if (isInsideTask) return 'Untitled task';
-						} catch (e) {}
 						return 'Start writing...';
 					},
 				}),
-				TaskList,
-				TaskItemExtended.configure({ nested: true }),
 				Table.configure({ resizable: true }),
 				TableRow,
 				CustomTableCell,
@@ -5390,11 +5367,9 @@
 				if (!isMobile || slashMenu || slashTypedByUser) updateSlashMenu();
 				if (!isMobile || wikiLinkMenu || wikiLinkTypedByUser) updateWikiLinkMenu();
 				updateBubbleMenu();
-				updateTaskBarMenu();
 			},
 			onBlur: () => {
 				bubbleMenuCoords = null;
-				taskBarCoords = null;
 			},
 			onUpdate: () => {
 				if (ignoreNextUpdate || isLoadingNote) {
@@ -5568,6 +5543,9 @@
 
 		const diagramEl = target.closest('.diagram-block') as HTMLElement | null;
 		if (diagramEl && editor) {
+			if (target.closest('button') || target.closest('.mermaid-render-toolbar')) {
+				return;
+			}
 			imageToolbar = null;
 			event.preventDefault();
 			event.stopPropagation();
@@ -5584,8 +5562,10 @@
 			const x = Math.min(event.clientX, window.innerWidth - toolbarW - 8);
 			const y = Math.min(event.clientY, window.innerHeight - toolbarH - 8);
 			diagramToolbar = { pos, x, y, size: currentSize, align: currentAlign };
-			const afterPos = pos + (node?.nodeSize || 1);
-			editor.chain().setTextSelection(afterPos).run();
+			if (!isMobile) {
+				const afterPos = pos + (node?.nodeSize || 1);
+				editor.chain().setTextSelection(afterPos).run();
+			}
 			return;
 		}
 
@@ -5895,10 +5875,6 @@
 		closeTextContextMenu();
 	}
 
-	function ctxTaskList() {
-		editor?.chain().focus().toggleTaskList().run();
-		closeTextContextMenu();
-	}
 
 	// ── AI Actions ──
 
@@ -6599,7 +6575,7 @@
 				{/if}
 			</div>
 		{/if}
-		{#if !$viewerNote}
+		{#if !$viewerNote && !isMobile}
 		<div class="editor-toolbar" class:mobile={isMobile}>
 			<div class="editor-title" style="display: flex; align-items: center; gap: 8px; width: 100%;">
 				<input
@@ -6617,45 +6593,7 @@
 							editor?.commands.focus('start');
 						}
 					}}
-					onchange={async (e) => {
-						if ($activeNote && $activeNotePath) {
-							const newTitle = (e.target as HTMLInputElement).value.trim();
-							if (!newTitle) return;
-							const oldPath = $activeNotePath;
-							$activeNote.meta.title = newTitle;
-							// Update stripped title so restoreTitleH1 uses the new title
-							if (titleWasStripped) strippedTitle = newTitle;
-							$editorDirty = true;
-							// Force save current editor content before renaming so disk is up-to-date
-							await forceSave();
-							// Rename file on disk if filename doesn't match the new title
-							const filename = oldPath.split('/').pop() ?? '';
-							const stem = filename.replace(/\.md$/, '');
-							if (stem !== newTitle) {
-								try {
-									const newPath = await renameNote(oldPath, newTitle);
-									loadedPath = newPath;
-									$activeNotePath = newPath;
-									notes.update(list => list.map(n =>
-										n.path === oldPath
-											? { ...n, path: newPath, relative_path: n.relative_path.replace(/[^/]+$/, newTitle + '.md'), meta: { ...n.meta, title: newTitle } }
-											: n
-									));
-									// Refresh wiki-link titles cache so links resolve to renamed note
-									refreshWikiLinkTitles();
-								} catch (err) {
-									console.error('Failed to rename note file:', err);
-									notes.update(list => list.map(n =>
-										n.path === oldPath ? { ...n, meta: { ...n.meta, title: newTitle } } : n
-									));
-								}
-							} else {
-								notes.update(list => list.map(n =>
-									n.path === oldPath ? { ...n, meta: { ...n.meta, title: newTitle } } : n
-								));
-							}
-						}
-					}}
+					onchange={(e) => updateNoteTitle(e.currentTarget.value)}
 				/>
 				{#if isMobile}
 					<button
@@ -7105,6 +7043,18 @@
 			<div class="editor-body-row">
 			<div class="editor-body" class:readonly={$readOnly} class:focus-mode-active={!$readOnly && appState.focusModeEnabled} class:typewriter-active={!$readOnly && appState.typewriterScrollEnabled}>
 				{#if isMobile}
+					<div class="mobile-note-title-container" class:focus-mode={appState.focusModeEnabled}>
+						<input
+							type="text"
+							readonly={$readOnly}
+							value={$activeNote.meta.title}
+							placeholder="Title"
+							class="mobile-note-title-input"
+							onchange={(e) => updateNoteTitle(e.currentTarget.value)}
+						/>
+					</div>
+				{/if}
+				{#if isMobile}
 					<!-- Mobile: both views always in DOM, toggled via display to avoid slow editor re-creation -->
 					<textarea
 						class="source-editor"
@@ -7291,121 +7241,7 @@
 					</div>
 				{/if}
 
-				<!-- Floating Task Action Bar (HUD) -->
-				{#if activeTaskItem && !$readOnly && taskBarCoords}
-					<!-- svelte-ignore a11y_no_static_element_interactions -->
-					<div class="task-action-bar-hud flex-row" style="left: {taskBarCoords.x}px; top: {taskBarCoords.y}px;" onclick={(e) => e.stopPropagation()}>
-						<!-- Quick Date options -->
-						<button 
-							class="task-bar-capsule" 
-							class:active={activeTaskItem.attrs.dueDate === todayStr()}
-							onclick={() => updateActiveTaskMeta({ dueDate: activeTaskItem.attrs.dueDate === todayStr() ? null : todayStr() })}
-						>Today</button>
-						<button 
-							class="task-bar-capsule" 
-							class:active={activeTaskItem.attrs.dueDate === tomorrowStr()}
-							onclick={() => updateActiveTaskMeta({ dueDate: activeTaskItem.attrs.dueDate === tomorrowStr() ? null : tomorrowStr() })}
-						>Tomorrow</button>
 
-						<!-- Custom Date Picker -->
-						<div class="task-icon-btn-wrap">
-							<button class="task-bar-icon-btn" class:active={!!activeTaskItem.attrs.dueDate} title="Due Date">
-								<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-									<rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
-									<line x1="16" y1="2" x2="16" y2="6"/>
-									<line x1="8" y1="2" x2="8" y2="6"/>
-									<line x1="3" y1="10" x2="21" y2="10"/>
-								</svg>
-								<input 
-									type="date" 
-									class="task-overlay-input" 
-									value={activeTaskItem.attrs.dueDate || ''}
-									onchange={(e) => updateActiveTaskMeta({ dueDate: (e.target as HTMLInputElement).value || null })}
-								/>
-							</button>
-							{#if activeTaskItem.attrs.dueDate}
-								<span class="task-badge-label">{formatDueDate(activeTaskItem.attrs.dueDate)}</span>
-							{/if}
-						</div>
-
-						<!-- Repeat Button -->
-						<button class="task-bar-icon-btn" title="Repeat (future)">
-							<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-								<path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
-							</svg>
-						</button>
-
-						<!-- Reminder picker -->
-						<div class="task-icon-btn-wrap">
-							<button class="task-bar-icon-btn" class:active={!!activeTaskItem.attrs.reminder} title="Set Reminder">
-								<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-									<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
-									<path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-								</svg>
-								<input 
-									type="datetime-local" 
-									class="task-overlay-input"
-									value={activeTaskItem.attrs.reminder ? activeTaskItem.attrs.reminder.substring(0, 16) : ''}
-									onchange={(e) => {
-										const val = (e.target as HTMLInputElement).value;
-										updateActiveTaskMeta({ reminder: val ? new Date(val).toISOString() : null });
-									}}
-								/>
-							</button>
-							{#if activeTaskItem.attrs.reminder}
-								<span class="task-badge-label">{formatReminder(activeTaskItem.attrs.reminder)}</span>
-							{/if}
-						</div>
-
-						<!-- Flag / Star Toggle -->
-						<button 
-							class="task-bar-icon-btn" 
-							class:active={activeTaskItem.attrs.flagged}
-							onclick={() => updateActiveTaskMeta({ flagged: !activeTaskItem.attrs.flagged })}
-							title="Flag Task"
-						>
-							<svg width="15" height="15" viewBox="0 0 24 24" fill={activeTaskItem.attrs.flagged ? "currentColor" : "none"} stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="color: {activeTaskItem.attrs.flagged ? '#f59e0b' : 'inherit'}">
-								<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/>
-								<line x1="4" y1="22" x2="4" y2="15"/>
-							</svg>
-						</button>
-
-						<!-- Person Icon (Assignee) -->
-						<button class="task-bar-icon-btn" title="Assign (Personal app)" disabled style="opacity: 0.5;">
-							<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-								<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-								<circle cx="12" cy="7" r="4"/>
-							</svg>
-						</button>
-
-						<!-- More Options -->
-						<button 
-							class="task-bar-icon-btn" 
-							onclick={() => showTaskDetailModal = true}
-							title="More Options"
-						>
-							<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-								<circle cx="12" cy="12" r="1"/>
-								<circle cx="19" cy="12" r="1"/>
-								<circle cx="5" cy="12" r="1"/>
-							</svg>
-						</button>
-
-						<!-- Delete Task -->
-						<button 
-							class="task-bar-trash" 
-							onclick={deleteActiveTask}
-							title="Delete Task Node"
-						>
-							<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-								<polyline points="3 6 5 6 21 6"/>
-								<path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
-								<path d="M10 11v6M14 11v6"/>
-								<path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
-							</svg>
-						</button>
-					</div>
-				{/if}
 			</div>
 
 			{#if showHistory}
@@ -7514,13 +7350,7 @@
 								<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18"/><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/></svg>
 								Table
 							</button>
-							<button onclick={() => { insertDropdown = false; editor?.chain().focus().toggleTaskList().run(); }}>
-								<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-									<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
-									<polyline points="22 4 12 14.01 9 11.01"/>
-								</svg>
-								Task
-							</button>
+
 							<button onclick={() => { insertDropdown = false; editor?.chain().focus().setHorizontalRule().run(); }}>
 								<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14"/></svg>
 								Horizontal Rule
@@ -7786,9 +7616,7 @@
 				<button class="fmt-btn" class:active={(editorState >= 0 && editor?.isActive('orderedList'))} onclick={() => editor?.chain().focus().toggleOrderedList().run()} title={`Ordered List (${modKey}+Shift+7)`}>
 					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5h10"/><path d="M11 12h10"/><path d="M11 19h10"/><path d="M4 4h1v5"/><path d="M4 9h2"/><path d="M6.5 20H3.4c0-1 2.6-1.925 2.6-3.5a1.5 1.5 0 00-2.6-1.02"/></svg>
 				</button>
-				<button class="fmt-btn" class:active={(editorState >= 0 && editor?.isActive('taskList'))} onclick={() => editor?.chain().focus().toggleTaskList().run()} title={`Task List (${modKey}+Shift+9)`}>
-					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 5h8"/><path d="M13 12h8"/><path d="M13 19h8"/><path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/></svg>
-				</button>
+
 
 				<div class="fmt-sep"></div>
 
@@ -8180,10 +8008,7 @@
 				<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="10" y1="6" x2="21" y2="6"/><line x1="10" y1="12" x2="21" y2="12"/><line x1="10" y1="18" x2="21" y2="18"/><text x="1" y="8" font-size="8" fill="currentColor" stroke="none" font-weight="600">1</text><text x="1" y="14" font-size="8" fill="currentColor" stroke="none" font-weight="600">2</text><text x="1" y="20" font-size="8" fill="currentColor" stroke="none" font-weight="600">3</text></svg>
 				Numbered List
 			</button>
-			<button onclick={ctxTaskList}>
-				<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><polyline points="4.5 6.5 6 8 8.5 4.5"/><line x1="13" y1="6.5" x2="21" y2="6.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><line x1="13" y1="17.5" x2="21" y2="17.5"/></svg>
-				Task List
-			</button>
+
 			{#if $appConfig?.ai_provider}
 				<div class="text-ctx-sep"></div>
 				<button onclick={openAiMenu}>
@@ -8349,126 +8174,7 @@
 
 <!-- Old task bar removed, replaced with floating HUD -->
 
-{#if showTaskDetailModal && activeTaskItem}
-	<!-- svelte-ignore a11y_no_static_element_interactions -->
-	<div class="settings-backdrop flex-row" onclick={() => showTaskDetailModal = false} role="presentation">
-		<!-- svelte-ignore a11y_no_static_element_interactions -->
-		<div class="task-detail-modal flex-col" onclick={(e) => e.stopPropagation()} role="dialog" aria-label="Task Details">
-			<div class="task-detail-header flex-row" style="justify-content: space-between;">
-				<div class="flex-row" style="gap: 8px; align-items: center;">
-					<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-						<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
-						<polyline points="22 4 12 14.01 9 11.01"/>
-					</svg>
-					<span style="font-weight: 600; font-size: 16px;">Edit Task Details</span>
-				</div>
-				<button class="close-btn flex-row" onclick={() => showTaskDetailModal = false} aria-label="Close">
-					<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-				</button>
-			</div>
 
-			<div class="task-detail-body flex-col" style="gap: 16px; margin-top: 16px;">
-				<!-- Task Text Display -->
-				<div class="task-detail-section flex-col" style="gap: 6px;">
-					<span class="detail-label">Task Text (edit in editor)</span>
-					<div class="detail-text-display">{activeTaskItem.text || 'Untitled Task'}</div>
-				</div>
-
-				<!-- Due Date Section -->
-				<div class="task-detail-section flex-col" style="gap: 6px;">
-					<span class="detail-label">Due Date</span>
-					<div class="flex-row" style="gap: 8px;">
-						<button 
-							class="task-detail-btn" 
-							class:active={activeTaskItem.attrs.dueDate === todayStr()}
-							onclick={() => updateActiveTaskMeta({ dueDate: activeTaskItem.attrs.dueDate === todayStr() ? null : todayStr() })}
-						>Today</button>
-						<button 
-							class="task-detail-btn" 
-							class:active={activeTaskItem.attrs.dueDate === tomorrowStr()}
-							onclick={() => updateActiveTaskMeta({ dueDate: activeTaskItem.attrs.dueDate === tomorrowStr() ? null : tomorrowStr() })}
-						>Tomorrow</button>
-						<input 
-							type="date" 
-							class="task-detail-date-input" 
-							value={activeTaskItem.attrs.dueDate || ''}
-							onchange={(e) => updateActiveTaskMeta({ dueDate: (e.target as HTMLInputElement).value || null })}
-						/>
-					</div>
-				</div>
-
-				<!-- Priority Section -->
-				<div class="task-detail-section flex-col" style="gap: 6px;">
-					<span class="detail-label">Priority</span>
-					<div class="flex-row" style="gap: 8px;">
-						{#each [['low', 'Low'], ['medium', 'Medium'], ['high', 'High']] as [val, label]}
-							<button 
-								class="task-detail-btn priority-btn-{val}" 
-								class:active={activeTaskItem.attrs.priority === val}
-								onclick={() => updateActiveTaskMeta({ priority: (activeTaskItem.attrs.priority === val ? null : val) as any })}
-							>
-								<span class="priority-dot" style="background: {priorityColor(val)}"></span>
-								{label}
-							</button>
-						{/each}
-					</div>
-				</div>
-
-				<!-- Flag / Star Toggle -->
-				<div class="task-detail-section flex-row" style="justify-content: space-between; align-items: center;">
-					<div class="flex-col">
-						<span class="detail-label">Flagged</span>
-						<span class="detail-sub">Mark this task as important</span>
-					</div>
-					<button 
-						class="task-detail-flag-btn" 
-						class:active={activeTaskItem.attrs.flagged}
-						onclick={() => updateActiveTaskMeta({ flagged: !activeTaskItem.attrs.flagged })}
-					>
-						<svg width="16" height="16" viewBox="0 0 24 24" fill={activeTaskItem.attrs.flagged ? "currentColor" : "none"} stroke="currentColor" stroke-width="2">
-							<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/>
-							<line x1="4" y1="22" x2="4" y2="15"/>
-						</svg>
-						{activeTaskItem.attrs.flagged ? 'Flagged' : 'Flag'}
-					</button>
-				</div>
-
-				<!-- Reminder Section -->
-				<div class="task-detail-section flex-col" style="gap: 6px;">
-					<span class="detail-label">Reminder</span>
-					<div class="flex-row" style="gap: 8px; align-items: center;">
-						<input 
-							type="datetime-local" 
-							class="task-detail-datetime-input"
-							value={activeTaskItem.attrs.reminder ? activeTaskItem.attrs.reminder.substring(0, 16) : ''}
-							onchange={(e) => {
-								const val = (e.target as HTMLInputElement).value;
-								updateActiveTaskMeta({ reminder: val ? new Date(val).toISOString() : null });
-							}}
-						/>
-						{#if activeTaskItem.attrs.reminder}
-							<span style="font-size: 12px; color: var(--text-secondary);">
-								({formatReminder(activeTaskItem.attrs.reminder)})
-							</span>
-						{/if}
-					</div>
-				</div>
-			</div>
-
-			<div class="task-detail-footer flex-row" style="margin-top: 24px; justify-content: flex-end; gap: 8px;">
-				<button 
-					class="task-detail-delete-btn flex-row" 
-					onclick={() => { deleteActiveTask(); showTaskDetailModal = false; }}
-					style="margin-right: auto;"
-				>
-					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
-					Delete
-				</button>
-				<button class="task-detail-close-btn" onclick={() => showTaskDetailModal = false}>Close</button>
-			</div>
-		</div>
-	</div>
-{/if}
 
 {#if mathModal}
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -13996,5 +13702,30 @@
 		background: rgba(0, 0, 0, 0.08);
 		border-color: var(--text-secondary, #666666);
 		transform: scale(1.05);
+	}
+
+	.mobile-note-title-container {
+		width: 100%;
+		padding: 16px 20px 8px 20px;
+		background-color: transparent;
+	}
+	.mobile-note-title-container.focus-mode {
+		display: none;
+	}
+	.mobile-note-title-input {
+		width: 100%;
+		font-size: 28px;
+		font-weight: 800;
+		color: var(--text-primary);
+		border: none;
+		outline: none;
+		background: transparent;
+		padding: 0;
+		margin: 0;
+		letter-spacing: -0.8px;
+	}
+	.mobile-note-title-input::placeholder {
+		color: var(--text-tertiary);
+		opacity: 0.5;
 	}
 </style>

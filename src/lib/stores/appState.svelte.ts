@@ -2,7 +2,6 @@ import { type NoteFile, type StorageAdapter, IndexedDBAdapter, FileSystemAccessA
 import { GoogleDriveSync } from '../sync/GoogleDriveSync';
 import MiniSearch from 'minisearch';
 import MarkdownIt from 'markdown-it';
-import { type TaskData, extractTasksFromHtml } from '../utils/taskTypes';
 
 declare const google: any;
 
@@ -147,11 +146,13 @@ class AppState {
   activeNoteContent = $state<string>('');
   activeNoteTitle = $state<string>('');
   activeNotebook = $state<string | null>(null);
-  activeTab = $state<'home' | 'search' | 'library' | 'daily' | 'tasks'>('home');
+  activeTab = $state<'home' | 'search' | 'library' | 'daily'>('home');
   favorites = $state<string[]>(JSON.parse(localStorage.getItem('mynotes_favorites') || '[]'));
   searchQuery = $state<string>('');
   showSettings = $state<boolean>(false);
-  showPreferences = $state<boolean>(false);
+  settingsActiveTab = $state<'sync' | 'styling' | 'editor'>('sync');
+  isReadOnly = $state<boolean>(false);
+  sourceMode = $state<boolean>(localStorage.getItem('mynotes_editor_source_mode') === 'true');
   editorDirty = $state<boolean>(false);
   theme = $state<string>(localStorage.getItem('mynotes_theme') || 'steel');
   customDriveFolderId = $state<string | null>(localStorage.getItem('mynotes_custom_drive_folder_id') || null);
@@ -174,6 +175,15 @@ class AppState {
   setDiagramEditorType(type: 'native' | 'drawio' | 'mermaid') {
     this.diagramEditorType = type;
     localStorage.setItem('mynotes_diagram_editor', type);
+  }
+
+  setSourceMode(val: boolean) {
+    this.sourceMode = val;
+    localStorage.setItem('mynotes_editor_source_mode', String(val));
+  }
+
+  toggleReadMode() {
+    this.isReadOnly = !this.isReadOnly;
   }
 
   themes = [
@@ -200,12 +210,6 @@ class AppState {
   toasts = $state<Toast[]>([]);
   focusModeEnabled = $state<boolean>(localStorage.getItem('mynotes_focus_mode') === 'true');
   typewriterScrollEnabled = $state<boolean>(localStorage.getItem('mynotes_typewriter_scroll') === 'true');
-
-  // ── Task Management State ──
-  allTasks = $state<TaskData[]>([]);
-  private _reminderIntervalId: ReturnType<typeof setInterval> | null = null;
-  private _firedReminders = new Set<string>();
-
 
   showToast(message: string, type: 'success' | 'info' | 'error' | 'warning' = 'info', duration = 4000, title?: string, loading = false): string {
     const id = Math.random().toString(36).substring(2, 9);
@@ -408,7 +412,6 @@ class AppState {
         console.warn('Google SDK load failed during token restore:', err);
       });
     }
-    this.startReminderChecker();
   }
 
   get notebooks() {
@@ -964,7 +967,6 @@ class AppState {
       content: note.content.replace(/<[^>]+>/g, ' ')
     }));
     this.searchIndex.addAll(searchDocs);
-    this.refreshTasks();
   }
 
   async readBlob(path: string): Promise<Blob | null> {
@@ -1313,72 +1315,6 @@ class AppState {
     } catch (e) {
       console.error('Failed to rename note:', e);
       alert('Failed to rename note file.');
-    }
-  }
-
-  // ── Task Management Methods ──────────────────────────────────────────────
-
-  /** Scan all notes and extract tasks into allTasks */
-  refreshTasks() {
-    const tasks: TaskData[] = [];
-    for (const note of this.notes) {
-      if (!note.content) continue;
-      try {
-        const { meta, content } = parseHtmlMetadata(note.content);
-        const title = meta.title || note.name || 'Untitled';
-        const extracted = extractTasksFromHtml(note.content, title, note.path);
-        tasks.push(...extracted);
-      } catch (e) {
-        console.error(`Failed to extract tasks from ${note.path}:`, e);
-      }
-    }
-    this.allTasks = tasks;
-  }
-
-  /** Get tasks for a specific note */
-  getTasksForNote(notePath: string): TaskData[] {
-    return this.allTasks.filter(t => t.notePath === notePath);
-  }
-
-  /** Get count of open (uncompleted) tasks */
-  get openTaskCount(): number {
-    return this.allTasks.filter(t => !t.completed).length;
-  }
-
-  /** Start periodic reminder checker (call once on app init) */
-  startReminderChecker() {
-    if (this._reminderIntervalId) return;
-    this._checkReminders();
-    this._reminderIntervalId = setInterval(() => {
-      this._checkReminders();
-    }, 30000); // Check every 30 seconds
-  }
-
-  /** Stop reminder checker */
-  stopReminderChecker() {
-    if (this._reminderIntervalId) {
-      clearInterval(this._reminderIntervalId);
-      this._reminderIntervalId = null;
-    }
-  }
-
-  private _checkReminders() {
-    const now = new Date();
-    for (const task of this.allTasks) {
-      if (!task.reminder || task.completed) continue;
-      const reminderKey = `${task.notePath}:${task.position}:${task.reminder}`;
-      if (this._firedReminders.has(reminderKey)) continue;
-      const reminderTime = new Date(task.reminder);
-      if (isNaN(reminderTime.getTime())) continue;
-      if (reminderTime <= now) {
-        this._firedReminders.add(reminderKey);
-        this.showToast(
-          `Task: ${task.text}`,
-          'warning',
-          8000,
-          '🔔 Reminder'
-        );
-      }
     }
   }
 

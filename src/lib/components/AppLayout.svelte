@@ -10,16 +10,17 @@
     Home, Search, Library, Calendar, ChevronLeft, Plus, 
     FileText, Tag, FolderPlus, Compass, ArrowRight, Settings,
     X, Cloud, RefreshCw, LogOut, Palette, ChevronRight, Menu, Folder,
-    ListTodo
+    Trash2, FolderOpen
   } from 'lucide-svelte';
   import ResizeHandle from './ResizeHandle.svelte';
-  import TasksView from './TasksView.svelte';
 
   // Responsive state
   let isMobile = $state(false);
   let mobileSearchInput = $state('');
   let newMobileFolder = $state('');
   let showMobileFolderForm = $state(false);
+  let showMobileMoreMenu = $state(false);
+  let showAllNotesMobile = $state(false);
   
   // Custom Sync Folder and Theme Selectors
   let showFolderPicker = $state(false);
@@ -74,6 +75,65 @@
     }
   }
 
+  let fileInput = $state<HTMLInputElement>();
+
+  function triggerImport() {
+    fileInput?.click();
+  }
+
+  async function handleImportFile(event: Event) {
+    const input = event.target as HTMLInputElement;
+    if (!input.files || input.files.length === 0) return;
+    const file = input.files[0];
+    
+    try {
+      const text = await file.text();
+      const bundle = JSON.parse(text);
+      
+      if (!bundle.title || !bundle.content) {
+        alert('Invalid .mynote file format. Missing title or content.');
+        return;
+      }
+      
+      const cleanTitle = bundle.title.trim();
+      let path = `${cleanTitle}.html`;
+      const folder = appState.activeNotebook;
+      if (folder) {
+        path = `${folder}/${cleanTitle}.html`;
+      }
+      
+      let version = 1;
+      let finalPath = path;
+      while (appState.notes.some(n => n.path === finalPath)) {
+        finalPath = folder 
+          ? `${folder}/${cleanTitle} (${version}).html`
+          : `${cleanTitle} (${version}).html`;
+        version++;
+      }
+      
+      const meta = {
+        id: bundle.id || finalPath,
+        title: cleanTitle,
+        tags: bundle.tags || [],
+        pinned: bundle.pinned || false,
+        created: bundle.created ? new Date(bundle.created).toISOString() : new Date().toISOString(),
+        modified: new Date().toISOString()
+      };
+      
+      const fileContent = generateHtmlNote(meta, bundle.content);
+      
+      await appState.storage.writeNote(finalPath, fileContent);
+      await appState.refreshNotes();
+      appState.selectNote(finalPath);
+      appState.showToast(`Imported note "${cleanTitle}" successfully!`, 'success');
+    } catch (e) {
+      console.error('Failed to import note:', e);
+      alert('Failed to parse and import note file.');
+    } finally {
+      input.value = '';
+    }
+  }
+
   onMount(() => {
     handleResize();
     window.addEventListener('resize', handleResize);
@@ -97,32 +157,163 @@
             onclick={() => {
               if (appState.editorDirty) appState.saveActiveNote();
               appState.activeNotePath = null;
+              showMobileMoreMenu = false;
             }}
             aria-label="Back"
           >
             <ChevronLeft size={24} />
           </button>
           
-          <!-- Note title / state placeholder -->
-          <span style="font-size: 14px; font-weight: 700; color: var(--text-primary); text-overflow: ellipsis; overflow: hidden; white-space: nowrap; max-width: 42%;">
-            {appState.activeNoteTitle || 'Note'}
+          <!-- Note notebook / tag breadcrumb -->
+          <span class="mobile-note-breadcrumb flex-row" style="gap: 4px; font-size: 12px; font-weight: 600; color: var(--text-secondary); max-width: 48%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+            <Folder size={13} style="color: var(--accent); flex-shrink: 0;" />
+            {appState.activeNotePath.includes('/') ? appState.activeNotePath.split('/')[0] : 'All Notes'}
           </span>
           
-          <!-- Save / View Toggle / Close Toolbar -->
+          <!-- Save Checkmark & More Actions Button -->
           <div class="flex-row" style="gap: 8px;">
+            {#if appState.editorDirty}
+              <button 
+                class="mobile-save-check-btn flex-row" 
+                onclick={() => appState.saveActiveNote()}
+                aria-label="Save note"
+                style="background: none; border: none; color: var(--accent); padding: 4px; cursor: pointer;"
+              >
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+              </button>
+            {/if}
             <button 
-              class="save-icon-btn" 
-              class:dirty={appState.editorDirty}
-              onclick={() => appState.saveActiveNote()}
-              aria-label="Save note"
+              class="mobile-more-btn flex-row" 
+              onclick={() => showMobileMoreMenu = !showMobileMoreMenu}
+              aria-label="More options"
+              style="background: none; border: none; color: var(--text-primary); padding: 4px; cursor: pointer;"
             >
-              Save
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/>
+              </svg>
             </button>
           </div>
         </div>
         <div class="mobile-editor-wrapper">
           <Editor />
         </div>
+
+        {#if showMobileMoreMenu}
+          <!-- Backdrop to close the menu -->
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <div class="mobile-more-menu-backdrop" onclick={() => showMobileMoreMenu = false}>
+            <!-- svelte-ignore a11y_no_static_element_interactions -->
+            <div class="mobile-more-menu flex-col" onclick={(e) => e.stopPropagation()} transition:fly={{ y: 80, duration: 220, easing: cubicOut }}>
+              <div class="mobile-more-menu-header flex-row" style="justify-content: space-between; padding: 14px 20px 10px; border-bottom: 1px solid var(--border-color);">
+                <span style="font-weight: 700; font-size: 14px; color: var(--text-primary);">Note Options</span>
+                <button onclick={() => showMobileMoreMenu = false} style="background: none; border: none; color: var(--text-secondary); cursor: pointer;"><X size={16} /></button>
+              </div>
+              <div class="mobile-more-menu-content flex-col" style="padding: 8px 0; overflow-y: auto; max-height: 45vh;">
+                <!-- 1. Favorite Toggle -->
+                <button
+                  class="menu-item flex-row"
+                  onclick={() => {
+                    appState.toggleFavorite(appState.activeNotePath || '');
+                    showMobileMoreMenu = false;
+                  }}
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill={appState.favorites.includes(appState.activeNotePath || '') ? 'var(--accent)' : 'none'} stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: {appState.favorites.includes(appState.activeNotePath || '') ? 'var(--accent)' : 'var(--text-secondary)'}">
+                    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+                  </svg>
+                  <span>{appState.favorites.includes(appState.activeNotePath || '') ? 'Remove from Favorites' : 'Add to Favorites'}</span>
+                </button>
+
+                <!-- 2. Edit/Read Toggle -->
+                <button
+                  class="menu-item flex-row"
+                  onclick={() => {
+                    appState.toggleReadMode();
+                    showMobileMoreMenu = false;
+                  }}
+                >
+                  {#if appState.isReadOnly}
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>
+                    </svg>
+                    <span>Switch to Edit Mode</span>
+                  {:else}
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
+                    </svg>
+                    <span>Switch to Read Mode</span>
+                  {/if}
+                </button>
+
+                <!-- 3. Source Mode Toggle -->
+                <button
+                  class="menu-item flex-row"
+                  onclick={() => {
+                    appState.setSourceMode(!appState.sourceMode);
+                    showMobileMoreMenu = false;
+                  }}
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
+                  </svg>
+                  <span>{appState.sourceMode ? 'Rich Editor Mode' : 'Markdown Source Mode'}</span>
+                </button>
+
+                <div class="menu-divider" style="height: 1px; background-color: var(--border-color); margin: 6px 0;"></div>
+
+                <!-- 4. Focus Mode Toggle -->
+                <button
+                  class="menu-item flex-row"
+                  onclick={() => {
+                    appState.setFocusMode(!appState.focusModeEnabled);
+                    showMobileMoreMenu = false;
+                  }}
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={appState.focusModeEnabled ? 'var(--accent)' : 'var(--text-secondary)'} stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+                  </svg>
+                  <span>{appState.focusModeEnabled ? 'Disable Focus Mode' : 'Enable Focus Mode'}</span>
+                </button>
+
+                <!-- 5. Typewriter Scroll Toggle -->
+                <button
+                  class="menu-item flex-row"
+                  onclick={() => {
+                    appState.setTypewriterScroll(!appState.typewriterScrollEnabled);
+                    showMobileMoreMenu = false;
+                  }}
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={appState.typewriterScrollEnabled ? 'var(--accent)' : 'var(--text-secondary)'} stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="4" y1="12" x2="20" y2="12" stroke-dasharray="3,3"/><polyline points="8 7 12 3 16 7"/><polyline points="8 17 12 21 16 17"/>
+                  </svg>
+                  <span>{appState.typewriterScrollEnabled ? 'Disable Typewriter Scroll' : 'Enable Typewriter Scroll'}</span>
+                </button>
+
+                <div class="menu-divider" style="height: 1px; background-color: var(--border-color); margin: 6px 0;"></div>
+
+                <!-- 6. Delete Note -->
+                <button
+                  class="menu-item flex-row delete-item"
+                  onclick={() => {
+                    showMobileMoreMenu = false;
+                    if (confirm('Are you sure you want to delete this note?')) {
+                      const path = appState.activeNotePath;
+                      appState.activeNotePath = null;
+                      if (path) appState.deleteNote(path);
+                    }
+                  }}
+                  style="color: var(--semantic-error, #ff4d4d);"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>
+                  </svg>
+                  <span>Delete Note</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        {/if}
       </div>
     {:else}
       <!-- Main Mobile Navigation Tabs -->
@@ -321,87 +512,162 @@
         <!-- 3. LIBRARY TAB -->
         {:else if appState.activeTab === 'library'}
           <div class="mobile-tab-view flex-col">
-            <!-- Library Header -->
-            <div class="mobile-header mobile-library-header flex-row">
-              <h1>Your Library</h1>
-              <div class="flex-row" style="gap: 12px;">
-                <button 
-                  class="icon-circle-btn flex-row" 
-                  onclick={() => appState.showSettings = true}
-                  aria-label="Settings"
-                >
-                  <Settings size={20} />
-                </button>
-                <button 
-                  class="icon-circle-btn flex-row" 
-                  onclick={() => showMobileFolderForm = !showMobileFolderForm}
-                  aria-label="Add folder"
-                >
-                  <Plus size={20} />
-                </button>
-              </div>
-            </div>
-
-            {#if showMobileFolderForm}
-              <form onsubmit={createMobileFolder} class="mobile-folder-form">
-                <input 
-                  type="text" 
-                  placeholder="Notebook Name..." 
-                  bind:value={newMobileFolder}
-                  class="mobile-folder-input"
-                  required
-                  autofocus
-                />
-              </form>
-            {/if}
-
-            <!-- Filter Categories Row -->
-            <div class="lib-filters flex-row">
-              <button 
-                class="lib-filter-pill" 
-                class:active={appState.activeNotebook === null}
-                onclick={() => appState.activeNotebook = null}
-              >
-                All Notebooks
-              </button>
-              {#each appState.notebooks as notebook}
-                <button 
-                  class="lib-filter-pill" 
-                  class:active={appState.activeNotebook === notebook}
-                  onclick={() => appState.activeNotebook = notebook}
-                >
-                  {notebook}
-                </button>
-              {/each}
-            </div>
-
-            <!-- Notebook Files Playlist -->
-            <div class="mobile-notes-list flex-col">
-              <div class="list-meta flex-row">
-                <span>{appState.filteredNotes.length} notes</span>
-                <button class="btn-pill btn-pill-primary add-note-mobile" onclick={() => {
-                  const title = prompt('Enter note title:', 'New Note');
-                  if (title) appState.createNote(title, appState.activeNotebook);
-                }}>
-                  <Plus size={14} /> Add
-                </button>
+            {#if appState.activeNotebook === null && !showAllNotesMobile}
+              <!-- Folders / Library Home View -->
+              <div class="mobile-header mobile-library-header flex-row" style="justify-content: space-between; width: 100%;">
+                <h1>Your Library</h1>
+                <div class="flex-row" style="gap: 12px;">
+                  <button 
+                    class="icon-circle-btn flex-row" 
+                    onclick={() => appState.showSettings = true}
+                    aria-label="Settings"
+                  >
+                    <Settings size={20} />
+                  </button>
+                  <button 
+                    class="icon-circle-btn flex-row" 
+                    onclick={() => showMobileFolderForm = !showMobileFolderForm}
+                    aria-label="Add folder"
+                  >
+                    <Plus size={20} />
+                  </button>
+                </div>
               </div>
 
-              {#each appState.filteredNotes as note}
-                <button class="search-result-row flex-row" onclick={() => appState.selectNote(note.path)}>
-                  <div class="row-art">📄</div>
-                  <div class="row-info flex-col">
-                    <span class="row-title">{note.name}</span>
-                    <span class="row-sub">{note.path}</span>
+              {#if showMobileFolderForm}
+                <form onsubmit={createMobileFolder} class="mobile-folder-form" style="width: 100%;">
+                  <input 
+                    type="text" 
+                    placeholder="New Notebook Name..." 
+                    bind:value={newMobileFolder}
+                    class="mobile-folder-input"
+                    style="width: 100%; padding: 10px 14px; background-color: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-standard); color: var(--text-primary); outline: none;"
+                    required
+                    autofocus
+                  />
+                </form>
+              {/if}
+
+              <!-- Grid of Folder Cards -->
+              <div class="mobile-folders-grid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; width: 100%; margin-top: 8px;">
+                <!-- All Notes Card -->
+                <button 
+                  class="notebook-card flex-col" 
+                  onclick={() => { showAllNotesMobile = true; appState.activeNotebook = null; }}
+                  style="background-color: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-comfortable); padding: 16px; align-items: flex-start; text-align: left; gap: 8px; width: 100%; transition: border-color 0.2s;"
+                >
+                  <div class="folder-icon flex-row" style="width: 38px; height: 38px; border-radius: 50%; background-color: rgba(255,255,255,0.06); justify-content: center;">
+                    <FileText size={20} style="color: var(--accent);" />
+                  </div>
+                  <div class="folder-info flex-col">
+                    <span style="font-weight: 700; font-size: 14px; color: var(--text-primary);">All Notes</span>
+                    <span style="font-size: 11px; color: var(--text-secondary); margin-top: 2px;">{appState.notes.length} files</span>
                   </div>
                 </button>
-              {:else}
-                <div class="empty-lib flex-col">
-                  <span>📂</span>
-                  <span class="title">Empty Notebook</span>
+
+                <!-- Daily Logs Card -->
+                <button 
+                  class="notebook-card flex-col" 
+                  onclick={() => { appState.activeNotebook = 'Daily Notes'; showAllNotesMobile = false; }}
+                  style="background-color: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-comfortable); padding: 16px; align-items: flex-start; text-align: left; gap: 8px; width: 100%; transition: border-color 0.2s;"
+                >
+                  <div class="folder-icon flex-row" style="width: 38px; height: 38px; border-radius: 50%; background-color: rgba(255,255,255,0.06); justify-content: center;">
+                    <Calendar size={20} style="color: var(--accent);" />
+                  </div>
+                  <div class="folder-info flex-col">
+                    <span style="font-weight: 700; font-size: 14px; color: var(--text-primary);">Daily Logs</span>
+                    <span style="font-size: 11px; color: var(--text-secondary); margin-top: 2px;">{appState.notes.filter(n => n.path.startsWith('Daily Notes/')).length} files</span>
+                  </div>
+                </button>
+
+                <!-- Custom Folders -->
+                {#each appState.notebooks as notebook}
+                  <div class="notebook-card-wrapper" style="position: relative; width: 100%;">
+                    <button 
+                      class="notebook-card flex-col" 
+                      onclick={() => { appState.activeNotebook = notebook; showAllNotesMobile = false; }}
+                      style="background-color: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-comfortable); padding: 16px; align-items: flex-start; text-align: left; gap: 8px; width: 100%; transition: border-color 0.2s;"
+                    >
+                      <div class="folder-icon flex-row" style="width: 38px; height: 38px; border-radius: 50%; background-color: rgba(255,255,255,0.06); justify-content: center;">
+                        <Folder size={20} style="color: var(--accent);" />
+                      </div>
+                      <div class="folder-info flex-col">
+                        <span style="font-weight: 700; font-size: 14px; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%;">{notebook}</span>
+                        <span style="font-size: 11px; color: var(--text-secondary); margin-top: 2px;">{appState.notes.filter(n => n.path.startsWith(notebook + '/')).length} files</span>
+                      </div>
+                    </button>
+                    <!-- Folder Delete Button -->
+                    <button
+                      onclick={(e) => {
+                        e.stopPropagation();
+                        if (confirm(`Delete folder "${notebook}" and all its notes?`)) {
+                          appState.deleteNotebook(notebook);
+                        }
+                      }}
+                      style="position: absolute; top: 12px; right: 12px; background: none; border: none; color: var(--text-tertiary); cursor: pointer; padding: 4px; z-index: 2;"
+                      aria-label="Delete notebook"
+                      onmouseover={(e) => e.currentTarget.style.color = 'var(--semantic-error, #ff4444)'}
+                      onmouseout={(e) => e.currentTarget.style.color = 'var(--text-tertiary)'}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                {/each}
+              </div>
+            {:else}
+              <!-- Folder Notes List view (Slide-in sub-view) -->
+              <div class="mobile-header flex-row" style="justify-content: space-between; width: 100%; border-bottom: 1px dashed var(--border-color); padding-bottom: 12px; margin-bottom: 4px;">
+                <div class="flex-row" style="gap: 8px; max-width: 70%;">
+                  <button 
+                    class="icon-circle-btn flex-row" 
+                    onclick={() => { appState.activeNotebook = null; showAllNotesMobile = false; }}
+                    aria-label="Back to Notebooks"
+                    style="width: 32px; height: 32px;"
+                  >
+                    <ChevronLeft size={18} />
+                  </button>
+                  <span style="font-weight: 800; font-size: 16px; color: var(--text-primary); text-overflow: ellipsis; overflow: hidden; white-space: nowrap; max-width: calc(100% - 40px);">
+                    {appState.activeNotebook || 'All Notes'}
+                  </span>
                 </div>
-              {/each}
-            </div>
+                
+                <button 
+                  class="btn-pill btn-pill-primary flex-row" 
+                  onclick={() => {
+                    const title = prompt('Enter note title:', 'New Note');
+                    if (title) appState.createNote(title, appState.activeNotebook);
+                  }}
+                  style="font-size: 11px; padding: 6px 12px;"
+                >
+                  <Plus size={12} style="margin-right: 4px;" /> Add Note
+                </button>
+              </div>
+
+              <!-- Notes list inside selected folder -->
+              <div class="mobile-notes-list flex-col" style="width: 100%; gap: 10px;">
+                {#each (showAllNotesMobile ? appState.notes : appState.filteredNotes) as note}
+                  <button 
+                    class="recent-note-card flex-col" 
+                    onclick={() => appState.selectNote(note.path)}
+                    style="background-color: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-comfortable); padding: 14px 16px; text-align: left; width: 100%; gap: 8px;"
+                  >
+                    <div class="card-header-row flex-row" style="justify-content: space-between; width: 100%;">
+                      <span class="card-note-title" style="font-weight: 700; font-size: 14px; color: var(--text-primary);">{note.name}</span>
+                      <span class="card-note-time" style="font-size: 10px; color: var(--text-tertiary);">{new Date(note.modified).toLocaleDateString(undefined, {month: 'short', day: 'numeric'})}</span>
+                    </div>
+                    <p class="card-note-snippet" style="font-size: 12px; color: var(--text-secondary); line-height: 1.5; margin: 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">{(note.content || '').replace(/[#*`_\-\[\]()]/g, ' ').slice(0, 80)}...</p>
+                    {#if showAllNotesMobile && note.path.includes('/')}
+                      <span class="card-notebook-badge" style="font-size: 9px; font-weight: 700; color: var(--accent); background: rgba(0, 173, 181, 0.08); padding: 2px 8px; border-radius: var(--radius-pill); align-self: flex-start; text-transform: uppercase;">{note.path.split('/')[0]}</span>
+                    {/if}
+                  </button>
+                {:else}
+                  <div class="empty-lib flex-col" style="align-items: center; justify-content: center; gap: 8px; padding: 40px 0; color: var(--text-tertiary);">
+                    <span style="font-size: 32px;">📂</span>
+                    <span class="title" style="font-weight: 600; font-size: 13px;">No notes found</span>
+                  </div>
+                {/each}
+              </div>
+            {/if}
           </div>
 
         <!-- 4. DAILY TAB -->
@@ -438,11 +704,6 @@
             </div>
           </div>
 
-        <!-- 5. TASKS TAB -->
-        {:else if appState.activeTab === 'tasks'}
-          <div class="mobile-tab-view flex-col" style="height: 100%; overflow: hidden;">
-            <TasksView />
-          </div>
 
         {/if}
       </div>
@@ -499,14 +760,6 @@
           <span>Daily</span>
         </button>
 
-        <button 
-          class="nav-tab flex-col" 
-          class:active={appState.activeTab === 'tasks'} 
-          onclick={() => { appState.activeTab = 'tasks'; }}
-        >
-          <ListTodo size={22} />
-          <span>Tasks</span>
-        </button>
 
       </div>
     {/if}
@@ -519,27 +772,21 @@
     <!-- Left Sidebar (Notebook / Tag Selection) -->
     <Sidebar />
 
-    {#if !appState.sidebarCollapsed && !appState.notelistCollapsed && appState.activeTab !== 'tasks'}
+    {#if !appState.sidebarCollapsed && !appState.notelistCollapsed}
       <ResizeHandle onResize={(delta) => appState.resizeSidebar(delta)} />
     {/if}
 
-    {#if appState.activeTab === 'tasks'}
-      <div class="tasks-panel flex-col" style="flex-grow: 1; height: 100%; min-width: 0;">
-        <TasksView />
-      </div>
-    {:else}
-      <!-- Middle Panel (Note list) -->
-      <NoteList />
+    <!-- Middle Panel (Note list) -->
+    <NoteList />
 
-      {#if !appState.notelistCollapsed && !appState.editorCollapsed}
-        <ResizeHandle onResize={(delta) => appState.resizeNotelist(delta)} />
-      {/if}
-
-      <!-- Right Panel (Editor) -->
-      <div class="editor-panel flex-row" style="display: {appState.editorCollapsed ? 'none' : 'flex'}; min-width: 0;">
-        <Editor />
-      </div>
+    {#if !appState.notelistCollapsed && !appState.editorCollapsed}
+      <ResizeHandle onResize={(delta) => appState.resizeNotelist(delta)} />
     {/if}
+
+    <!-- Right Panel (Editor) -->
+    <div class="editor-panel flex-row" style="display: {appState.editorCollapsed ? 'none' : 'flex'}; min-width: 0;">
+      <Editor />
+    </div>
 
     {#if appState.sidebarCollapsed && appState.notelistCollapsed && appState.editorCollapsed}
       <div class="all-collapsed-placeholder flex-col" style="flex-grow: 1; align-items: center; justify-content: center; gap: 16px; color: var(--text-secondary); background-color: var(--bg-base); height: 100%;">
@@ -559,7 +806,7 @@
   </div>
 {/if}
 
-<!-- Settings Modal Overlay -->
+<!-- Settings Modal Overlay (Unified) -->
 {#if appState.showSettings}
   <div 
     class="settings-backdrop flex-row" 
@@ -571,318 +818,354 @@
       class="settings-modal flex-col"
       transition:fly={{ y: 20, duration: 250, easing: cubicOut }}
     >
-      <div class="settings-header flex-row">
+      <div class="settings-header flex-row" style="justify-content: space-between; border-bottom: none; padding-bottom: 8px;">
         <div class="settings-title flex-row">
-          <Cloud size={20} class="sync-icon-accent" />
-          <span>Google Drive Sync</span>
+          <Settings size={20} class="sync-icon-accent" />
+          <span>App Settings</span>
         </div>
         <button class="close-btn flex-row" onclick={() => appState.showSettings = false} aria-label="Close settings">
           <X size={18} />
         </button>
       </div>
 
-      <div class="settings-content flex-col">
-        <!-- Client ID input section -->
-        <div class="form-group flex-col">
-          <label for="google-client-id" class="form-label">Google OAuth Client ID</label>
-          <div class="input-wrapper flex-row">
-            <input 
-              id="google-client-id"
-              type="text" 
-              placeholder="Paste Google Client ID here..." 
-              value={appState.googleClientId} 
-              oninput={(e) => appState.setClientId(e.currentTarget.value)}
-              disabled={appState.googleConnected}
-              class="input-pill client-id-input"
-            />
-          </div>
-        </div>
+      <!-- Settings Tabs Segmented Control -->
+      <div class="settings-tabs flex-row" style="display: flex; gap: 4px; padding: 0 16px 12px; border-bottom: 1px solid var(--border-color); width: 100%;">
+        <button 
+          class="settings-tab-btn" 
+          class:active={appState.settingsActiveTab === 'sync'} 
+          onclick={() => appState.settingsActiveTab = 'sync'}
+          style="flex: 1; padding: 8px 12px; border-radius: var(--radius-standard); font-size: 12px; font-weight: 600; text-align: center; border: none; background: {appState.settingsActiveTab === 'sync' ? 'var(--accent)' : 'rgba(255,255,255,0.04)'}; color: {appState.settingsActiveTab === 'sync' ? 'var(--bg-primary)' : 'var(--text-secondary)'}; transition: all 0.2s; cursor: pointer;"
+        >
+          Cloud Sync
+        </button>
+        <button 
+          class="settings-tab-btn" 
+          class:active={appState.settingsActiveTab === 'styling'} 
+          onclick={() => appState.settingsActiveTab = 'styling'}
+          style="flex: 1; padding: 8px 12px; border-radius: var(--radius-standard); font-size: 12px; font-weight: 600; text-align: center; border: none; background: {appState.settingsActiveTab === 'styling' ? 'var(--accent)' : 'rgba(255,255,255,0.04)'}; color: {appState.settingsActiveTab === 'styling' ? 'var(--bg-primary)' : 'var(--text-secondary)'}; transition: all 0.2s; cursor: pointer;"
+        >
+          Appearance
+        </button>
+        <button 
+          class="settings-tab-btn" 
+          class:active={appState.settingsActiveTab === 'editor'} 
+          onclick={() => appState.settingsActiveTab = 'editor'}
+          style="flex: 1; padding: 8px 12px; border-radius: var(--radius-standard); font-size: 12px; font-weight: 600; text-align: center; border: none; background: {appState.settingsActiveTab === 'editor' ? 'var(--accent)' : 'rgba(255,255,255,0.04)'}; color: {appState.settingsActiveTab === 'editor' ? 'var(--bg-primary)' : 'var(--text-secondary)'}; transition: all 0.2s; cursor: pointer;"
+        >
+          Editor & Files
+        </button>
+      </div>
 
-        {#if !appState.googleConnected}
-          <div class="auth-section flex-col">
-            <button 
-              class="btn-pill btn-pill-primary flex-row connect-btn" 
-              onclick={async () => {
-                try {
-                  await appState.connectGoogleDrive();
-                } catch (e: any) {
-                  alert(e.message || 'Failed to connect to Google Drive');
-                }
-              }}
-              disabled={!appState.googleClientId}
-            >
-              <span>Connect Google Drive</span>
-            </button>
-            
-            <div class="helper-card flex-col">
-              <span class="helper-title">Setup Instructions:</span>
-              <ol class="helper-steps">
-                <li>Go to the <a href="https://console.cloud.google.com/" target="_blank" rel="noopener noreferrer" class="link-accent">Google Cloud Console</a>.</li>
-                <li>Create a project and set up the <b>OAuth consent screen</b> (User Type: External).</li>
-                <li>Add your Google account as a <b>Test User</b> since your app is in testing.</li>
-                <li>Create <b>OAuth client ID</b> credentials (Application Type: Web Application).</li>
-                <li>Add <code>http://localhost:5173</code> (or your URL) under <b>Authorized JavaScript Origins</b>.</li>
-                <li>Copy the Client ID and paste it in the field above.</li>
-              </ol>
+      <div class="settings-content flex-col" style="max-height: 60vh; overflow-y: auto; gap: 20px; padding: 20px; width: 100%;">
+        
+        <!-- ================= TAB 1: CLOUD SYNC ================= -->
+        {#if appState.settingsActiveTab === 'sync'}
+          <!-- Client ID input section -->
+          <div class="form-group flex-col">
+            <label for="google-client-id" class="form-label">Google OAuth Client ID</label>
+            <div class="input-wrapper flex-row">
+              <input 
+                id="google-client-id"
+                type="text" 
+                placeholder="Paste Google Client ID here..." 
+                value={appState.googleClientId} 
+                oninput={(e) => appState.setClientId(e.currentTarget.value)}
+                disabled={appState.googleConnected}
+                class="input-pill client-id-input"
+              />
             </div>
           </div>
-        {:else}
-          <!-- Connected view -->
-          <div class="connected-card flex-col">
-            <div class="status-row flex-row">
-              <span class="status-dot" class:syncing={appState.syncStatus === 'syncing'} class:error={appState.syncStatus === 'error'}></span>
-              <div class="status-info flex-col">
-                <span class="email-text">{appState.googleUserEmail}</span>
-                <span class="status-text">
-                  {#if appState.syncStatus === 'syncing'}
-                    Syncing database...
-                  {:else if !appState.syncEnabled}
-                    Connected & Sync Disabled
-                  {:else}
-                    Connected & Sync Enabled
-                  {/if}
-                </span>
-              </div>
-            </div>
 
-            <div class="sync-toggle-row flex-row" style="justify-content: space-between; margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border-color); width: 100%;">
-              <span style="font-size: 13px; color: var(--text-primary); font-weight: 500;">Enable Google Drive Syncing</span>
-              <label class="switch-container">
-                <input 
-                  type="checkbox" 
-                  checked={appState.syncEnabled} 
-                  onchange={(e) => {
-                    appState.setSyncEnabled(e.currentTarget.checked);
-                    if (e.currentTarget.checked) {
-                      appState.syncNotes();
-                    }
-                  }}
-                />
-                <span class="slider"></span>
-              </label>
-            </div>
-
-            <div class="sync-stats flex-col">
-              <div class="stat-row flex-row">
-                <span class="stat-label">Last Sync Time</span>
-                <span class="stat-val">
-                  {appState.lastSyncedTime ? new Date(appState.lastSyncedTime).toLocaleTimeString() : 'Never'}
-                </span>
-              </div>
-              <div class="stat-row flex-row">
-                <span class="stat-label">Conflict Policy</span>
-                <span class="stat-val">Last Modified Wins</span>
-              </div>
-            </div>
-
-            <div class="sync-actions flex-row">
+          {#if !appState.googleConnected}
+            <div class="auth-section flex-col">
               <button 
-                class="btn-pill btn-pill-outline flex-row sync-now-btn" 
+                class="btn-pill btn-pill-primary flex-row connect-btn" 
                 onclick={async () => {
-                  await appState.syncNotes();
+                  try {
+                    await appState.connectGoogleDrive();
+                  } catch (e: any) {
+                    alert(e.message || 'Failed to connect to Google Drive');
+                  }
                 }}
-                disabled={appState.syncStatus === 'syncing'}
+                disabled={!appState.googleClientId}
               >
-                <RefreshCw size={14} class={appState.syncStatus === 'syncing' ? 'spin' : ''} />
-                <span>Sync Now</span>
+                <span>Connect Google Drive</span>
               </button>
-
-              <button 
-                class="btn-pill btn-logout flex-row" 
-                onclick={() => appState.disconnectGoogleDrive()}
-              >
-                <LogOut size={14} />
-                <span>Disconnect</span>
-              </button>
+              
+              <div class="helper-card flex-col">
+                <span class="helper-title">Setup Instructions:</span>
+                <ol class="helper-steps">
+                  <li>Go to the <a href="https://console.cloud.google.com/" target="_blank" rel="noopener noreferrer" class="link-accent">Google Cloud Console</a>.</li>
+                  <li>Create a project and set up the <b>OAuth consent screen</b> (User Type: External).</li>
+                  <li>Add your Google account as a <b>Test User</b> since your app is in testing.</li>
+                  <li>Create <b>OAuth client ID</b> credentials (Application Type: Web Application).</li>
+                  <li>Add <code>http://localhost:5173</code> (or your URL) under <b>Authorized JavaScript Origins</b>.</li>
+                  <li>Copy the Client ID and paste it in the field above.</li>
+                </ol>
+              </div>
             </div>
-
-            <!-- Custom Target Folder selection section -->
-            <div class="form-group flex-col" style="margin-top: 16px; border-top: 1px dashed var(--border-color); padding-top: 16px; gap: 8px;">
-              <label class="form-label" style="font-weight: 700; margin-bottom: 2px;">Sync Target Folder</label>
-              <div class="folder-selection-ui flex-col" style="gap: 8px;">
-                <div class="current-folder flex-row" style="justify-content: space-between; background-color: var(--bg-mid-dark); padding: 8px 12px; border-radius: var(--radius-standard); border: 1px solid var(--border-color);">
-                  <div class="flex-col">
-                    <span style="font-size: 10px; color: var(--text-tertiary); text-transform: uppercase;">Active Folder</span>
-                    <span style="font-size: 13px; font-weight: 600; color: var(--text-primary);">
-                      {appState.customDriveFolderName || 'MyNotes (Default)'}
-                    </span>
-                  </div>
-                  
-                  {#if !showFolderPicker}
-                    <button class="btn-pill btn-pill-outline" style="padding: 4px 10px; font-size: 11px;" onclick={() => { showFolderPicker = true; appState.fetchGoogleDriveFolders(); }}>
-                      Change
-                    </button>
-                  {/if}
+          {:else}
+            <!-- Connected view -->
+            <div class="connected-card flex-col">
+              <div class="status-row flex-row">
+                <span class="status-dot" class:syncing={appState.syncStatus === 'syncing'} class:error={appState.syncStatus === 'error'}></span>
+                <div class="status-info flex-col">
+                  <span class="email-text">{appState.googleUserEmail}</span>
+                  <span class="status-text">
+                    {#if appState.syncStatus === 'syncing'}
+                      Syncing database...
+                    {:else if !appState.syncEnabled}
+                      Connected & Sync Disabled
+                    {:else}
+                      Connected & Sync Enabled
+                    {/if}
+                  </span>
                 </div>
+              </div>
 
-                {#if showFolderPicker}
-                  <div class="folder-picker-panel flex-col" style="background-color: var(--bg-mid-dark); padding: 12px; border-radius: var(--radius-standard); border: 1px solid var(--border-color); gap: 10px; max-height: 180px; overflow-y: auto;">
-                    <div class="flex-row" style="justify-content: space-between; font-size: 11px; font-weight: 700; color: var(--text-secondary);">
-                      <span>CHOOSE FROM DRIVE</span>
-                      <button onclick={() => showFolderPicker = false} style="color: var(--accent);">Close</button>
+              <div class="sync-toggle-row flex-row" style="justify-content: space-between; margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border-color); width: 100%;">
+                <span style="font-size: 13px; color: var(--text-primary); font-weight: 500;">Enable Google Drive Syncing</span>
+                <label class="switch-container">
+                  <input 
+                    type="checkbox" 
+                    checked={appState.syncEnabled} 
+                    onchange={(e) => {
+                      appState.setSyncEnabled(e.currentTarget.checked);
+                      if (e.currentTarget.checked) {
+                        appState.syncNotes();
+                      }
+                    }}
+                  />
+                  <span class="slider"></span>
+                </label>
+              </div>
+
+              <div class="sync-stats flex-col">
+                <div class="stat-row flex-row">
+                  <span class="stat-label">Last Sync Time</span>
+                  <span class="stat-val">
+                    {appState.lastSyncedTime ? new Date(appState.lastSyncedTime).toLocaleTimeString() : 'Never'}
+                  </span>
+                </div>
+                <div class="stat-row flex-row">
+                  <span class="stat-label">Conflict Policy</span>
+                  <span class="stat-val">Last Modified Wins</span>
+                </div>
+              </div>
+
+              <div class="sync-actions flex-row">
+                <button 
+                  class="btn-pill btn-pill-outline flex-row sync-now-btn" 
+                  onclick={async () => {
+                    await appState.syncNotes();
+                  }}
+                  disabled={appState.syncStatus === 'syncing'}
+                >
+                  <RefreshCw size={14} class={appState.syncStatus === 'syncing' ? 'spin' : ''} />
+                  <span>Sync Now</span>
+                </button>
+
+                <button 
+                  class="btn-pill btn-logout flex-row" 
+                  onclick={() => appState.disconnectGoogleDrive()}
+                >
+                  <LogOut size={14} />
+                  <span>Disconnect</span>
+                </button>
+              </div>
+
+              <!-- Custom Target Folder selection section -->
+              <div class="form-group flex-col" style="margin-top: 16px; border-top: 1px dashed var(--border-color); padding-top: 16px; gap: 8px;">
+                <label class="form-label" style="font-weight: 700; margin-bottom: 2px;">Sync Target Folder</label>
+                <div class="folder-selection-ui flex-col" style="gap: 8px;">
+                  <div class="current-folder flex-row" style="justify-content: space-between; background-color: var(--bg-mid-dark); padding: 8px 12px; border-radius: var(--radius-standard); border: 1px solid var(--border-color);">
+                    <div class="flex-col">
+                      <span style="font-size: 10px; color: var(--text-tertiary); text-transform: uppercase;">Active Folder</span>
+                      <span style="font-size: 13px; font-weight: 600; color: var(--text-primary);">
+                        {appState.customDriveFolderName || 'MyNotes (Default)'}
+                      </span>
                     </div>
                     
-                    {#if appState.fetchingFolders}
-                      <div class="flex-row" style="justify-content: center; padding: 12px 0;">
-                        <span class="spinner" style="width: 16px; height: 16px; border-width: 2px;"></span>
-                      </div>
-                    {:else}
-                      <div class="folder-list flex-col" style="gap: 4px;">
-                        <!-- Default Folder Option -->
-                        <button 
-                          class="folder-row flex-row" 
-                          style="width: 100%; text-align: left; padding: 6px 8px; border-radius: var(--radius-subtle); gap: 8px; font-size: 12px; background: none;" 
-                          class:active={!appState.customDriveFolderId}
-                          onclick={() => { appState.setCustomDriveFolder(null, null); showFolderPicker = false; }}
-                        >
-                          <span>📁</span>
-                          <span style="color: {!appState.customDriveFolderId ? 'var(--accent)' : 'var(--text-primary)'};">MyNotes (Default)</span>
-                        </button>
-
-                        {#each appState.googleDriveFolders as folder}
-                          <button 
-                            class="folder-row flex-row" 
-                            style="width: 100%; text-align: left; padding: 6px 8px; border-radius: var(--radius-subtle); gap: 8px; font-size: 12px; background: none;"
-                            class:active={appState.customDriveFolderId === folder.id}
-                            onclick={() => { appState.setCustomDriveFolder(folder.id, folder.name); showFolderPicker = false; }}
-                          >
-                            <span>📁</span>
-                            <span style="color: {appState.customDriveFolderId === folder.id ? 'var(--accent)' : 'var(--text-primary)'};">{folder.name}</span>
-                          </button>
-                        {/each}
-                      </div>
-
-                      <div class="create-folder-inline flex-row" style="gap: 8px; margin-top: 8px; border-top: 1px dashed var(--border-color); padding-top: 8px;">
-                        <input 
-                          type="text" 
-                          placeholder="New folder name..." 
-                          bind:value={newDriveFolderName}
-                          style="flex-grow: 1; background-color: var(--bg-surface); border: 1px solid var(--border-color); padding: 4px 8px; border-radius: var(--radius-subtle); font-size: 12px; color: var(--text-primary);"
-                        />
-                        <button 
-                          class="btn-pill btn-pill-primary" 
-                          style="padding: 4px 8px; font-size: 11px;"
-                          onclick={async () => {
-                            if (newDriveFolderName.trim()) {
-                              await appState.createGoogleDriveFolder(newDriveFolderName.trim());
-                              newDriveFolderName = '';
-                              showFolderPicker = false;
-                            }
-                          }}
-                        >
-                          Create
-                        </button>
-                      </div>
+                    {#if !showFolderPicker}
+                      <button class="btn-pill btn-pill-outline" style="padding: 4px 10px; font-size: 11px;" onclick={() => { showFolderPicker = true; appState.fetchGoogleDriveFolders(); }}>
+                        Change
+                      </button>
                     {/if}
                   </div>
-                {/if}
+
+                  {#if showFolderPicker}
+                    <div class="folder-picker-panel flex-col" style="background-color: var(--bg-mid-dark); padding: 12px; border-radius: var(--radius-standard); border: 1px solid var(--border-color); gap: 10px; max-height: 180px; overflow-y: auto;">
+                      <div class="flex-row" style="justify-content: space-between; font-size: 11px; font-weight: 700; color: var(--text-secondary);">
+                        <span>CHOOSE FROM DRIVE</span>
+                        <button onclick={() => showFolderPicker = false} style="color: var(--accent);">Close</button>
+                      </div>
+                      
+                      {#if appState.fetchingFolders}
+                        <div class="flex-row" style="justify-content: center; padding: 12px 0;">
+                          <span class="spinner" style="width: 16px; height: 16px; border-width: 2px;"></span>
+                        </div>
+                      {:else}
+                        <div class="folder-list flex-col" style="gap: 4px;">
+                          <!-- Default Folder Option -->
+                          <button 
+                            class="folder-row flex-row" 
+                            style="width: 100%; text-align: left; padding: 6px 8px; border-radius: var(--radius-subtle); gap: 8px; font-size: 12px; background: none;" 
+                            class:active={!appState.customDriveFolderId}
+                            onclick={() => { appState.setCustomDriveFolder(null, null); showFolderPicker = false; }}
+                          >
+                            <span>📁</span>
+                            <span style="color: {!appState.customDriveFolderId ? 'var(--accent)' : 'var(--text-primary)'};">MyNotes (Default)</span>
+                          </button>
+
+                          {#each appState.googleDriveFolders as folder}
+                            <button 
+                              class="folder-row flex-row" 
+                              style="width: 100%; text-align: left; padding: 6px 8px; border-radius: var(--radius-subtle); gap: 8px; font-size: 12px; background: none;"
+                              class:active={appState.customDriveFolderId === folder.id}
+                              onclick={() => { appState.setCustomDriveFolder(folder.id, folder.name); showFolderPicker = false; }}
+                            >
+                              <span>📁</span>
+                              <span style="color: {appState.customDriveFolderId === folder.id ? 'var(--accent)' : 'var(--text-primary)'};">{folder.name}</span>
+                            </button>
+                          {/each}
+                        </div>
+
+                        <div class="create-folder-inline flex-row" style="gap: 8px; margin-top: 8px; border-top: 1px dashed var(--border-color); padding-top: 8px;">
+                          <input 
+                            type="text" 
+                            placeholder="New folder name..." 
+                            bind:value={newDriveFolderName}
+                            style="flex-grow: 1; background-color: var(--bg-surface); border: 1px solid var(--border-color); padding: 4px 8px; border-radius: var(--radius-subtle); font-size: 12px; color: var(--text-primary);"
+                          />
+                          <button 
+                            class="btn-pill btn-pill-primary" 
+                            style="padding: 4px 8px; font-size: 11px;"
+                            onclick={async () => {
+                              if (newDriveFolderName.trim()) {
+                                await appState.createGoogleDriveFolder(newDriveFolderName.trim());
+                                newDriveFolderName = '';
+                                showFolderPicker = false;
+                              }
+                            }}
+                          >
+                            Create
+                          </button>
+                        </div>
+                      {/if}
+                    </div>
+                  {/if}
+                </div>
+              </div>
+            </div>
+          {/if}
+
+        <!-- ================= TAB 2: THEMES & APPEARANCE ================= -->
+        {:else if appState.settingsActiveTab === 'styling'}
+          <div class="form-group flex-col">
+            <label class="form-label" style="font-weight: 700; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+              <Palette size={18} class="sync-icon-accent" />
+              <span>Appearance Themes</span>
+            </label>
+            
+            <div class="theme-grid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px;">
+              {#each appState.themes as t}
+                <button 
+                  class="theme-chip flex-row" 
+                  style="background-color: var(--bg-mid-dark); border: 1px solid {appState.theme === t.id ? 'var(--accent)' : 'var(--border-color)'}; padding: 10px; border-radius: var(--radius-standard); justify-content: space-between; text-align: left; width: 100%; transition: border-color 0.2s;"
+                  onclick={() => appState.setTheme(t.id)}
+                >
+                  <span style="font-size: 12px; font-weight: 600; color: {appState.theme === t.id ? 'var(--text-primary)' : 'var(--text-secondary)'};">{t.name}</span>
+                  <div class="color-preview flex-row" style="gap: 4px;">
+                    <span style="width: 12px; height: 12px; border-radius: 50%; background-color: {t.bg}; border: 1.5px solid rgba(255,255,255,0.2);"></span>
+                    <span style="width: 12px; height: 12px; border-radius: 50%; background-color: {t.accent};"></span>
+                  </div>
+                </button>
+              {/each}
+            </div>
+          </div>
+
+        <!-- ================= TAB 3: EDITOR & FILES ================= -->
+        {:else if appState.settingsActiveTab === 'editor'}
+          <!-- Diagram Editor Preferences -->
+          <div class="form-group flex-col" style="gap: 8px;">
+            <label class="form-label" style="font-weight: 700; display: flex; align-items: center; gap: 8px;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="sync-icon-accent">
+                <rect x="3" y="3" width="7" height="7" rx="1"/>
+                <rect x="14" y="14" width="7" height="7" rx="1"/>
+                <path d="M10 6.5h4a3 3 0 0 1 3 3V14"/>
+              </svg>
+              <span>Default Diagram Editor</span>
+            </label>
+
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;">
+              <button
+                class="theme-chip flex-row"
+                style="background-color: var(--bg-mid-dark); border: 1px solid {appState.diagramEditorType === 'native' ? 'var(--accent)' : 'var(--border-color)'}; padding: 12px; border-radius: var(--radius-standard); flex-direction: column; align-items: flex-start; text-align: left; width: 100%; gap: 4px; transition: border-color 0.2s;"
+                onclick={() => appState.setDiagramEditorType('native')}
+              >
+                <span style="font-size: 13px; font-weight: 700; color: {appState.diagramEditorType === 'native' ? 'var(--text-primary)' : 'var(--text-secondary)'};">Native</span>
+                <span style="font-size: 10px; color: var(--text-tertiary);">Offline</span>
+              </button>
+
+              <button
+                class="theme-chip flex-row"
+                style="background-color: var(--bg-mid-dark); border: 1px solid {appState.diagramEditorType === 'drawio' ? 'var(--accent)' : 'var(--border-color)'}; padding: 12px; border-radius: var(--radius-standard); flex-direction: column; align-items: flex-start; text-align: left; width: 100%; gap: 4px; transition: border-color 0.2s;"
+                onclick={() => appState.setDiagramEditorType('drawio')}
+              >
+                <span style="font-size: 13px; font-weight: 700; color: {appState.diagramEditorType === 'drawio' ? 'var(--text-primary)' : 'var(--text-secondary)'};">Draw.io</span>
+                <span style="font-size: 10px; color: var(--text-tertiary);">Online</span>
+              </button>
+
+              <button
+                class="theme-chip flex-row"
+                style="background-color: var(--bg-mid-dark); border: 1px solid {appState.diagramEditorType === 'mermaid' ? 'var(--accent)' : 'var(--border-color)'}; padding: 12px; border-radius: var(--radius-standard); flex-direction: column; align-items: flex-start; text-align: left; width: 100%; gap: 4px; transition: border-color 0.2s;"
+                onclick={() => appState.setDiagramEditorType('mermaid')}
+              >
+                <span style="font-size: 13px; font-weight: 700; color: {appState.diagramEditorType === 'mermaid' ? 'var(--text-primary)' : 'var(--text-secondary)'};">Mermaid</span>
+                <span style="font-size: 10px; color: var(--text-tertiary);">AI syntax</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="form-group flex-col" style="margin-top: 10px; border-top: 1px dashed var(--border-color); padding-top: 20px; gap: 8px;">
+            <label class="form-label" style="font-weight: 700; display: flex; align-items: center; gap: 8px;">
+              <FolderOpen size={18} class="sync-icon-accent" />
+              <span>File Operations</span>
+            </label>
+
+            <!-- Import Note Button (Mobile / Desktop settings) -->
+            <div class="flex-col" style="gap: 12px; width: 100%;">
+              <div class="flex-row" style="justify-content: space-between; background-color: var(--bg-mid-dark); padding: 12px; border-radius: var(--radius-standard); border: 1px solid var(--border-color); width: 100%;">
+                <div class="flex-col">
+                  <span style="font-size: 13px; font-weight: 600; color: var(--text-primary);">Import .mynote File</span>
+                  <span style="font-size: 10px; color: var(--text-tertiary); margin-top: 2px;">Restores custom exported note format</span>
+                </div>
+                <input 
+                  type="file" 
+                  accept=".mynote" 
+                  bind:this={fileInput} 
+                  onchange={handleImportFile} 
+                  style="display: none;" 
+                />
+                <button 
+                  class="btn-pill btn-pill-outline" 
+                  style="padding: 6px 12px; font-size: 11px;"
+                  onclick={triggerImport}
+                >
+                  Import
+                </button>
+              </div>
+
+              <!-- Vault Details -->
+              <div class="flex-col" style="background-color: var(--bg-mid-dark); padding: 12px; border-radius: var(--radius-standard); border: 1px solid var(--border-color); font-size: 11px; color: var(--text-secondary); gap: 4px; width: 100%;">
+                <span style="font-weight: 700; color: var(--text-primary); margin-bottom: 2px;">Vault Details</span>
+                <span>Active Vault: <b>{appState.vaultName || 'Local Sandbox'}</b></span>
+                <span>Total notes: <b>{appState.notes.length}</b></span>
               </div>
             </div>
           </div>
         {/if}
 
-      </div>
-    </div>
-  </div>
-{/if}
-
-<!-- Preferences & Themes Modal Overlay -->
-{#if appState.showPreferences}
-  <div 
-    class="settings-backdrop flex-row" 
-    transition:fade={{ duration: 150 }}
-    onclick={(e) => { if (e.target === e.currentTarget) appState.showPreferences = false; }} 
-    role="presentation"
-  >
-    <div 
-      class="settings-modal flex-col"
-      transition:fly={{ y: 20, duration: 250, easing: cubicOut }}
-    >
-      <div class="settings-header flex-row">
-        <div class="settings-title flex-row">
-          <Palette size={20} class="sync-icon-accent" />
-          <span>App Preferences</span>
-        </div>
-        <button class="close-btn flex-row" onclick={() => appState.showPreferences = false} aria-label="Close preferences">
-          <X size={18} />
-        </button>
-      </div>
-
-      <div class="settings-content flex-col" style="max-height: 70vh; overflow-y: auto; gap: 20px;">
-        <!-- Appearance Settings -->
-        <div class="form-group flex-col">
-          <label class="form-label" style="font-weight: 700; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
-            <Palette size={18} class="sync-icon-accent" />
-            <span>Appearance Themes</span>
-          </label>
-          
-          <div class="theme-grid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px;">
-            {#each appState.themes as t}
-              <button 
-                class="theme-chip flex-row" 
-                style="background-color: var(--bg-mid-dark); border: 1px solid {appState.theme === t.id ? 'var(--accent)' : 'var(--border-color)'}; padding: 10px; border-radius: var(--radius-standard); justify-content: space-between; text-align: left; width: 100%; transition: border-color 0.2s;"
-                onclick={() => appState.setTheme(t.id)}
-              >
-                <span style="font-size: 12px; font-weight: 600; color: {appState.theme === t.id ? 'var(--text-primary)' : 'var(--text-secondary)'};">{t.name}</span>
-                <div class="color-preview flex-row" style="gap: 4px;">
-                  <span style="width: 12px; height: 12px; border-radius: 50%; background-color: {t.bg}; border: 1.5px solid rgba(255,255,255,0.2);"></span>
-                  <span style="width: 12px; height: 12px; border-radius: 50%; background-color: {t.accent};"></span>
-                </div>
-              </button>
-            {/each}
-          </div>
-        </div>
-
-        <!-- Diagram Editor Settings -->
-        <div class="form-group flex-col" style="margin-top: 10px; border-top: 1px dashed var(--border-color); padding-top: 20px;">
-          <label class="form-label" style="font-weight: 700; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="sync-icon-accent">
-              <rect x="3" y="3" width="7" height="7" rx="1"/>
-              <rect x="14" y="14" width="7" height="7" rx="1"/>
-              <path d="M10 6.5h4a3 3 0 0 1 3 3V14"/>
-            </svg>
-            <span>Default Diagram Editor</span>
-          </label>
-
-          <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;">
-            <button
-              class="theme-chip flex-row"
-              style="background-color: var(--bg-mid-dark); border: 1px solid {appState.diagramEditorType === 'native' ? 'var(--accent)' : 'var(--border-color)'}; padding: 12px; border-radius: var(--radius-standard); flex-direction: column; align-items: flex-start; text-align: left; width: 100%; gap: 4px; transition: border-color 0.2s;"
-              onclick={() => appState.setDiagramEditorType('native')}
-            >
-              <span style="font-size: 13px; font-weight: 700; color: {appState.diagramEditorType === 'native' ? 'var(--text-primary)' : 'var(--text-secondary)'};">Native Editor</span>
-              <span style="font-size: 10px; color: var(--text-tertiary);">Built-in, fast, offline-ready</span>
-            </button>
-
-            <button
-              class="theme-chip flex-row"
-              style="background-color: var(--bg-mid-dark); border: 1px solid {appState.diagramEditorType === 'drawio' ? 'var(--accent)' : 'var(--border-color)'}; padding: 12px; border-radius: var(--radius-standard); flex-direction: column; align-items: flex-start; text-align: left; width: 100%; gap: 4px; transition: border-color 0.2s;"
-              onclick={() => appState.setDiagramEditorType('drawio')}
-            >
-              <span style="font-size: 13px; font-weight: 700; color: {appState.diagramEditorType === 'drawio' ? 'var(--text-primary)' : 'var(--text-secondary)'};">Draw.io</span>
-              <span style="font-size: 10px; color: var(--text-tertiary);">Full-featured, online</span>
-            </button>
-
-            <button
-              class="theme-chip flex-row"
-              style="background-color: var(--bg-mid-dark); border: 1px solid {appState.diagramEditorType === 'mermaid' ? 'var(--accent)' : 'var(--border-color)'}; padding: 12px; border-radius: var(--radius-standard); flex-direction: column; align-items: flex-start; text-align: left; width: 100%; gap: 4px; transition: border-color 0.2s;"
-              onclick={() => appState.setDiagramEditorType('mermaid')}
-            >
-              <span style="font-size: 13px; font-weight: 700; color: {appState.diagramEditorType === 'mermaid' ? 'var(--text-primary)' : 'var(--text-secondary)'};">Mermaid</span>
-              <span style="font-size: 10px; color: var(--text-tertiary);">Text-to-diagram, syntax-based</span>
-            </button>
-          </div>
-
-          <p style="font-size: 11px; color: var(--text-tertiary); margin-top: 10px; line-height: 1.5;">
-            {#if appState.diagramEditorType === 'drawio'}
-              Uses diagrams.net (draw.io) embedded editor for advanced flowcharts, UML, and more.
-            {:else if appState.diagramEditorType === 'mermaid'}
-              Uses text syntax to write graphs, sequence flows, ER tables, and roadmaps with AI support.
-            {:else}
-              Lightweight native editor with basic shapes, arrows, and freehand drawing.
-            {/if}
-          </p>
-        </div>
       </div>
     </div>
   </div>

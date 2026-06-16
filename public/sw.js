@@ -1,8 +1,8 @@
-const CACHE_NAME = 'mynotes-v1';
+const CACHE_NAME = 'mynotes-v2';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
-  './favicon.svg',
+  './favicon.svg?v=3',
   './manifest.json'
 ];
 

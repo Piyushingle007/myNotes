@@ -5,8 +5,8 @@
 | Field              | Value                          |
 | ------------------ | ------------------------------ |
 | Project Name       | MyNotes                        |
-| Context Version    | 2.0.0                          |
-| Last Updated       | 2026-06-15                     |
+| Context Version    | 2.2.0                          |
+| Last Updated       | 2026-06-16                     |
 | Repository Version | 0.0.0                          |
 | Framework          | Svelte 5 + TypeScript          |
 | Build Tool         | Vite 8.0.12                    |
@@ -38,9 +38,8 @@
 1. **Note Creation**: Create notes in notebooks with rich formatting
 2. **Organization**: Organize with folders (notebooks), tags, and favorites
 3. **Editing**: Full WYSIWYG editing with slash commands, tables, diagrams
-4. **Task Management**: Create task lists with due dates, priorities, reminders
-5. **Sync**: Optional bidirectional Google Drive synchronization
-6. **Export**: PDF/HTML export capabilities
+4. **Sync**: Optional bidirectional Google Drive synchronization
+5. **Export**: PDF/HTML export capabilities
 
 ---
 
@@ -56,7 +55,6 @@ graph TB
         Editor[Editor.svelte]
         Sidebar[Sidebar.svelte]
         NoteList[NoteList.svelte]
-        TasksView[TasksView.svelte]
     end
     
     subgraph "State Management"
@@ -79,12 +77,10 @@ graph TB
     AppLayout --> Sidebar
     AppLayout --> NoteList
     AppLayout --> Editor
-    AppLayout --> TasksView
     
     Editor --> AppState
     Sidebar --> AppState
     NoteList --> AppState
-    TasksView --> AppState
     
     AppState --> StorageAdapter
     AppState --> MiniSearch
@@ -151,7 +147,6 @@ sequenceDiagram
 |-----------|---------|
 | `@tiptap/starter-kit` | Core formatting (bold, italic, lists, etc.) |
 | `@tiptap/extension-table` | Table editing with cell colors |
-| `@tiptap/extension-task-list` | Interactive checklists |
 | `@tiptap/extension-code-block-lowlight` | Syntax-highlighted code |
 | `@tiptap/extension-details` | Collapsible sections |
 | `@tiptap/extension-image` | Image embeds |
@@ -220,7 +215,6 @@ myNotes/
 │       │   ├── Editor.svelte      # TipTap WYSIWYG editor (~12K lines)
 │       │   ├── Sidebar.svelte     # Left navigation panel
 │       │   ├── NoteList.svelte    # Middle notes list
-│       │   ├── TasksView.svelte   # Task management view
 │       │   ├── GraphView.svelte   # Note graph visualization
 │       │   ├── DiagramEditor.svelte    # Native diagram editor
 │       │   ├── DrawIOEditor.svelte     # Draw.io integration
@@ -228,7 +222,6 @@ myNotes/
 │       │   ├── ResizeHandle.svelte     # Panel resize handles
 │       │   └── GoogleLogo.svelte       # Branding component
 │       ├── extensions/
-│       │   └── TaskItemExtended.ts     # Custom TipTap task extension
 │       ├── stores/
 │       │   └── appState.svelte.ts      # Central state management
 │       ├── storage/
@@ -238,7 +231,6 @@ myNotes/
 │       └── utils/
 │           ├── debounce.ts             # Debounce utility
 │           ├── diagram.ts              # Diagram data model & renderer
-│           └── taskTypes.ts            # Task data types & helpers
 ├── public/
 │   ├── manifest.json              # PWA manifest
 │   ├── sw.js                      # Service worker (offline support)
@@ -346,31 +338,10 @@ Organize notes into folder-based notebooks.
 
 ---
 
-## Feature: Task Management
-
-### Purpose
-Create interactive task lists with due dates, priorities, and reminders.
-
-### User Flow
-1. Create task list with `/checklist`
-2. Set due date, priority, reminder via task menu
-3. View all tasks in Tasks tab
-4. Receive reminder notifications
-
-### Components
-- `TasksView.svelte`
-- `TaskItemExtended.ts` (TipTap extension)
-
-### Services
-- `appState.allTasks`
-- `appState.refreshTasks()`
-- `appState.startReminderChecker()`
-
-### Dependencies
-- `taskTypes.ts` utilities
+## Feature: Task Management [REMOVED]
 
 ### Status
-✅ Complete
+❌ Removed (completely removed from codebase by user request on 2026-06-16).
 
 ### Related Features
 - Rich Text Editor, Notifications
@@ -743,20 +714,6 @@ Calls appState.selectNote()
 
 ---
 
-## TasksView.svelte
-
-### Purpose
-Dedicated view for task management across all notes.
-
-### Inputs
-None (uses appState.allTasks)
-
-### Features
-- Group by: overdue, today, upcoming, no date
-- Filter by completion status
-- Navigate to task's source note
-
----
 
 ## DiagramEditor.svelte
 
@@ -1061,6 +1018,24 @@ Future agents working on this codebase MUST:
 - Documented task management feature
 - Documented diagram editor options (Native, Draw.io, Mermaid)
 - Updated technology stack with all dependencies
+
+## Version 2.1.0 (2026-06-16)
+- Removed Task Management feature entirely from the codebase by user request.
+- Deleted `TasksView.svelte`, `TaskItemExtended.ts`, and `taskTypes.ts`.
+- Cleaned up Layouts, Sidebar, appState, and Editor to completely eliminate checklists, task HUDs, reminders, and navigation buttons.
+
+## Version 2.1.1 (2026-06-16)
+- Configured shadcn Model Context Protocol (MCP) server.
+- Added `.vscode/mcp.json` and `.mcp.json` to both `myNotes` and `HelixNotes` project folders.
+- Corrected and updated the global `mcp_config.json` symlink pointing to the correct SSD configuration folder.
+
+## Version 2.2.0 (2026-06-16)
+- Redesigned mobile editor overlay header in `AppLayout.svelte` (Apple Notes/Keep style with Back, breadcrumbs Notebook title, Done checkmark, and More Actions triggers).
+- Implemented slide-up "More Actions" bottom sheet dropdown overlay on mobile to contain all secondary note operations (Favorite, Edit/Read, Source/Rich modes, Focus Mode, Typewriter Scroll, Delete).
+- Relocated Note Title input to the top of the scrollable note body in `Editor.svelte` on mobile so it scrolls naturally.
+- Redesigned Library tab in `AppLayout.svelte` to use a hierarchical folder-note navigation layout (Grid card notebooks view, Daily Logs folder, and nested files list sub-view).
+- Combined preferences and sync modals in `AppLayout.svelte` into a unified tabbed Settings Modal ("Cloud Sync", "Appearance", "Editor & Files") and extended file import / diagram editor configuration to mobile.
+- Fixed mobile diagram selection bug where single tap would focus the editor, pop up the virtual keyboard, and cursor would jump to the next line. Added native touch single-tap (toggle actions toolbar) and double-tap (trigger diagram editor) detection directly in Tiptap's Diagram node view.
 
 ---
 
