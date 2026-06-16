@@ -20,7 +20,6 @@
   let newMobileFolder = $state('');
   let showMobileFolderForm = $state(false);
   let showMobileMoreMenu = $state(false);
-  let showAllNotesMobile = $state(false);
   
   // Custom Sync Folder and Theme Selectors
   let showFolderPicker = $state(false);
@@ -520,92 +519,14 @@
             </div>
           </div>
 
-        <!-- 2. SEARCH TAB -->
-        {:else if appState.activeTab === 'search'}
-          <div class="mobile-tab-view flex-col">
-            <div class="mobile-header">
-              <h1>Search</h1>
-            </div>
-
-            <div class="mobile-search-bar flex-row">
-              <Search size={20} class="search-icon" />
-              <input 
-                type="text" 
-                placeholder="Search notes, folders..." 
-                bind:value={mobileSearchInput}
-                oninput={() => appState.searchQuery = mobileSearchInput}
-                class="mobile-search-input"
-              />
-            </div>
-
-            {#if appState.searchQuery.trim()}
-              <!-- Search Results -->
-              <div class="search-results flex-col">
-                <span class="section-title">Notes</span>
-                {#each appState.filteredNotes as note}
-                  <button class="search-result-row flex-row" onclick={() => appState.selectNote(note.path)}>
-                    <div class="row-art">📄</div>
-                    <div class="row-info flex-col">
-                      <span class="row-title">{note.name}</span>
-                      <span class="row-sub">{note.path}</span>
-                    </div>
-                  </button>
-                {/each}
-              </div>
-            {:else}
-              <!-- Notebooks Folder List -->
-              <div class="search-section flex-col" style="gap: 8px;">
-                <span class="section-title">Notebooks</span>
-                <div class="notebook-list flex-col" style="gap: 6px;">
-                  {#each appState.notebooks as notebook}
-                    <button 
-                      class="notebook-row flex-row" 
-                      onclick={() => {
-                        appState.activeNotebook = notebook;
-                        appState.activeTab = 'library';
-                      }}
-                      style="width: 100%; padding: 10px 12px; border-radius: var(--radius-standard); border: 1px solid var(--border-color); background-color: var(--bg-surface); gap: 12px; text-align: left;"
-                    >
-                      <Folder size={18} style="color: var(--accent); flex-shrink: 0;" />
-                      <span style="font-size: 13px; font-weight: 600; color: var(--text-primary);">{notebook}</span>
-                    </button>
-                  {:else}
-                    <div class="empty-list" style="font-size: 12px; color: var(--text-tertiary); text-align: center; padding: 12px 0;">No notebooks created yet.</div>
-                  {/each}
-                </div>
-              </div>
-
-              <!-- Recent Notes in Search View -->
-              <div class="search-section flex-col" style="gap: 8px; margin-top: 16px;">
-                <span class="section-title">Recent Notes</span>
-                <div class="recent-list flex-col" style="gap: 6px;">
-                  {#each appState.recentNotes.slice(0, 5) as note}
-                    <button 
-                      class="search-result-row flex-row" 
-                      onclick={() => appState.selectNote(note.path)}
-                    >
-                      <div class="row-art">📄</div>
-                      <div class="row-info flex-col">
-                        <span class="row-title">{note.name}</span>
-                        <span class="row-sub">{note.path}</span>
-                      </div>
-                    </button>
-                  {:else}
-                    <div class="empty-list" style="font-size: 12px; color: var(--text-tertiary); text-align: center; padding: 12px 0;">No notes found.</div>
-                  {/each}
-                </div>
-              </div>
-            {/if}
-          </div>
-
-        <!-- 3. LIBRARY TAB -->
+        <!-- 3. LIBRARY TAB (Unified Search & Library) -->
         {:else if appState.activeTab === 'library'}
           <div class="mobile-tab-view flex-col">
-            {#if appState.activeNotebook === null && !showAllNotesMobile}
-              <!-- Folders / Library Home View -->
-              <div class="mobile-header mobile-library-header flex-row" style="justify-content: space-between; width: 100%;">
+            {#if appState.activeNotebook === null}
+              <!-- Library Home / Search View -->
+              <div class="mobile-header mobile-library-header flex-row" style="justify-content: space-between; width: 100%; align-items: center;">
                 <h1>Your Library</h1>
-                <div class="flex-row" style="gap: 12px;">
+                <div class="flex-row" style="gap: 12px; align-items: center;">
                   <button 
                     class="icon-circle-btn flex-row" 
                     onclick={() => appState.showSettings = true}
@@ -624,7 +545,7 @@
               </div>
 
               {#if showMobileFolderForm}
-                <form onsubmit={createMobileFolder} class="mobile-folder-form" style="width: 100%;">
+                <form onsubmit={createMobileFolder} class="mobile-folder-form" style="width: 100%; margin-bottom: 8px;">
                   <input 
                     type="text" 
                     placeholder="New Notebook Name..." 
@@ -637,86 +558,114 @@
                 </form>
               {/if}
 
-              <!-- Grid of Folder Cards -->
-              <div class="mobile-folders-grid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; width: 100%; margin-top: 8px;">
-                <!-- All Notes Card -->
-                <button 
-                  class="notebook-card flex-col" 
-                  onclick={() => { showAllNotesMobile = true; appState.activeNotebook = null; }}
-                  style="background-color: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-comfortable); padding: 16px; align-items: flex-start; text-align: left; gap: 8px; width: 100%; transition: border-color 0.2s;"
-                >
-                  <div class="folder-icon flex-row" style="width: 38px; height: 38px; border-radius: 50%; background-color: rgba(255,255,255,0.06); justify-content: center;">
-                    <FileText size={20} style="color: var(--accent);" />
-                  </div>
-                  <div class="folder-info flex-col">
-                    <span style="font-weight: 700; font-size: 14px; color: var(--text-primary);">All Notes</span>
-                    <span style="font-size: 11px; color: var(--text-secondary); margin-top: 2px;">{appState.notes.length} files</span>
-                  </div>
-                </button>
-
-                <!-- Daily Logs Card -->
-                <button 
-                  class="notebook-card flex-col" 
-                  onclick={() => { appState.activeNotebook = 'Daily Notes'; showAllNotesMobile = false; }}
-                  style="background-color: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-comfortable); padding: 16px; align-items: flex-start; text-align: left; gap: 8px; width: 100%; transition: border-color 0.2s;"
-                >
-                  <div class="folder-icon flex-row" style="width: 38px; height: 38px; border-radius: 50%; background-color: rgba(255,255,255,0.06); justify-content: center;">
-                    <Calendar size={20} style="color: var(--accent);" />
-                  </div>
-                  <div class="folder-info flex-col">
-                    <span style="font-weight: 700; font-size: 14px; color: var(--text-primary);">Daily Logs</span>
-                    <span style="font-size: 11px; color: var(--text-secondary); margin-top: 2px;">{appState.notes.filter(n => n.path.startsWith('Daily Notes/')).length} files</span>
-                  </div>
-                </button>
-
-                <!-- Custom Folders -->
-                {#each appState.notebooks as notebook}
-                  <div class="notebook-card-wrapper" style="position: relative; width: 100%;">
-                    <button 
-                      class="notebook-card flex-col" 
-                      onclick={() => { appState.activeNotebook = notebook; showAllNotesMobile = false; }}
-                      style="background-color: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-comfortable); padding: 16px; align-items: flex-start; text-align: left; gap: 8px; width: 100%; transition: border-color 0.2s;"
-                    >
-                      <div class="folder-icon flex-row" style="width: 38px; height: 38px; border-radius: 50%; background-color: rgba(255,255,255,0.06); justify-content: center;">
-                        <Folder size={20} style="color: var(--accent);" />
-                      </div>
-                      <div class="folder-info flex-col">
-                        <span style="font-weight: 700; font-size: 14px; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%;">{notebook}</span>
-                        <span style="font-size: 11px; color: var(--text-secondary); margin-top: 2px;">{appState.notes.filter(n => n.path.startsWith(notebook + '/')).length} files</span>
-                      </div>
-                    </button>
-                    <!-- Folder Delete Button -->
-                    <button
-                      onclick={(e) => {
-                        e.stopPropagation();
-                        if (confirm(`Delete folder "${notebook}" and all its notes?`)) {
-                          appState.deleteNotebook(notebook);
-                        }
-                      }}
-                      style="position: absolute; top: 12px; right: 12px; background: none; border: none; color: var(--text-tertiary); cursor: pointer; padding: 4px; z-index: 2;"
-                      aria-label="Delete notebook"
-                      onmouseover={(e) => e.currentTarget.style.color = 'var(--semantic-error, #ff4444)'}
-                      onmouseout={(e) => e.currentTarget.style.color = 'var(--text-tertiary)'}
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                {/each}
+              <!-- Search Bar -->
+              <div class="mobile-search-bar flex-row">
+                <Search size={20} class="search-icon" />
+                <input 
+                  type="text" 
+                  placeholder="Search notes, content..." 
+                  bind:value={mobileSearchInput}
+                  oninput={() => appState.searchQuery = mobileSearchInput}
+                  class="mobile-search-input"
+                />
               </div>
+
+              {#if appState.searchQuery.trim()}
+                <!-- Search Results -->
+                <div class="search-results flex-col" style="width: 100%; margin-top: 8px;">
+                  <span class="section-title">Notes</span>
+                  {#each appState.filteredNotes as note}
+                    <button 
+                      class="search-result-row flex-row" 
+                      onclick={() => appState.selectNote(note.path)}
+                      style="width: 100%; text-align: left;"
+                    >
+                      <div class="row-art">📄</div>
+                      <div class="row-info flex-col">
+                        <span class="row-title">{note.name}</span>
+                        <span class="row-sub">{note.path}</span>
+                      </div>
+                    </button>
+                  {:else}
+                    <div class="empty-list" style="font-size: 12px; color: var(--text-tertiary); text-align: center; padding: 24px 0;">No matching notes found.</div>
+                  {/each}
+                </div>
+              {:else}
+                <!-- Notebooks List -->
+                <div class="search-section flex-col" style="gap: 8px; width: 100%; margin-top: 8px;">
+                  <span class="section-title">Notebooks</span>
+                  <div class="notebook-list flex-col" style="gap: 8px;">
+                    {#each appState.notebooks as notebook}
+                      <div class="notebook-card-wrapper" style="position: relative; width: 100%;">
+                        <button 
+                          class="notebook-row flex-row" 
+                          onclick={() => {
+                            appState.activeNotebook = notebook;
+                          }}
+                          style="width: 100%; padding: 12px 14px; border-radius: var(--radius-comfortable); border: 1px solid var(--border-color); background-color: var(--bg-surface); gap: 12px; text-align: left; align-items: center;"
+                        >
+                          <Folder size={18} style="color: var(--accent); flex-shrink: 0;" />
+                          <span style="font-size: 13px; font-weight: 700; color: var(--text-primary);">{notebook}</span>
+                        </button>
+                        <!-- Notebook Delete Button -->
+                        <button
+                          onclick={(e) => {
+                            e.stopPropagation();
+                            if (confirm(`Delete folder "${notebook}" and all its notes?`)) {
+                              appState.deleteNotebook(notebook);
+                            }
+                          }}
+                          style="position: absolute; top: 50%; transform: translateY(-50%); right: 12px; background: none; border: none; color: var(--text-tertiary); cursor: pointer; padding: 6px; z-index: 2; display: flex; align-items: center; justify-content: center;"
+                          aria-label="Delete notebook"
+                          onmouseover={(e) => e.currentTarget.style.color = 'var(--semantic-error, #ff4444)'}
+                          onmouseout={(e) => e.currentTarget.style.color = 'var(--text-tertiary)'}
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
+                    {:else}
+                      <div class="empty-list" style="font-size: 12px; color: var(--text-tertiary); text-align: center; padding: 12px 0; border: 1px dashed var(--border-color); border-radius: var(--radius-standard);">No notebooks created yet.</div>
+                    {/each}
+                  </div>
+                </div>
+
+                <!-- Recent Notes -->
+                <div class="search-section flex-col" style="gap: 8px; width: 100%; margin-top: 16px;">
+                  <span class="section-title">Recent Notes</span>
+                  <div class="recent-list flex-col" style="gap: 6px; width: 100%;">
+                    {#each appState.recentNotes.slice(0, 8) as note}
+                      <button 
+                        class="search-result-row flex-row" 
+                        onclick={() => appState.selectNote(note.path)}
+                        style="width: 100%; text-align: left;"
+                      >
+                        <div class="row-art">📄</div>
+                        <div class="row-info flex-col">
+                          <span class="row-title">{note.name}</span>
+                          <span class="row-sub">{note.path}</span>
+                        </div>
+                      </button>
+                    {:else}
+                      <div class="empty-list" style="font-size: 12px; color: var(--text-tertiary); text-align: center; padding: 12px 0;">No notes found.</div>
+                    {/each}
+                  </div>
+                </div>
+              {/if}
+
             {:else}
-              <!-- Folder Notes List view (Slide-in sub-view) -->
-              <div class="mobile-header flex-row" style="justify-content: space-between; width: 100%; border-bottom: 1px dashed var(--border-color); padding-bottom: 12px; margin-bottom: 4px;">
-                <div class="flex-row" style="gap: 8px; max-width: 70%;">
+              <!-- Folder Notes List View (Sub-view inside active notebook) -->
+              <div class="mobile-header flex-row" style="justify-content: space-between; width: 100%; border-bottom: 1px dashed var(--border-color); padding-bottom: 12px; margin-bottom: 8px;">
+                <div class="flex-row" style="gap: 8px; max-width: 70%; align-items: center;">
                   <button 
                     class="icon-circle-btn flex-row" 
-                    onclick={() => { appState.activeNotebook = null; showAllNotesMobile = false; }}
-                    aria-label="Back to Notebooks"
+                    onclick={() => { appState.activeNotebook = null; }}
+                    aria-label="Back to Library"
                     style="width: 32px; height: 32px;"
                   >
                     <ChevronLeft size={18} />
                   </button>
                   <span style="font-weight: 800; font-size: 16px; color: var(--text-primary); text-overflow: ellipsis; overflow: hidden; white-space: nowrap; max-width: calc(100% - 40px);">
-                    {appState.activeNotebook || 'All Notes'}
+                    {appState.activeNotebook}
                   </span>
                 </div>
                 
@@ -732,9 +681,21 @@
                 </button>
               </div>
 
+              <!-- Search inside notebook -->
+              <div class="mobile-search-bar flex-row" style="margin-bottom: 10px;">
+                <Search size={18} class="search-icon" />
+                <input 
+                  type="text" 
+                  placeholder="Search in this folder..." 
+                  bind:value={mobileSearchInput}
+                  oninput={() => appState.searchQuery = mobileSearchInput}
+                  class="mobile-search-input"
+                />
+              </div>
+
               <!-- Notes list inside selected folder -->
               <div class="mobile-notes-list flex-col" style="width: 100%; gap: 10px;">
-                {#each (showAllNotesMobile ? appState.notes : appState.filteredNotes) as note}
+                {#each appState.filteredNotes as note}
                   <button 
                     class="recent-note-card flex-col" 
                     onclick={() => appState.selectNote(note.path)}
@@ -745,9 +706,6 @@
                       <span class="card-note-time" style="font-size: 10px; color: var(--text-tertiary);">{new Date(note.modified).toLocaleDateString(undefined, {month: 'short', day: 'numeric'})}</span>
                     </div>
                     <p class="card-note-snippet" style="font-size: 12px; color: var(--text-secondary); line-height: 1.5; margin: 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">{(note.content || '').replace(/[#*`_\-\[\]()]/g, ' ').slice(0, 80)}...</p>
-                    {#if showAllNotesMobile && note.path.includes('/')}
-                      <span class="card-notebook-badge" style="font-size: 9px; font-weight: 700; color: var(--accent); background: rgba(0, 173, 181, 0.08); padding: 2px 8px; border-radius: var(--radius-pill); align-self: flex-start; text-transform: uppercase;">{note.path.split('/')[0]}</span>
-                    {/if}
                   </button>
                 {:else}
                   <div class="empty-lib flex-col" style="align-items: center; justify-content: center; gap: 8px; padding: 40px 0; color: var(--text-tertiary);">
@@ -824,17 +782,8 @@
         
         <button 
           class="nav-tab flex-col" 
-          class:active={appState.activeTab === 'search'} 
-          onclick={() => { appState.activeTab = 'search'; appState.searchQuery = ''; mobileSearchInput = ''; }}
-        >
-          <Search size={22} />
-          <span>Search</span>
-        </button>
-        
-        <button 
-          class="nav-tab flex-col" 
           class:active={appState.activeTab === 'library'} 
-          onclick={() => { appState.activeTab = 'library'; appState.activeNotebook = null; }}
+          onclick={() => { appState.activeTab = 'library'; appState.activeNotebook = null; appState.searchQuery = ''; mobileSearchInput = ''; }}
         >
           <Library size={22} />
           <span>Library</span>
