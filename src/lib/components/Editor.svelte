@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onDestroy, tick, untrack } from 'svelte';
+	import { onDestroy, tick, untrack, mount, unmount } from 'svelte';
 	import * as XLSX from 'xlsx-js-style';
 	import { get } from 'svelte/store';
 	import { Editor } from '@tiptap/core';
@@ -31,7 +31,7 @@
 	import katex from 'katex';
 	import 'katex/dist/katex.min.css';
 	import { Extension, Node as TiptapNode, Mark as TiptapMark, mergeAttributes } from '@tiptap/core';
-	import { Plugin, PluginKey, EditorState, TextSelection } from '@tiptap/pm/state';
+	import { Plugin, PluginKey, EditorState, TextSelection, NodeSelection } from '@tiptap/pm/state';
 	import { Decoration, DecorationSet } from '@tiptap/pm/view';
 	import { DOMSerializer, DOMParser as PMParser } from '@tiptap/pm/model';
 	import { writable, derived } from 'svelte/store';
@@ -41,6 +41,7 @@
 	import DiagramEditor from './DiagramEditor.svelte';
 	import DrawIOEditor from './DrawIOEditor.svelte';
 	import MermaidEditor from './MermaidEditor.svelte';
+	import MetricsBlock from './MetricsBlock.svelte';
 	import { renderDiagramSVG, decodeDiagram } from '../utils/diagram';
 
 	let resolvedAssetsMap = new Map<string, string>(); // relative path -> blob URL
@@ -1114,6 +1115,15 @@
 				aliases: ['callout', 'box', 'alert', 'note', 'tip', 'warning'],
 				icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="9" y1="9" x2="15" y2="9"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/></svg>',
 				action: () => editor?.chain().focus().insertContent({ type: 'callout', attrs: { type: 'note' }, content: [{ type: 'paragraph' }] }).run(),
+				category: 'insert',
+				badge: 'New'
+			},
+			{
+				label: 'Metrics Block',
+				description: 'Insert an inline calculation sheet',
+				aliases: ['calc', 'metric', 'metrics', 'calculate', 'spreadsheet'],
+				icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="9" y1="9" x2="15" y2="9"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/></svg>',
+				action: () => editor?.chain().focus().insertContent({ type: 'metrics', attrs: { id: 'metrics_' + Math.random().toString(36).substring(2, 9), title: 'Metrics List', data: '[]', excludeChecked: false } }).run(),
 				category: 'insert',
 				badge: 'New'
 			},
@@ -2630,6 +2640,212 @@
 			const type = HTMLAttributes['data-callout-type'] || HTMLAttributes.type || 'note';
 			return ['div', { 'data-type': 'callout', 'data-callout-type': type, class: `callout callout-${type}` }, 0];
 		},
+	});
+
+	const Metrics = TiptapNode.create({
+		name: 'metrics',
+		group: 'block',
+		atom: true,
+		draggable: true,
+		addAttributes() {
+			return {
+				id: {
+					default: null,
+					parseHTML: (el: HTMLElement) => el.getAttribute('data-id') || 'metrics_' + Math.random().toString(36).substring(2, 9),
+					renderHTML: (attrs) => ({ 'data-id': attrs.id || 'metrics_' + Math.random().toString(36).substring(2, 9) })
+				},
+				title: {
+					default: 'Metrics List',
+					parseHTML: (el: HTMLElement) => el.getAttribute('data-title') || 'Metrics List',
+					renderHTML: (attrs) => ({ 'data-title': attrs.title })
+				},
+				data: {
+					default: '[]',
+					parseHTML: (el: HTMLElement) => el.getAttribute('data-metrics') || '[]',
+					renderHTML: (attrs) => ({ 'data-metrics': attrs.data })
+				},
+				excludeChecked: {
+					default: false,
+					parseHTML: (el: HTMLElement) => el.getAttribute('data-exclude-checked') === 'true',
+					renderHTML: (attrs) => ({ 'data-exclude-checked': String(attrs.excludeChecked) })
+				},
+				showIncome: {
+					default: false,
+					parseHTML: (el: HTMLElement) => el.getAttribute('data-show-income') === 'true',
+					renderHTML: (attrs) => ({ 'data-show-income': String(attrs.showIncome) })
+				},
+				showExpenses: {
+					default: false,
+					parseHTML: (el: HTMLElement) => el.getAttribute('data-show-expenses') === 'true',
+					renderHTML: (attrs) => ({ 'data-show-expenses': String(attrs.showExpenses) })
+				},
+				showMin: {
+					default: false,
+					parseHTML: (el: HTMLElement) => el.getAttribute('data-show-min') === 'true',
+					renderHTML: (attrs) => ({ 'data-show-min': String(attrs.showMin) })
+				},
+				showMax: {
+					default: false,
+					parseHTML: (el: HTMLElement) => el.getAttribute('data-show-max') === 'true',
+					renderHTML: (attrs) => ({ 'data-show-max': String(attrs.showMax) })
+				},
+				showMedian: {
+					default: false,
+					parseHTML: (el: HTMLElement) => el.getAttribute('data-show-median') === 'true',
+					renderHTML: (attrs) => ({ 'data-show-median': String(attrs.showMedian) })
+				}
+			};
+		},
+		parseHTML() {
+			return [{
+				tag: 'div[data-type="metrics"]',
+			}];
+		},
+		renderHTML({ HTMLAttributes }) {
+			const dataStr = HTMLAttributes['data-metrics'] || '[]';
+			const excludeChecked = HTMLAttributes['data-exclude-checked'] === 'true' || HTMLAttributes['data-exclude-checked'] === true;
+			const showIncome = HTMLAttributes['data-show-income'] === 'true' || HTMLAttributes['data-show-income'] === true;
+			const showExpenses = HTMLAttributes['data-show-expenses'] === 'true' || HTMLAttributes['data-show-expenses'] === true;
+			const showMin = HTMLAttributes['data-show-min'] === 'true' || HTMLAttributes['data-show-min'] === true;
+			const showMax = HTMLAttributes['data-show-max'] === 'true' || HTMLAttributes['data-show-max'] === true;
+			const showMedian = HTMLAttributes['data-show-median'] === 'true' || HTMLAttributes['data-show-median'] === true;
+			const titleStr = HTMLAttributes['data-title'] || 'Metrics List';
+			const idStr = HTMLAttributes['data-id'] || 'metrics_' + Math.random().toString(36).substring(2, 9);
+			
+			const container = document.createElement('div');
+			container.setAttribute('data-type', 'metrics');
+			container.setAttribute('data-id', idStr);
+			container.setAttribute('data-title', titleStr);
+			container.setAttribute('data-metrics', dataStr);
+			container.setAttribute('data-exclude-checked', String(excludeChecked));
+			container.setAttribute('data-show-income', String(showIncome));
+			container.setAttribute('data-show-expenses', String(showExpenses));
+			container.setAttribute('data-show-min', String(showMin));
+			container.setAttribute('data-show-max', String(showMax));
+			container.setAttribute('data-show-median', String(showMedian));
+			container.className = 'metrics-block-print';
+			
+			// Build static HTML representation for export/print
+			try {
+				const rows = JSON.parse(dataStr);
+				if (Array.isArray(rows) && rows.length > 0) {
+					const header = document.createElement('div');
+					header.className = 'metrics-print-header';
+					header.innerHTML = `<strong>📊 ${titleStr}</strong>`;
+					container.appendChild(header);
+
+					const table = document.createElement('table');
+					table.className = 'metrics-print-table';
+					const tbody = document.createElement('tbody');
+					
+					rows.forEach(r => {
+						const tr = document.createElement('tr');
+						
+						const tdCheck = document.createElement('td');
+						tdCheck.style.width = '24px';
+						tdCheck.textContent = r.checked ? '☑' : '☐';
+						tr.appendChild(tdCheck);
+						
+						const tdLabel = document.createElement('td');
+						tdLabel.textContent = r.label || '';
+						tr.appendChild(tdLabel);
+						
+						const tdValue = document.createElement('td');
+						tdValue.style.textAlign = 'right';
+						tdValue.style.fontFamily = 'monospace';
+						tdValue.textContent = r.value || '0';
+						
+						const valNum = parseFloat(r.value);
+						if (valNum > 0) tdValue.style.color = '#22c55e';
+						else if (valNum < 0) tdValue.style.color = '#ff4d4d';
+						
+						tr.appendChild(tdValue);
+						
+						tbody.appendChild(tr);
+					});
+					table.appendChild(tbody);
+					container.appendChild(table);
+				}
+			} catch (e) {}
+			
+			return container;
+		},
+		addNodeView() {
+			return ({ node, getPos, editor }) => {
+				const dom = document.createElement('div');
+				dom.className = 'metrics-block-view-container';
+				dom.contentEditable = 'false';
+				
+				// Svelte 5 Deep Reactivity wrapper
+				let componentState = $state({
+					node: node,
+					getPos: getPos,
+					editor: editor
+				});
+				
+				const component = mount(MetricsBlock, {
+					target: dom,
+					props: {
+						blockState: componentState,
+						updateAttributes: (attrs) => {
+							const pos = typeof getPos === 'function' ? getPos() : null;
+							if (pos !== null && pos !== undefined) {
+								editor.view.dispatch(editor.state.tr.setNodeMarkup(pos, undefined, {
+									...componentState.node.attrs,
+									...attrs
+								}));
+							}
+						}
+					}
+				});
+				
+				return {
+					dom,
+					update(updatedNode) {
+						if (updatedNode.type.name !== 'metrics') return false;
+						if (updatedNode.attrs.data !== componentState.node.attrs.data ||
+							updatedNode.attrs.excludeChecked !== componentState.node.attrs.excludeChecked ||
+							updatedNode.attrs.title !== componentState.node.attrs.title ||
+							updatedNode.attrs.showIncome !== componentState.node.attrs.showIncome ||
+							updatedNode.attrs.showExpenses !== componentState.node.attrs.showExpenses ||
+							updatedNode.attrs.showMin !== componentState.node.attrs.showMin ||
+							updatedNode.attrs.showMax !== componentState.node.attrs.showMax ||
+							updatedNode.attrs.showMedian !== componentState.node.attrs.showMedian) {
+							componentState.node = updatedNode;
+						}
+						return true;
+					},
+					destroy() {
+						unmount(component);
+					},
+					stopEvent(event) {
+						if (event.type.startsWith('drag') || event.type === 'drop') {
+							return true;
+						}
+						const target = event.target as HTMLElement | null;
+						if (target) {
+							const isInteractive = 
+								target.tagName === 'INPUT' || 
+								target.tagName === 'TEXTAREA' || 
+								target.tagName === 'BUTTON' || 
+								target.tagName === 'SELECT' || 
+								target.closest('.settings-dropdown-menu') ||
+								target.closest('.row-drag-handle-btn') ||
+								target.classList.contains('row-delete-action') ||
+								target.classList.contains('add-row-action');
+								
+							if (isInteractive) {
+								return true;
+							}
+						}
+						return false;
+					},
+					ignoreMutation(mutation) {
+						return true;
+					}
+				};
+			};
+		}
 	});
 
 	const MermaidRenderer = Extension.create({
@@ -4760,6 +4976,13 @@
 			const sizeSuffix = size && size !== 'full' ? `|size=${size}` : '';
 			return `![${alt}${sizeSuffix}](${src})`;
 		});
+		// Preserve metrics blocks as raw HTML
+		const metricsBlocks: string[] = [];
+		md = md.replace(/<div[^>]*data-type="metrics"[\s\S]*?<\/div>/gi, (match) => {
+			metricsBlocks.push(match);
+			return `\n%%METRICS_${metricsBlocks.length - 1}%%\n`;
+		});
+
 		// Preserve PDF embeds as raw HTML
 		const pdfs: string[] = [];
 		md = md.replace(/<div[^>]*data-pdf-src="([^"]*)"[^>]*>[\s\S]*?<\/div>/gi, (match, src) => {
@@ -4819,6 +5042,10 @@
 		// Restore PDF embeds
 		pdfs.forEach((pdf, i) => {
 			md = md.replace(`%%PDF_${i}%%`, '\n' + pdf + '\n');
+		});
+		// Restore metrics blocks
+		metricsBlocks.forEach((block, i) => {
+			md = md.replace(`%%METRICS_${i}%%`, '\n' + block + '\n');
 		});
 		// Restore details/accordion blocks
 		detailsBlocks.forEach((block, i) => {
@@ -5135,6 +5362,7 @@
 				Diagram,
 				PageBreak,
 				Callout,
+				Metrics,
 				TypingKeyboardShortcuts,
 				FocusModeHighlight,
 				TypewriterScrolling,
@@ -6540,6 +6768,28 @@
 
 	onDestroy(() => {
 		destroyEditor();
+	});
+
+	$effect(() => {
+		const handleExportHtml = () => {
+			exportAsHtml();
+		};
+		const handleExportMarkdown = () => {
+			exportAsMarkdown();
+		};
+		const handleExportPdf = () => {
+			exportAsPdf();
+		};
+
+		window.addEventListener('trigger-export-html', handleExportHtml);
+		window.addEventListener('trigger-export-markdown', handleExportMarkdown);
+		window.addEventListener('trigger-export-pdf', handleExportPdf);
+
+		return () => {
+			window.removeEventListener('trigger-export-html', handleExportHtml);
+			window.removeEventListener('trigger-export-markdown', handleExportMarkdown);
+			window.removeEventListener('trigger-export-pdf', handleExportPdf);
+		};
 	});
 </script>
 

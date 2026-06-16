@@ -43,6 +43,12 @@ Powered by a highly customized **TipTap** engine. It seamlessly bridges Markdown
 - **Draw.io/Excalidraw Diagram Editor**: Double-click embedded graphics to launch a drawing canvas. Draw vector shapes, save, and embed SVG renders directly inside the note HTML.
 - **Markmap Mind Maps**: Automatically convert outline bullet hierarchies into visual, zoomable mind maps.
 
+### 3. Live Metrics Block (Live Calculations)
+- **Inline Spreadsheets**: Type `.calc`, `.metric`, or `.metrics` to insert a spreadsheet widget with custom title, rows, values, and calculations.
+- **Auto-Calculations**: Computes metrics in real-time including: **Count, Sum, Average, Min, Max, Median, Income, Expenses, and Net Total**.
+- **Interactive Checkboxes**: Click row checkboxes to mark items, and optionally exclude checked items from total metrics dynamically.
+- **Drag-and-Drop & Accessibility**: Reorder rows easily using drag handles (`⋮⋮`), add new rows with `Enter`, delete rows with `Backspace` (on empty fields), and navigate using keyboard focus.
+
 ---
 
 ## 🚀 Evernote-Style Rich Task Management

@@ -10,7 +10,7 @@
     Home, Search, Library, Calendar, ChevronLeft, Plus, 
     FileText, Tag, FolderPlus, Compass, ArrowRight, Settings,
     X, Cloud, RefreshCw, LogOut, Palette, ChevronRight, Menu, Folder,
-    Trash2, FolderOpen
+    Trash2, FolderOpen, Edit3, BookOpen, FileDown, Download
   } from 'lucide-svelte';
   import ResizeHandle from './ResizeHandle.svelte';
 
@@ -171,7 +171,7 @@
           </span>
           
           <!-- Save Checkmark & More Actions Button -->
-          <div class="flex-row" style="gap: 8px;">
+          <div class="flex-row" style="gap: 12px; align-items: center; position: relative;">
             {#if appState.editorDirty}
               <button 
                 class="mobile-save-check-btn flex-row" 
@@ -184,6 +184,51 @@
                 </svg>
               </button>
             {/if}
+
+            <!-- 1. Favorite Toggle Button -->
+            <button
+              class="mobile-action-btn flex-row"
+              class:active={appState.favorites.includes(appState.activeNotePath || '')}
+              onclick={() => appState.toggleFavorite(appState.activeNotePath || '')}
+              aria-label={appState.favorites.includes(appState.activeNotePath || '') ? 'Remove from Favorites' : 'Add to Favorites'}
+              style="background: none; border: none; color: {appState.favorites.includes(appState.activeNotePath || '') ? 'var(--accent)' : 'var(--text-secondary)'}; padding: 4px; cursor: pointer; transition: color 0.15s;"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill={appState.favorites.includes(appState.activeNotePath || '') ? 'currentColor' : 'none'} stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+              </svg>
+            </button>
+
+            <!-- 2. Zen Focus Mode Toggle Button -->
+            {#if !appState.isReadOnly}
+              <button
+                class="mobile-action-btn flex-row"
+                class:active={appState.focusModeEnabled}
+                onclick={() => appState.setFocusMode(!appState.focusModeEnabled)}
+                aria-label="Toggle Focus Mode"
+                style="background: none; border: none; color: {appState.focusModeEnabled ? 'var(--accent)' : 'var(--text-secondary)'}; padding: 4px; cursor: pointer; transition: color 0.15s;"
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+                </svg>
+              </button>
+            {/if}
+
+            <!-- 3. Markdown Editor Toggle (Code brackets) Button -->
+            {#if !appState.isReadOnly}
+              <button
+                class="mobile-action-btn flex-row"
+                class:active={appState.sourceMode}
+                onclick={() => appState.setSourceMode(!appState.sourceMode)}
+                aria-label="Toggle Markdown Editor"
+                style="background: none; border: none; color: {appState.sourceMode ? 'var(--accent)' : 'var(--text-secondary)'}; padding: 4px; cursor: pointer; transition: color 0.15s;"
+              >
+                <svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor">
+                  <path d="M5.854 4.854a.5.5 0 10-.708-.708l-3.5 3.5a.5.5 0 000 .708l3.5 3.5a.5.5 0 00.708-.708L2.707 8l3.147-3.146zm4.292 0a.5.5 0 01.708-.708l3.5 3.5a.5.5 0 010 .708l-3.5 3.5a.5.5 0 01-.708-.708L13.293 8l-3.147-3.146z" />
+                </svg>
+              </button>
+            {/if}
+
+            <!-- 4. More Options Three-Dot Button -->
             <button 
               class="mobile-more-btn flex-row" 
               onclick={() => showMobileMoreMenu = !showMobileMoreMenu}
@@ -201,82 +246,36 @@
         </div>
 
         {#if showMobileMoreMenu}
-          <!-- Backdrop to close the menu -->
+          <!-- Backdrop to close the menu on click-outside -->
           <!-- svelte-ignore a11y_no_static_element_interactions -->
-          <div class="mobile-more-menu-backdrop" onclick={() => showMobileMoreMenu = false}>
-            <!-- svelte-ignore a11y_no_static_element_interactions -->
-            <div class="mobile-more-menu flex-col" onclick={(e) => e.stopPropagation()} transition:fly={{ y: 80, duration: 220, easing: cubicOut }}>
-              <div class="mobile-more-menu-header flex-row" style="justify-content: space-between; padding: 14px 20px 10px; border-bottom: 1px solid var(--border-color);">
-                <span style="font-weight: 700; font-size: 14px; color: var(--text-primary);">Note Options</span>
-                <button onclick={() => showMobileMoreMenu = false} style="background: none; border: none; color: var(--text-secondary); cursor: pointer;"><X size={16} /></button>
-              </div>
-              <div class="mobile-more-menu-content flex-col" style="padding: 8px 0; overflow-y: auto; max-height: 45vh;">
-                <!-- 1. Favorite Toggle -->
-                <button
-                  class="menu-item flex-row"
-                  onclick={() => {
-                    appState.toggleFavorite(appState.activeNotePath || '');
-                    showMobileMoreMenu = false;
-                  }}
-                >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill={appState.favorites.includes(appState.activeNotePath || '') ? 'var(--accent)' : 'none'} stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: {appState.favorites.includes(appState.activeNotePath || '') ? 'var(--accent)' : 'var(--text-secondary)'}">
-                    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
-                  </svg>
-                  <span>{appState.favorites.includes(appState.activeNotePath || '') ? 'Remove from Favorites' : 'Add to Favorites'}</span>
-                </button>
+          <div class="mobile-more-menu-backdrop" onclick={() => showMobileMoreMenu = false}></div>
 
-                <!-- 2. Edit/Read Toggle -->
-                <button
-                  class="menu-item flex-row"
-                  onclick={() => {
-                    appState.toggleReadMode();
-                    showMobileMoreMenu = false;
-                  }}
-                >
-                  {#if appState.isReadOnly}
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>
-                    </svg>
-                    <span>Switch to Edit Mode</span>
-                  {:else}
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
-                    </svg>
-                    <span>Switch to Read Mode</span>
-                  {/if}
-                </button>
+          <!-- Chrome-style Modern Dropdown Menu -->
+          <div 
+            class="mobile-more-menu flex-col" 
+            onclick={(e) => e.stopPropagation()} 
+            transition:fly={{ y: -6, duration: 150, easing: cubicOut }}
+          >
+            <div class="mobile-more-menu-content flex-col">
+              <!-- 1. Edit/Read Toggle -->
+              <button
+                class="menu-item flex-row"
+                onclick={() => {
+                  appState.toggleReadMode();
+                  showMobileMoreMenu = false;
+                }}
+              >
+                {#if appState.isReadOnly}
+                  <Edit3 size={15} class="menu-item-icon" />
+                  <span>Switch to Edit Mode</span>
+                {:else}
+                  <BookOpen size={15} class="menu-item-icon" />
+                  <span>Switch to Read Mode</span>
+                {/if}
+              </button>
 
-                <!-- 3. Source Mode Toggle -->
-                <button
-                  class="menu-item flex-row"
-                  onclick={() => {
-                    appState.setSourceMode(!appState.sourceMode);
-                    showMobileMoreMenu = false;
-                  }}
-                >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
-                  </svg>
-                  <span>{appState.sourceMode ? 'Rich Editor Mode' : 'Markdown Source Mode'}</span>
-                </button>
-
-                <div class="menu-divider" style="height: 1px; background-color: var(--border-color); margin: 6px 0;"></div>
-
-                <!-- 4. Focus Mode Toggle -->
-                <button
-                  class="menu-item flex-row"
-                  onclick={() => {
-                    appState.setFocusMode(!appState.focusModeEnabled);
-                    showMobileMoreMenu = false;
-                  }}
-                >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={appState.focusModeEnabled ? 'var(--accent)' : 'var(--text-secondary)'} stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
-                  </svg>
-                  <span>{appState.focusModeEnabled ? 'Disable Focus Mode' : 'Enable Focus Mode'}</span>
-                </button>
-
-                <!-- 5. Typewriter Scroll Toggle -->
+              <!-- 2. Typewriter Scroll Toggle -->
+              {#if !appState.isReadOnly}
                 <button
                   class="menu-item flex-row"
                   onclick={() => {
@@ -284,33 +283,68 @@
                     showMobileMoreMenu = false;
                   }}
                 >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={appState.typewriterScrollEnabled ? 'var(--accent)' : 'var(--text-secondary)'} stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="menu-item-icon" style="color: {appState.typewriterScrollEnabled ? 'var(--accent)' : 'var(--text-secondary)'}">
                     <line x1="4" y1="12" x2="20" y2="12" stroke-dasharray="3,3"/><polyline points="8 7 12 3 16 7"/><polyline points="8 17 12 21 16 17"/>
                   </svg>
-                  <span>{appState.typewriterScrollEnabled ? 'Disable Typewriter Scroll' : 'Enable Typewriter Scroll'}</span>
+                  <span>Typewriter Scroll</span>
                 </button>
+              {/if}
 
-                <div class="menu-divider" style="height: 1px; background-color: var(--border-color); margin: 6px 0;"></div>
+              <div class="menu-divider"></div>
 
-                <!-- 6. Delete Note -->
-                <button
-                  class="menu-item flex-row delete-item"
-                  onclick={() => {
-                    showMobileMoreMenu = false;
-                    if (confirm('Are you sure you want to delete this note?')) {
-                      const path = appState.activeNotePath;
-                      appState.activeNotePath = null;
-                      if (path) appState.deleteNote(path);
-                    }
-                  }}
-                  style="color: var(--semantic-error, #ff4d4d);"
-                >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>
-                  </svg>
-                  <span>Delete Note</span>
-                </button>
-              </div>
+              <!-- 3. Export HTML -->
+              <button
+                class="menu-item flex-row"
+                onclick={() => {
+                  showMobileMoreMenu = false;
+                  window.dispatchEvent(new CustomEvent('trigger-export-html'));
+                }}
+              >
+                <FileDown size={15} class="menu-item-icon" />
+                <span>Export as HTML</span>
+              </button>
+
+              <!-- 4. Export Markdown -->
+              <button
+                class="menu-item flex-row"
+                onclick={() => {
+                  showMobileMoreMenu = false;
+                  window.dispatchEvent(new CustomEvent('trigger-export-markdown'));
+                }}
+              >
+                <FileText size={15} class="menu-item-icon" />
+                <span>Export as Markdown</span>
+              </button>
+
+              <!-- 5. Export PDF -->
+              <button
+                class="menu-item flex-row"
+                onclick={() => {
+                  showMobileMoreMenu = false;
+                  window.dispatchEvent(new CustomEvent('trigger-export-pdf'));
+                }}
+              >
+                <Download size={15} class="menu-item-icon" />
+                <span>Export as PDF (Print)</span>
+              </button>
+
+              <div class="menu-divider"></div>
+
+              <!-- 6. Delete Note -->
+              <button
+                class="menu-item flex-row delete-item"
+                onclick={() => {
+                  showMobileMoreMenu = false;
+                  if (confirm('Are you sure you want to delete this note?')) {
+                    const path = appState.activeNotePath;
+                    appState.activeNotePath = null;
+                    if (path) appState.deleteNote(path);
+                  }
+                }}
+              >
+                <Trash2 size={15} class="menu-item-icon" />
+                <span>Delete Note</span>
+              </button>
             </div>
           </div>
         {/if}
@@ -2181,5 +2215,96 @@
   }
   input:checked + .slider:before {
     transform: translateX(18px);
+  }
+
+  /* Mobile Dropdown Menu (Chrome style) */
+  .mobile-more-menu-backdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: transparent;
+    z-index: 999;
+  }
+
+  .mobile-more-menu {
+    position: absolute;
+    right: 16px;
+    top: 48px;
+    width: 220px;
+    background: rgba(22, 22, 22, 0.95);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5), 0 1px 3px rgba(255, 255, 255, 0.05);
+    z-index: 1000;
+    padding: 6px 0;
+    overflow: hidden;
+  }
+
+  .mobile-more-menu-content {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .mobile-more-menu .menu-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    background: transparent;
+    border: none;
+    text-align: left;
+    width: 100%;
+    cursor: pointer;
+    transition: background-color 0.15s, color 0.15s;
+  }
+
+  .mobile-more-menu .menu-item:hover,
+  .mobile-more-menu .menu-item:active {
+    background-color: var(--bg-hover);
+    color: var(--text-primary);
+  }
+
+  .mobile-more-menu .menu-item :global(.menu-item-icon) {
+    color: var(--text-secondary);
+    flex-shrink: 0;
+  }
+
+  .mobile-more-menu .menu-item:hover :global(.menu-item-icon) {
+    color: var(--text-primary);
+  }
+
+  .mobile-more-menu .menu-divider {
+    height: 1px;
+    background-color: var(--border-color);
+    margin: 6px 0;
+    width: 100%;
+  }
+
+  .mobile-more-menu .menu-item.delete-item {
+    color: var(--semantic-error, #ff4d4d);
+  }
+
+  .mobile-more-menu .menu-item.delete-item:hover {
+    background-color: rgba(255, 77, 77, 0.1);
+    color: var(--semantic-error, #ff4d4d);
+  }
+
+  .mobile-more-menu .menu-item.delete-item :global(.menu-item-icon) {
+    color: var(--semantic-error, #ff4d4d);
+  }
+
+  /* Make sure the direct icon buttons match desktop style */
+  .mobile-action-btn {
+    transition: color 0.15s, transform 0.1s;
+  }
+  .mobile-action-btn:active {
+    transform: scale(0.9);
   }
 </style>
