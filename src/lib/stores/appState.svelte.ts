@@ -1020,6 +1020,28 @@ class AppState {
       content: note.content.replace(/<[^>]+>/g, ' ')
     }));
     this.searchIndex.addAll(searchDocs);
+
+    // Sync favorites based on note metadata
+    const pinnedPaths: string[] = [];
+    for (const note of list) {
+      if (note.content) {
+        try {
+          const parsed = parseHtmlMetadata(note.content);
+          if (parsed.meta.pinned) {
+            pinnedPaths.push(note.path);
+          }
+        } catch (e) {
+          console.error(`Failed to parse HTML metadata for note: ${note.path}`, e);
+        }
+      }
+    }
+    const localFavs = JSON.parse(localStorage.getItem('mynotes_favorites') || '[]') as string[];
+    const mergedFavs = Array.from(new Set([
+      ...localFavs.filter(p => list.some(n => n.path === p)),
+      ...pinnedPaths
+    ]));
+    this.favorites = mergedFavs;
+    localStorage.setItem('mynotes_favorites', JSON.stringify(mergedFavs));
   }
 
   async readBlob(path: string): Promise<Blob | null> {
@@ -1277,13 +1299,40 @@ class AppState {
     }
   }
 
-  toggleFavorite(path: string) {
-    if (this.favorites.includes(path)) {
+  async toggleFavorite(path: string) {
+    const isFav = this.favorites.includes(path);
+    if (isFav) {
       this.favorites = this.favorites.filter(p => p !== path);
     } else {
       this.favorites = [...this.favorites, path];
     }
     localStorage.setItem('mynotes_favorites', JSON.stringify(this.favorites));
+
+    // Also update the note file content to persist the pinned state
+    const note = this.notes.find(n => n.path === path);
+    if (note) {
+      try {
+        const parsed = parseHtmlMetadata(note.content);
+        parsed.meta.pinned = !isFav;
+        
+        const updatedContent = generateHtmlNote(parsed.meta, parsed.content);
+        note.content = updatedContent;
+        note.modified = Date.now();
+        
+        if (this.activeNotePath === path) {
+          this.activeNoteContent = updatedContent;
+        }
+        
+        await this.storage.writeNote(path, updatedContent);
+        
+        // Trigger sync
+        if (this.syncEnabled && this.googleConnected) {
+          this.triggerDebouncedSync();
+        }
+      } catch (e) {
+        console.error('Failed to update favorite status in file metadata', e);
+      }
+    }
   }
 
   async renameNote(oldPath: string, newTitle: string) {

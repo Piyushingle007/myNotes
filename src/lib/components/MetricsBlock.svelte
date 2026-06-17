@@ -319,7 +319,7 @@
 
 <div
 	class="metrics-card-wrapper metrics-row-wrapper-{blockState.node.attrs.id || ''}"
-	class:readonly={blockState.editor.isReadOnly}
+	class:readonly={appState.isReadOnly}
 	onkeydown={handleKeyboardAndClipboard}
 	onkeyup={handleKeyboardAndClipboard}
 	onkeypress={handleKeyboardAndClipboard}
@@ -337,16 +337,15 @@
 		<span class="metrics-card-icon">📊</span>
 		<input
 			type="text"
-			contenteditable="true"
 			class="metrics-card-title-input"
 			bind:value={localTitle}
 			placeholder="Metrics List"
-			disabled={blockState.editor.isReadOnly}
+			disabled={appState.isReadOnly}
 			onblur={() => {
 				updateAttributes({ title: localTitle });
 			}}
 		/>
-		{#if !blockState.editor.isReadOnly}
+		{#if !appState.isReadOnly}
 			<div class="settings-trigger-wrapper">
 				<button class="settings-trigger-btn" onclick={toggleSettingsMenu} title="Metrics settings">
 					<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -439,7 +438,7 @@
 
 	<!-- Rows Body -->
 	<div class="metrics-card-body">
-		{#if rows.length === 0 && blockState.editor.isReadOnly}
+		{#if rows.length === 0 && appState.isReadOnly}
 			<div class="metrics-empty-state">No metrics recorded</div>
 		{/if}
 
@@ -451,14 +450,14 @@
 				class:dragging={draggingIndex === index}
 				class:drag-over-above={dragOverIndex === index && dragDropPosition === 'above'}
 				class:drag-over-below={dragOverIndex === index && dragDropPosition === 'below'}
-				draggable={isRowDraggable === index && !blockState.editor.isReadOnly}
+				draggable={isRowDraggable === index && !appState.isReadOnly}
 				ondragstart={(e) => handleDragStart(e, index)}
 				ondragover={(e) => handleDragOver(e, index)}
 				ondragleave={handleDragLeave}
 				ondrop={(e) => handleDrop(e, index)}
 				ondragend={handleDragEnd}
 			>
-				{#if !blockState.editor.isReadOnly}
+				{#if !appState.isReadOnly}
 					<!-- svelte-ignore a11y_no_static_element_interactions -->
 					<div 
 						class="row-drag-handle-btn" 
@@ -483,7 +482,7 @@
 					</div>
 				{/if}
 
-				{#if !blockState.editor.isReadOnly}
+				{#if !appState.isReadOnly}
 					<div
 						contenteditable="plaintext-only"
 						class="row-label-input"
@@ -509,7 +508,7 @@
 					</span>
 				{/if}
 
-				{#if !blockState.editor.isReadOnly}
+				{#if !appState.isReadOnly}
 					<button class="row-delete-action" onclick={() => deleteRow(index)} title="Delete row">
 						✕
 					</button>
@@ -517,7 +516,7 @@
 			</div>
 		{/each}
 
-		{#if !blockState.editor.isReadOnly}
+		{#if !appState.isReadOnly}
 			<button class="add-row-action flex-row" onclick={addRow}>
 				<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
 				<span>Add Row</span>

@@ -2268,7 +2268,7 @@
 			return dom;
 		},
 		addNodeView() {
-			return ({ node, getPos }) => {
+			return ({ node, getPos, editor }) => {
 				const dom = document.createElement('div');
 				dom.className = 'diagram-block';
 				dom.setAttribute('data-diagram', node.attrs.data || '');
@@ -2287,13 +2287,16 @@
 						const hasContent = d.shapes.length > 0 || !!d.drawioSvg || !!d.drawioXml || !!d.mermaidSvg || !!d.mermaidCode;
 						inner = hasContent ? renderDiagramSVG(d) : '';
 					} catch (e) { /* ignore */ }
-					dom.innerHTML = inner || '<div class="diagram-empty">✎ Empty diagram — double-click to edit</div>';
+					dom.innerHTML = inner || (appState.isReadOnly ? '<div class="diagram-empty">Empty diagram</div>' : '<div class="diagram-empty">✎ Empty diagram — double-click to edit</div>');
 				};
 				render();
 				let lastTap = 0;
 				let lastTouchTime = 0;
 
 				const handleTap = (e: Event, isTouch: boolean) => {
+					if (appState.isReadOnly) {
+						return;
+					}
 					const target = e.target as HTMLElement;
 					if (target.closest('button') || target.closest('.mermaid-render-toolbar') || target.closest('input') || target.closest('a')) {
 						return;
@@ -2336,6 +2339,14 @@
 				});
 				return {
 					dom,
+					stopEvent(event) {
+						// Prevent pointer/touch events on the diagram block from focusing the editor
+						// and opening the mobile virtual keyboard
+						if (event.type === 'mousedown' || event.type === 'touchstart' || event.type === 'click' || event.type === 'touchend') {
+							return true;
+						}
+						return false;
+					},
 					update(updatedNode: any) {
 						if (updatedNode.type.name !== 'diagram') return false;
 						const newData = updatedNode.attrs.data || '';
@@ -5773,6 +5784,7 @@
 		}
 
 		if (target.tagName === 'IMG' && editor) {
+			if (appState.isReadOnly) return;
 			diagramToolbar = null;
 			event.preventDefault();
 			event.stopPropagation();
@@ -5808,6 +5820,7 @@
 
 		const diagramEl = target.closest('.diagram-block') as HTMLElement | null;
 		if (diagramEl && editor) {
+			if (appState.isReadOnly) return;
 			if (target.closest('button') || target.closest('.mermaid-render-toolbar')) {
 				return;
 			}

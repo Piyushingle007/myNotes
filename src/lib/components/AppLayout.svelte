@@ -465,27 +465,6 @@
               </div>
             </div>
 
-            <!-- Recent Notes Cards Feed (Keep/Docs Style) -->
-            <div class="home-section">
-              <h2 class="section-title">Recent Notes</h2>
-              <div class="recent-cards-list flex-col" style="gap: 12px;">
-                {#each appState.recentNotes as note}
-                  <button class="recent-note-card flex-col" onclick={() => appState.selectNote(note.path)}>
-                    <div class="card-header-row flex-row" style="justify-content: space-between; width: 100%;">
-                      <span class="card-note-title">{note.name}</span>
-                      <span class="card-note-time">{new Date(note.modified).toLocaleDateString(undefined, {month: 'short', day: 'numeric'})}</span>
-                    </div>
-                    <p class="card-note-snippet">{(note.content || '').replace(/[#*`_\-\[\]()]/g, ' ').slice(0, 75)}...</p>
-                    {#if note.path.includes('/')}
-                      <span class="card-notebook-badge">{note.path.split('/')[0]}</span>
-                    {/if}
-                  </button>
-                {:else}
-                  <div class="empty-cards" style="font-size: 12px; color: var(--text-tertiary); text-align: center; padding: 20px 0;">No notes found. Click the + button below to create one!</div>
-                {/each}
-              </div>
-            </div>
-            
             <!-- Starred Notes Cards Feed -->
             <div class="home-section">
               <h2 class="section-title">Favorites</h2>
@@ -496,13 +475,32 @@
                       <span class="card-note-title">{note.name}</span>
                       <span class="card-note-time">{new Date(note.modified).toLocaleDateString(undefined, {month: 'short', day: 'numeric'})}</span>
                     </div>
-                    <p class="card-note-snippet">{(note.content || '').replace(/[#*`_\-\[\]()]/g, ' ').slice(0, 75)}...</p>
                     {#if note.path.includes('/')}
                       <span class="card-notebook-badge">{note.path.split('/')[0]}</span>
                     {/if}
                   </button>
                 {:else}
                   <div class="empty-cards" style="font-size: 12px; color: var(--text-tertiary); text-align: center; padding: 10px 0;">No favorites starred yet.</div>
+                {/each}
+              </div>
+            </div>
+
+            <!-- Recent Notes Cards Feed (Keep/Docs Style) -->
+            <div class="home-section">
+              <h2 class="section-title">Recent Notes</h2>
+              <div class="recent-cards-list flex-col" style="gap: 12px;">
+                {#each appState.recentNotes as note}
+                  <button class="recent-note-card flex-col" onclick={() => appState.selectNote(note.path)}>
+                    <div class="card-header-row flex-row" style="justify-content: space-between; width: 100%;">
+                      <span class="card-note-title">{note.name}</span>
+                      <span class="card-note-time">{new Date(note.modified).toLocaleDateString(undefined, {month: 'short', day: 'numeric'})}</span>
+                    </div>
+                    {#if note.path.includes('/')}
+                      <span class="card-notebook-badge">{note.path.split('/')[0]}</span>
+                    {/if}
+                  </button>
+                {:else}
+                  <div class="empty-cards" style="font-size: 12px; color: var(--text-tertiary); text-align: center; padding: 20px 0;">No notes found. Click the + button below to create one!</div>
                 {/each}
               </div>
             </div>
