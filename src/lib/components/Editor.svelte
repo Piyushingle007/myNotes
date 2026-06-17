@@ -2718,8 +2718,37 @@
 			
 			// Build static HTML representation for export/print
 			try {
+				const NUMBER_REGEX = /(?<!\d)-?(?:\d+(?:\.\d+)?|\.\d+)/g;
+				const cleanText = (text: string) => {
+					let t = String(text || '');
+					t = t.replace(/\b\d{4}[-/.]\d{1,2}[-/.]\d{1,2}\b/g, '');
+					t = t.replace(/\b\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4}\b/g, '');
+					return t;
+				};
+				const getRowNumbers = (text: string) => {
+					const cleaned = cleanText(text);
+					const matches = cleaned.match(NUMBER_REGEX);
+					if (!matches) return [];
+					return matches.map(m => parseFloat(m)).filter(n => !isNaN(n));
+				};
+
 				const rows = JSON.parse(dataStr);
-				if (Array.isArray(rows) && rows.length > 0) {
+				
+				// Migrate legacy rows that have a separate value column if needed
+				const migratedRows = rows.map((r: any) => {
+					if (r.value !== undefined && r.value !== null && String(r.value).trim() !== '') {
+						return {
+							checked: !!r.checked,
+							label: (r.label || '').trim() + ' ' + String(r.value).trim()
+						};
+					}
+					return {
+						checked: !!r.checked,
+						label: r.label || ''
+					};
+				});
+
+				if (Array.isArray(migratedRows) && migratedRows.length > 0) {
 					const header = document.createElement('div');
 					header.className = 'metrics-print-header';
 					header.innerHTML = `<strong>📊 ${titleStr}</strong>`;
@@ -2729,7 +2758,7 @@
 					table.className = 'metrics-print-table';
 					const tbody = document.createElement('tbody');
 					
-					rows.forEach(r => {
+					migratedRows.forEach(r => {
 						const tr = document.createElement('tr');
 						
 						const tdCheck = document.createElement('td');
@@ -2744,11 +2773,16 @@
 						const tdValue = document.createElement('td');
 						tdValue.style.textAlign = 'right';
 						tdValue.style.fontFamily = 'monospace';
-						tdValue.textContent = r.value || '0';
 						
-						const valNum = parseFloat(r.value);
-						if (valNum > 0) tdValue.style.color = '#22c55e';
-						else if (valNum < 0) tdValue.style.color = '#ff4d4d';
+						const rowNumbers = getRowNumbers(r.label);
+						if (rowNumbers.length > 0) {
+							const total = rowNumbers.reduce((sum, n) => sum + n, 0);
+							tdValue.textContent = (total > 0 ? '+' : '') + total.toLocaleString();
+							if (total > 0) tdValue.style.color = '#22c55e';
+							else if (total < 0) tdValue.style.color = '#ff4d4d';
+						} else {
+							tdValue.textContent = '';
+						}
 						
 						tr.appendChild(tdValue);
 						
@@ -2808,6 +2842,12 @@
 					},
 					destroy() {
 						unmount(component);
+					},
+					selectNode() {
+						// Do nothing to prevent ProseMirror selection highlights and browser input text auto-selection
+					},
+					deselectNode() {
+						// Do nothing
 					},
 					stopEvent(event) {
 						if (event.type.startsWith('drag') || event.type === 'drop') {

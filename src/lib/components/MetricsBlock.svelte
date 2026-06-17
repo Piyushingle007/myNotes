@@ -13,17 +13,58 @@
 	let { blockState, updateAttributes }: Props = $props();
 
 	// Local reactive state for rows
-	let rows: Array<{ id: string; checked: boolean; label: string; value: string }> = $state([]);
+	let rows: Array<{ id: string; checked: boolean; label: string }> = $state([]);
 	let showSettings = $state(false);
 
-	// Sync local rows from node attributes
+	// Regular expression to match integers and decimals
+	const NUMBER_REGEX = /(?<!\d)-?(?:\d+(?:\.\d+)?|\.\d+)/g;
+
+	// Strip common date formats so they aren't parsed as numbers/negative signs
+	function cleanText(text: string): string {
+		let t = String(text || '');
+		// Strip YYYY-MM-DD
+		t = t.replace(/\b\d{4}[-/.]\d{1,2}[-/.]\d{1,2}\b/g, '');
+		// Strip MM/DD/YYYY, DD/MM/YYYY, MM-DD-YYYY, DD-MM-YYYY
+		t = t.replace(/\b\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4}\b/g, '');
+		return t;
+	}
+
+	function getRowNumbers(text: string): number[] {
+		const cleaned = cleanText(text);
+		const matches = cleaned.match(NUMBER_REGEX);
+		if (!matches) return [];
+		return matches.map(m => parseFloat(m)).filter(n => !isNaN(n));
+	}
+
+	function getRowTotal(text: string): number {
+		const numbers = getRowNumbers(text);
+		return numbers.reduce((sum, n) => sum + n, 0);
+	}
+
+	// Sync local rows from node attributes and perform legacy migrations
 	$effect(() => {
 		const dataStr = blockState.node.attrs.data || '[]';
 		try {
 			const parsed = JSON.parse(dataStr);
+			const migrated = parsed.map((r: any) => {
+				// Migrate legacy rows that have a separate value column
+				if (r.value !== undefined && r.value !== null && String(r.value).trim() !== '') {
+					return {
+						id: r.id,
+						checked: !!r.checked,
+						label: (r.label || '').trim() + ' ' + String(r.value).trim(),
+					};
+				}
+				return {
+					id: r.id,
+					checked: !!r.checked,
+					label: r.label || ''
+				};
+			});
+
 			untrack(() => {
-				if (JSON.stringify(parsed) !== JSON.stringify(rows)) {
-					rows = parsed;
+				if (JSON.stringify(migrated) !== JSON.stringify(rows)) {
+					rows = migrated;
 				}
 			});
 		} catch (e) {
@@ -62,7 +103,7 @@
 
 	// Derived calculations
 	let activeRows = $derived.by(() => {
-		return rows.filter((r: { id: string; checked: boolean; label: string; value: string }) => {
+		return rows.filter((r: { id: string; checked: boolean; label: string }) => {
 			if (excludeChecked && r.checked) return false;
 			return true;
 		});
@@ -70,13 +111,10 @@
 
 	let parsedValues = $derived.by(() => {
 		const vals: number[] = [];
-		activeRows.forEach((r: { id: string; checked: boolean; label: string; value: string }) => {
-			const trimmed = String(r.value || '').trim();
-			if (trimmed === '') return;
-			const val = parseFloat(trimmed);
-			if (!isNaN(val)) {
-				vals.push(val);
-			}
+		activeRows.forEach((r: { id: string; checked: boolean; label: string }) => {
+			const numbers = getRowNumbers(r.label);
+			if (numbers.length === 0) return; // Ignore rows without any numeric entries
+			vals.push(numbers.reduce((sum, n) => sum + n, 0));
 		});
 		return vals;
 	});
@@ -121,7 +159,7 @@
 		const median = count % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 
 		const average = sum / count;
-		const net = income - expenses;
+		const net = sum; // Net is the overall sum of positive and negative row totals
 
 		return {
 			count,
@@ -144,8 +182,7 @@
 		const newRow = {
 			id: 'row_' + Math.random().toString(36).substring(2, 9),
 			checked: false,
-			label: '',
-			value: ''
+			label: ''
 		};
 		rows.push(newRow);
 		saveRows();
@@ -162,14 +199,13 @@
 		saveRows();
 	}
 
-	function handleKeyDown(event: KeyboardEvent, index: number, field: 'label' | 'value') {
+	function handleKeyDown(event: KeyboardEvent, index: number) {
 		if (event.key === 'Enter') {
 			event.preventDefault();
 			const newRow = {
 				id: 'row_' + Math.random().toString(36).substring(2, 9),
 				checked: false,
-				label: '',
-				value: ''
+				label: ''
 			};
 			rows.splice(index + 1, 0, newRow);
 			saveRows();
@@ -180,79 +216,21 @@
 				nextInput?.focus();
 			});
 		} else if (event.key === 'Backspace') {
-			if (rows[index].label === '' && rows[index].value === '') {
+			if (rows[index].label === '') {
 				event.preventDefault();
 				deleteRow(index);
 
 				tick().then(() => {
 					const labelInputs = document.querySelectorAll(`.metrics-row-wrapper-${blockState.node.attrs.id || ''} .row-label-input`);
-					const valueInputs = document.querySelectorAll(`.metrics-row-wrapper-${blockState.node.attrs.id || ''} .row-value-input`);
 					const targetIndex = index - 1 >= 0 ? index - 1 : 0;
 					
 					if (rows.length > 0) {
-						const focusInput = (field === 'value' ? valueInputs[targetIndex] : labelInputs[targetIndex]) as HTMLInputElement | null;
+						const focusInput = labelInputs[targetIndex] as HTMLInputElement | null;
 						focusInput?.focus();
 					}
 				});
 			}
 		}
-	}
-
-	function handleValueKeyDown(event: KeyboardEvent, index: number) {
-		const allowedKeys = [
-			'Backspace', 'Delete', 'Tab', 'Enter', 'Escape', 
-			'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 
-			'Home', 'End'
-		];
-		
-		if (allowedKeys.includes(event.key) || event.ctrlKey || event.metaKey || event.altKey) {
-			handleKeyDown(event, index, 'value');
-			return;
-		}
-
-		const isDigit = /^[0-9]$/.test(event.key);
-		const isDot = event.key === '.';
-		const isSign = event.key === '-' || event.key === '+';
-
-		if (!isDigit && !isDot && !isSign) {
-			event.preventDefault();
-			return;
-		}
-
-		const input = event.currentTarget as HTMLInputElement;
-		const val = input.value;
-
-		if (isDot && val.includes('.')) {
-			event.preventDefault();
-			return;
-		}
-
-		if (isSign) {
-			const selectionStart = input.selectionStart ?? 0;
-			if (selectionStart !== 0 || val.includes('-') || val.includes('+')) {
-				event.preventDefault();
-				return;
-			}
-		}
-	}
-
-	function handleValueInput(event: Event, index: number) {
-		const input = event.currentTarget as HTMLInputElement;
-		let val = input.value;
-		
-		const signMatch = val.match(/^[-+]/);
-		const sign = signMatch ? signMatch[0] : '';
-		
-		let rest = signMatch ? val.slice(1) : val;
-		rest = rest.replace(/[^0-9.]/g, '');
-		
-		const parts = rest.split('.');
-		if (parts.length > 2) {
-			rest = parts[0] + '.' + parts.slice(1).join('');
-		}
-		
-		input.value = sign + rest;
-		rows[index].value = input.value;
 	}
 
 	function toggleSettingsMenu(e: MouseEvent) {
@@ -270,6 +248,9 @@
 
 	// Drag & Drop reordering
 	let draggingIndex: number | null = $state(null);
+	let isRowDraggable: number | null = $state(null);
+	let dragOverIndex: number | null = $state(null);
+	let dragDropPosition: 'above' | 'below' | null = $state(null);
 
 	function handleDragStart(event: DragEvent, index: number) {
 		draggingIndex = index;
@@ -280,20 +261,55 @@
 
 	function handleDragOver(event: DragEvent, index: number) {
 		event.preventDefault();
+		if (draggingIndex === null) return;
+
+		dragOverIndex = index;
+
+		const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+		const relativeY = event.clientY - rect.top;
+		if (relativeY < rect.height / 2) {
+			dragDropPosition = 'above';
+		} else {
+			dragDropPosition = 'below';
+		}
+	}
+
+	function handleDragLeave() {
+		dragOverIndex = null;
+		dragDropPosition = null;
 	}
 
 	function handleDrop(event: DragEvent, index: number) {
 		event.preventDefault();
-		if (draggingIndex === null || draggingIndex === index) return;
+		if (draggingIndex === null) return;
+
+		let targetIndex = index;
+		if (dragDropPosition === 'below') {
+			targetIndex = index + 1;
+		}
+
 		const draggedRow = rows[draggingIndex];
 		rows.splice(draggingIndex, 1);
-		rows.splice(index, 0, draggedRow);
+
+		let insertIndex = targetIndex;
+		if (draggingIndex < targetIndex) {
+			insertIndex = targetIndex - 1;
+		}
+
+		rows.splice(insertIndex, 0, draggedRow);
 		saveRows();
+
 		draggingIndex = null;
+		dragOverIndex = null;
+		dragDropPosition = null;
+		isRowDraggable = null;
 	}
 
 	function handleDragEnd() {
 		draggingIndex = null;
+		dragOverIndex = null;
+		dragDropPosition = null;
+		isRowDraggable = null;
 	}
 
 	function handleKeyboardAndClipboard(event: Event) {
@@ -428,17 +444,30 @@
 		{/if}
 
 		{#each rows as row, index (row.id)}
+			{@const numbers = getRowNumbers(row.label)}
+			{@const total = numbers.reduce((sum, n) => sum + n, 0)}
 			<div
 				class="metrics-card-row flex-row"
 				class:dragging={draggingIndex === index}
-				draggable={!blockState.editor.isReadOnly}
+				class:drag-over-above={dragOverIndex === index && dragDropPosition === 'above'}
+				class:drag-over-below={dragOverIndex === index && dragDropPosition === 'below'}
+				draggable={isRowDraggable === index && !blockState.editor.isReadOnly}
 				ondragstart={(e) => handleDragStart(e, index)}
 				ondragover={(e) => handleDragOver(e, index)}
+				ondragleave={handleDragLeave}
 				ondrop={(e) => handleDrop(e, index)}
 				ondragend={handleDragEnd}
 			>
 				{#if !blockState.editor.isReadOnly}
-					<div class="row-drag-handle-btn" title="Drag to reorder">⋮⋮</div>
+					<!-- svelte-ignore a11y_no_static_element_interactions -->
+					<div 
+						class="row-drag-handle-btn" 
+						title="Drag to reorder"
+						onmousedown={() => { isRowDraggable = index; }}
+						onmouseup={() => { isRowDraggable = null; }}
+						ontouchstart={() => { isRowDraggable = index; }}
+						ontouchend={() => { isRowDraggable = null; }}
+					>⋮⋮</div>
 					<input
 						type="checkbox"
 						class="row-item-checkbox"
@@ -454,28 +483,31 @@
 					</div>
 				{/if}
 
-				<input
-					type="text"
-					contenteditable="true"
-					class="row-label-input"
-					bind:value={row.label}
-					placeholder="Label name"
-					disabled={blockState.editor.isReadOnly}
-					onblur={saveRows}
-					onkeydown={(e) => handleKeyDown(e, index, 'label')}
-				/>
+				{#if !blockState.editor.isReadOnly}
+					<div
+						contenteditable="plaintext-only"
+						class="row-label-input"
+						bind:textContent={row.label}
+						placeholder="List item (e.g. groceries 2000)..."
+						onblur={saveRows}
+						onkeydown={(e) => handleKeyDown(e, index)}
+					></div>
+				{:else}
+					<div class="row-label-input readonly-label-text">
+						{row.label}
+					</div>
+				{/if}
 
-				<input
-					type="text"
-					contenteditable="true"
-					class="row-value-input"
-					bind:value={row.value}
-					placeholder="0"
-					disabled={blockState.editor.isReadOnly}
-					onblur={saveRows}
-					onkeydown={(e) => handleValueKeyDown(e, index)}
-					oninput={(e) => handleValueInput(e, index)}
-				/>
+				<!-- Sum Badge Display -->
+				{#if numbers.length > 0}
+					<span 
+						class="row-sum-badge"
+						class:positive={total > 0}
+						class:negative={total < 0}
+					>
+						{total > 0 ? '+' : ''}{total.toLocaleString()}
+					</span>
+				{/if}
 
 				{#if !blockState.editor.isReadOnly}
 					<button class="row-delete-action" onclick={() => deleteRow(index)} title="Delete row">
@@ -693,6 +725,18 @@
 		border: 1px dashed var(--accent);
 	}
 
+	.metrics-card-row.drag-over-above {
+		border-top: 2px solid var(--accent, #00adb5) !important;
+		border-top-left-radius: 0;
+		border-top-right-radius: 0;
+	}
+
+	.metrics-card-row.drag-over-below {
+		border-bottom: 2px solid var(--accent, #00adb5) !important;
+		border-bottom-left-radius: 0;
+		border-bottom-right-radius: 0;
+	}
+
 	.row-drag-handle-btn {
 		color: var(--text-tertiary);
 		cursor: grab;
@@ -720,48 +764,56 @@
 	}
 
 	.row-label-input {
-		flex: 2;
-		background: transparent;
-		border: none;
-		border-bottom: 1px solid transparent;
-		font-size: 13px;
-		color: var(--text-primary);
-		outline: none;
-		padding: 4px;
-		transition: border-bottom-color 0.15s;
-	}
-
-	.row-label-input:focus:not(:disabled) {
-		border-bottom-color: var(--accent);
-	}
-
-	.row-value-input {
 		flex: 1;
-		max-width: 140px;
 		background: transparent;
 		border: none;
 		border-bottom: 1px solid transparent;
 		font-size: 13px;
 		color: var(--text-primary);
-		text-align: right;
 		outline: none;
 		padding: 4px;
-		font-family: monospace;
 		transition: border-bottom-color 0.15s;
+		min-height: 20px;
+		word-break: break-word;
+		white-space: pre-wrap;
 	}
 
-	.row-value-input:focus:not(:disabled) {
+	.row-label-input:focus {
 		border-bottom-color: var(--accent);
 	}
 
-	.row-value-input.positive {
-		color: var(--semantic-success, #22c55e);
-		font-weight: 600;
+	.row-label-input[contenteditable="true"]:empty::before {
+		content: attr(placeholder);
+		color: var(--text-tertiary, #888);
+		pointer-events: none;
+		display: inline-block;
 	}
 
-	.row-value-input.negative {
+	.row-sum-badge {
+		font-size: 11px;
+		font-weight: 700;
+		color: var(--text-secondary);
+		background: rgba(255, 255, 255, 0.05);
+		border: 1px solid var(--border-color);
+		padding: 3px 8px;
+		border-radius: 6px;
+		font-family: monospace;
+		flex-shrink: 0;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.row-sum-badge.positive {
+		color: var(--semantic-success, #22c55e);
+		background: rgba(34, 197, 94, 0.08);
+		border-color: rgba(34, 197, 94, 0.15);
+	}
+
+	.row-sum-badge.negative {
 		color: var(--semantic-error, #ff4d4d);
-		font-weight: 600;
+		background: rgba(255, 77, 77, 0.08);
+		border-color: rgba(255, 77, 77, 0.15);
 	}
 
 	.row-delete-action {
@@ -890,17 +942,13 @@
 			gap: 4px;
 			padding: 4px;
 		}
-		.row-drag-handle-btn {
-			display: none !important;
-		}
 		.row-label-input {
 			font-size: 12px;
 			padding: 2px;
 		}
-		.row-value-input {
-			max-width: 70px;
-			font-size: 12px;
-			padding: 2px;
+		.row-sum-badge {
+			font-size: 10px;
+			padding: 2px 6px;
 		}
 		.row-delete-action {
 			opacity: 1 !important; /* Always show delete action on touch devices */
