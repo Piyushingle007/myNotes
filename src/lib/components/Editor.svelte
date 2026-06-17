@@ -1119,11 +1119,17 @@
 				badge: 'New'
 			},
 			{
-				label: 'Metrics Block',
+				label: 'Cal Block',
 				description: 'Insert an inline calculation sheet',
-				aliases: ['calc', 'metric', 'metrics', 'calculate', 'spreadsheet'],
-				icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="9" y1="9" x2="15" y2="9"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/></svg>',
-				action: () => editor?.chain().focus().insertContent({ type: 'metrics', attrs: { id: 'metrics_' + Math.random().toString(36).substring(2, 9), title: 'Metrics List', data: '[]', excludeChecked: false } }).run(),
+				aliases: ['cal', 'calc', 'metric', 'metrics', 'calculate', 'spreadsheet', 'cal block'],
+				icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2" ry="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="16" y1="14" x2="16" y2="18"/><path d="M16 10h.01"/><path d="M12 10h.01"/><path d="M8 10h.01"/><path d="M12 14h.01"/><path d="M8 14h.01"/><path d="M12 18h.01"/><path d="M8 18h.01"/></svg>',
+				action: () => editor?.chain().focus().insertContent({ type: 'metrics', attrs: { id: 'metrics_' + Math.random().toString(36).substring(2, 9), title: 'Cal Block', data: '[]', excludeChecked: false } }).command(({ tr }) => {
+					const { selection } = tr;
+					if (selection instanceof NodeSelection) {
+						tr.setSelection(TextSelection.near(tr.doc.resolve(selection.to)));
+					}
+					return true;
+				}).run(),
 				category: 'insert',
 				badge: 'New'
 			},
@@ -2657,8 +2663,8 @@
 					renderHTML: (attrs) => ({ 'data-id': attrs.id || 'metrics_' + Math.random().toString(36).substring(2, 9) })
 				},
 				title: {
-					default: 'Metrics List',
-					parseHTML: (el: HTMLElement) => el.getAttribute('data-title') || 'Metrics List',
+					default: 'Cal Block',
+					parseHTML: (el: HTMLElement) => el.getAttribute('data-title') || 'Cal Block',
 					renderHTML: (attrs) => ({ 'data-title': attrs.title })
 				},
 				data: {
@@ -2868,6 +2874,18 @@
 						if (target) {
 							// Stop all events inside the metrics block to prevent ProseMirror from stealing focus or intercepting keystrokes
 							if (target.closest('.metrics-card-wrapper')) {
+								if (event.type === 'mousedown' || event.type === 'touchstart') {
+									const pos = typeof getPos === 'function' ? getPos() : null;
+									if (pos !== null && pos !== undefined) {
+										const { selection } = editor.state;
+										if (selection instanceof NodeSelection && selection.from === pos) {
+											// Clear the node selection by setting the selection to a text selection near it
+											const resolvedPos = editor.state.doc.resolve(pos + node.nodeSize);
+											const newSelection = TextSelection.near(resolvedPos);
+											editor.view.dispatch(editor.state.tr.setSelection(newSelection));
+										}
+									}
+								}
 								return true;
 							}
 						}
@@ -7660,6 +7678,17 @@
 								<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18"/><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/></svg>
 								Table
 							</button>
+							<button onclick={() => { insertDropdown = false; editor?.chain().focus().insertContent({ type: 'metrics', attrs: { id: 'metrics_' + Math.random().toString(36).substring(2, 9), title: 'Cal Block', data: '[]', excludeChecked: false } }).command(({ tr }) => {
+								const { selection } = tr;
+								if (selection instanceof NodeSelection) {
+									tr.setSelection(TextSelection.near(tr.doc.resolve(selection.to)));
+								}
+								return true;
+							}).run(); }}>
+								<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2" ry="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="16" y1="14" x2="16" y2="18"/><path d="M16 10h.01"/><path d="M12 10h.01"/><path d="M8 10h.01"/><path d="M12 14h.01"/><path d="M8 14h.01"/><path d="M12 18h.01"/><path d="M8 18h.01"/></svg>
+								Calculation Box
+							</button>
+
 
 							<button onclick={() => { insertDropdown = false; editor?.chain().focus().setHorizontalRule().run(); }}>
 								<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14"/></svg>
