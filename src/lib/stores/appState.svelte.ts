@@ -200,6 +200,7 @@ class AppState {
 
   // Google Drive Sync Reactive States
   googleClientId = $state<string>(localStorage.getItem('mynotes_google_client_id') || '');
+  googleRedirectUri = $state<string>(localStorage.getItem('mynotes_google_redirect_uri') || 'http://localhost');
   googleConnected = $state<boolean>(false);
   googleUserEmail = $state<string | null>(null);
   syncStatus = $state<'idle' | 'syncing' | 'error'>('idle');
@@ -284,6 +285,14 @@ class AppState {
   });
 
   private async waitForGoogleSDK(timeoutMs = 5000): Promise<void> {
+    const isNative = typeof window !== 'undefined' && (window as any).Capacitor;
+    if (isNative) {
+      throw new Error(
+        'Google Drive Sync is currently only supported in web browsers.\n\n' +
+        'Google blocks OAuth authentication inside mobile application WebViews for security.\n' +
+        'Please use the web version of this app in a standard mobile browser (Chrome/Safari) to connect and sync your notes.'
+      );
+    }
     if (typeof google !== 'undefined') return;
     return new Promise((resolve, reject) => {
       const start = Date.now();
@@ -293,7 +302,7 @@ class AppState {
           resolve();
         } else if (Date.now() - start > timeoutMs) {
           clearInterval(interval);
-          reject(new Error('Google Identity Services SDK failed to load.'));
+          reject(new Error('Google Identity Services SDK failed to load. Please verify your internet connection.'));
         }
       }, 100);
     });
@@ -486,6 +495,11 @@ class AppState {
     this.syncService.setClientId(this.googleClientId);
   }
 
+  setRedirectUri(redirectUri: string) {
+    this.googleRedirectUri = redirectUri.trim();
+    localStorage.setItem('mynotes_google_redirect_uri', this.googleRedirectUri);
+  }
+
   setSyncEnabled(enabled: boolean) {
     this.syncEnabled = enabled;
     localStorage.setItem('mynotes_sync_enabled', String(enabled));
@@ -529,6 +543,40 @@ class AppState {
         }
       );
     });
+  }
+
+  async connectGoogleDriveMobile(tokenOrUrl: string): Promise<void> {
+    let token = tokenOrUrl.trim();
+    if (token.includes('access_token=')) {
+      const match = token.match(/access_token=([^&]+)/);
+      if (match) {
+        token = match[1];
+      }
+    }
+    
+    if (!token) {
+      throw new Error('Could not find access token in the pasted text.');
+    }
+    
+    this.syncStatus = 'syncing';
+    try {
+      this.syncService.setAccessToken(token);
+      const email = await this.syncService.getUserEmail();
+      
+      localStorage.setItem('mynotes_google_access_token', token);
+      localStorage.setItem('mynotes_google_token_expiry', String(Date.now() + 3500 * 1000));
+      
+      this.googleUserEmail = email;
+      this.setSyncEnabled(true);
+      this.googleConnected = true;
+      this.syncStatus = 'idle';
+      
+      await this.syncNotes();
+    } catch (e) {
+      this.googleConnected = false;
+      this.syncStatus = 'error';
+      throw e;
+    }
   }
 
   async disconnectGoogleDrive() {

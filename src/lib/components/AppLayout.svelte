@@ -24,6 +24,7 @@
   // Custom Sync Folder and Theme Selectors
   let showFolderPicker = $state(false);
   let newDriveFolderName = $state('');
+  let mobilePastedToken = $state('');
 
   // Time-based greeting helper
   let greeting = $derived.by(() => {
@@ -1028,33 +1029,116 @@
             </div>
           </div>
 
+          {#if typeof window !== 'undefined' && (window as any).Capacitor}
+            <div class="form-group flex-col" style="margin-top: 8px; width: 100%;">
+              <label for="google-redirect-uri" class="form-label">OAuth Redirect URI</label>
+              <div class="input-wrapper flex-row">
+                <input 
+                  id="google-redirect-uri"
+                  type="text" 
+                  placeholder="e.g. http://localhost" 
+                  value={appState.googleRedirectUri} 
+                  oninput={(e) => appState.setRedirectUri(e.currentTarget.value)}
+                  disabled={appState.googleConnected}
+                  class="input-pill redirect-uri-input"
+                  style="width: 100%; box-sizing: border-box;"
+                />
+              </div>
+            </div>
+          {/if}
+
           {#if !appState.googleConnected}
             <div class="auth-section flex-col">
-              <button 
-                class="btn-pill btn-pill-primary flex-row connect-btn" 
-                onclick={async () => {
-                  try {
-                    await appState.connectGoogleDrive();
-                  } catch (e: any) {
-                    alert(e.message || 'Failed to connect to Google Drive');
-                  }
-                }}
-                disabled={!appState.googleClientId}
-              >
-                <span>Connect Google Drive</span>
-              </button>
-              
-              <div class="helper-card flex-col">
-                <span class="helper-title">Setup Instructions:</span>
-                <ol class="helper-steps">
-                  <li>Go to the <a href="https://console.cloud.google.com/" target="_blank" rel="noopener noreferrer" class="link-accent">Google Cloud Console</a>.</li>
-                  <li>Create a project and set up the <b>OAuth consent screen</b> (User Type: External).</li>
-                  <li>Add your Google account as a <b>Test User</b> since your app is in testing.</li>
-                  <li>Create <b>OAuth client ID</b> credentials (Application Type: Web Application).</li>
-                  <li>Add <code>http://localhost:5173</code> (or your URL) under <b>Authorized JavaScript Origins</b>.</li>
-                  <li>Copy the Client ID and paste it in the field above.</li>
-                </ol>
-              </div>
+              {#if typeof window !== 'undefined' && (window as any).Capacitor}
+                <!-- Mobile Redirect and Verify flow -->
+                <div class="mobile-sync-card flex-col" style="gap: 12px; background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-color); border-radius: 8px; padding: 16px; width: 100%; box-sizing: border-box; text-align: left; margin-bottom: 16px;">
+                  <span style="font-size: 14px; font-weight: 700; color: var(--accent);">Mobile Google Sign-In</span>
+                  
+                  <p style="font-size: 12px; color: var(--text-secondary); margin: 0; line-height: 1.4;">
+                    Due to Google security policies, authentication must occur in your secure system browser.
+                  </p>
+                  
+                  <button 
+                    class="btn-pill btn-pill-primary flex-row" 
+                    style="margin-top: 8px; width: 100%;"
+                    onclick={() => {
+                      const url = "https://accounts.google.com/o/oauth2/v2/auth?client_id=" + 
+                        encodeURIComponent(appState.googleClientId) + 
+                        "&redirect_uri=" + encodeURIComponent(appState.googleRedirectUri) + 
+                        "&response_type=token&scope=" + encodeURIComponent("https://www.googleapis.com/auth/drive.file");
+                      window.open(url, '_system');
+                    }}
+                    disabled={!appState.googleClientId || !appState.googleRedirectUri}
+                  >
+                    <span>1. Sign In via Browser</span>
+                  </button>
+                  
+                  <div class="form-group flex-col" style="margin-top: 8px; gap: 4px; width: 100%;">
+                    <label for="mobile-pasted-token" class="form-label" style="font-size: 11px;">2. Paste Redirected URL or Token</label>
+                    <input 
+                      id="mobile-pasted-token"
+                      type="text" 
+                      placeholder="Paste the URL from the browser address bar..." 
+                      bind:value={mobilePastedToken}
+                      class="input-pill"
+                      style="font-size: 12px; width: 100%; box-sizing: border-box;"
+                    />
+                  </div>
+
+                  <button 
+                    class="btn-pill btn-pill-accent flex-row" 
+                    style="width: 100%;"
+                    onclick={async () => {
+                      try {
+                        await appState.connectGoogleDriveMobile(mobilePastedToken);
+                        mobilePastedToken = '';
+                      } catch (e: any) {
+                        alert(e.message || 'Failed to verify token');
+                      }
+                    }}
+                    disabled={!mobilePastedToken}
+                  >
+                    <span>3. Verify & Connect</span>
+                  </button>
+                </div>
+
+                <div class="helper-card flex-col">
+                  <span class="helper-title">Mobile Setup Instructions:</span>
+                  <ol class="helper-steps">
+                    <li>Go to the <a href="https://console.cloud.google.com/" target="_blank" rel="noopener noreferrer" class="link-accent">Google Cloud Console</a>.</li>
+                    <li>Inside your OAuth Client ID, add the Redirect URI (currently <code>{appState.googleRedirectUri || 'http://localhost'}</code>) under <b>Authorized Redirect URIs</b> (needed for browser redirect).</li>
+                    <li>Enter your Client ID in the field above.</li>
+                    <li>Click <b>Sign In via Browser</b>, sign in, copy the full URL of the resulting page (e.g. <code>{appState.googleRedirectUri || 'http://localhost'}/#access_token=...</code>), paste it above, and click <b>Verify</b>.</li>
+                  </ol>
+                </div>
+              {:else}
+                <!-- Web Normal Flow -->
+                <button 
+                  class="btn-pill btn-pill-primary flex-row connect-btn" 
+                  onclick={async () => {
+                    try {
+                      await appState.connectGoogleDrive();
+                    } catch (e: any) {
+                      alert(e.message || 'Failed to connect to Google Drive');
+                    }
+                  }}
+                  disabled={!appState.googleClientId}
+                >
+                  <span>Connect Google Drive</span>
+                </button>
+                
+                <div class="helper-card flex-col">
+                  <span class="helper-title">Setup Instructions:</span>
+                  <ol class="helper-steps">
+                    <li>Go to the <a href="https://console.cloud.google.com/" target="_blank" rel="noopener noreferrer" class="link-accent">Google Cloud Console</a>.</li>
+                    <li>Create a project and set up the <b>OAuth consent screen</b> (User Type: External).</li>
+                    <li>Add your Google account as a <b>Test User</b> since your app is in testing.</li>
+                    <li>Create <b>OAuth client ID</b> credentials (Application Type: Web Application).</li>
+                    <li>Add <code>http://localhost:5173</code> (or your URL) under <b>Authorized JavaScript Origins</b>.</li>
+                    <li>Copy the Client ID and paste it in the field above.</li>
+                  </ol>
+                </div>
+              {/if}
             </div>
           {:else}
             <!-- Connected view -->

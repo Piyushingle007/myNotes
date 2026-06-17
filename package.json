@@ -7,7 +7,11 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "check": "svelte-check --tsconfig ./tsconfig.app.json && tsc -p tsconfig.node.json"
+    "check": "svelte-check --tsconfig ./tsconfig.app.json && tsc -p tsconfig.node.json",
+    "cap:sync": "npx cap sync",
+    "cap:open": "npx cap open android",
+    "build:android": "npm run build && npx cap sync",
+    "build:apk": "npm run build && npx cap sync && cd android && ./gradlew assembleDebug && cp app/build/outputs/apk/debug/app-debug.apk ../mynotes.apk"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^7.1.2",
@@ -20,6 +24,9 @@
     "vite": "^8.0.12"
   },
   "dependencies": {
+    "@capacitor/android": "^8.4.0",
+    "@capacitor/cli": "^8.4.0",
+    "@capacitor/core": "^8.4.0",
     "@tiptap/core": "^3.19.0",
     "@tiptap/extension-code-block-lowlight": "^3.19.0",
     "@tiptap/extension-color": "^3.19.0",

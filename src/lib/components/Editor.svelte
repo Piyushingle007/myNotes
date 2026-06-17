@@ -2855,17 +2855,8 @@
 						}
 						const target = event.target as HTMLElement | null;
 						if (target) {
-							const isInteractive = 
-								target.tagName === 'INPUT' || 
-								target.tagName === 'TEXTAREA' || 
-								target.tagName === 'BUTTON' || 
-								target.tagName === 'SELECT' || 
-								target.closest('.settings-dropdown-menu') ||
-								target.closest('.row-drag-handle-btn') ||
-								target.classList.contains('row-delete-action') ||
-								target.classList.contains('add-row-action');
-								
-							if (isInteractive) {
+							// Stop all events inside the metrics block to prevent ProseMirror from stealing focus or intercepting keystrokes
+							if (target.closest('.metrics-card-wrapper')) {
 								return true;
 							}
 						}
