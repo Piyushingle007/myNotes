@@ -158,8 +158,8 @@
   }
 
   .loader {
-    width: 100vw;
-    height: 100vh;
+    width: 100%;
+    height: 100%;
     background-color: #000000;
     align-items: center;
     justify-content: center;
@@ -198,8 +198,8 @@
   }
 
   .welcome-screen {
-    width: 100vw;
-    height: 100vh;
+    width: 100%;
+    height: 100%;
     background-color: #000000;
     align-items: center;
     justify-content: center;
