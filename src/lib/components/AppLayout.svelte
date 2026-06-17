@@ -36,7 +36,7 @@
 
   // Handle window resizing
   function handleResize() {
-    isMobile = window.innerWidth < 768;
+    isMobile = /android|iphone|ipad|ipod/i.test(navigator.userAgent) || window.innerWidth < 768;
   }
 
   // Mobile Folder Creation
