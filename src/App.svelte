@@ -21,6 +21,12 @@
       } else {
         newHash = `#/library`;
       }
+    } else if (appState.activeTab === 'tags') {
+      if (appState.selectedTag) {
+        newHash = `#/tags/${encodeURIComponent(appState.selectedTag)}`;
+      } else {
+        newHash = `#/tags`;
+      }
     } else {
       newHash = `#/home`;
     }
@@ -50,6 +56,13 @@
       } else if (hash === '#/library') {
         appState.activeTab = 'library';
         appState.activeNotebook = null;
+      } else if (hash.startsWith('#/tags/')) {
+        const tag = decodeURIComponent(hash.slice('#/tags/'.length));
+        appState.activeTab = 'tags';
+        appState.selectedTag = tag;
+      } else if (hash === '#/tags') {
+        appState.activeTab = 'tags';
+        appState.selectedTag = null;
       } else if (hash === '#/daily') {
         appState.activeTab = 'daily';
         appState.activeNotebook = null;
@@ -87,6 +100,7 @@
       const _tab = appState.activeTab;
       const _notePath = appState.activeNotePath;
       const _notebook = appState.activeNotebook;
+      const _tag = appState.selectedTag;
 
       syncStateToHash();
     }
