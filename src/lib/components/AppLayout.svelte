@@ -280,12 +280,24 @@
     }
   }
 
+  // ST-011: Touch movement detection to separate swipe/scroll from taps
+  let mobileTouchStartX = 0;
+  let mobileTouchStartY = 0;
+  let mobileTouchMoved = false;
+
   // ST-011: Note Long Press simulation for Select Mode
   let noteLongPressTimeout: any;
   let isNoteLongPressActive = false;
 
-  function handleNoteTouchStart(notePath: string) {
+  function handleNoteTouchStart(notePath: string, event: TouchEvent) {
+    if (event.touches.length > 0) {
+      const touch = event.touches[0];
+      mobileTouchStartX = touch.clientX;
+      mobileTouchStartY = touch.clientY;
+    }
+    mobileTouchMoved = false;
     isNoteLongPressActive = false;
+    
     noteLongPressTimeout = setTimeout(() => {
       isNoteLongPressActive = true;
       if (!appState.selectMode) {
@@ -303,19 +315,31 @@
     if (isNoteLongPressActive) {
       event.preventDefault();
     } else {
-      if (appState.selectMode) {
+      if (mobileTouchMoved) {
         event.preventDefault();
-        appState.toggleNoteSelection(notePath);
       } else {
-        appState.selectNote(notePath);
+        event.preventDefault(); // Prevent duplicate click action
+        if (appState.selectMode) {
+          appState.toggleNoteSelection(notePath);
+        } else {
+          appState.selectNote(notePath);
+        }
       }
     }
   }
 
-  function handleNoteTouchMove() {
+  function handleNoteTouchMove(event: TouchEvent) {
     if (noteLongPressTimeout) {
       clearTimeout(noteLongPressTimeout);
       noteLongPressTimeout = null;
+    }
+    if (event.touches.length > 0) {
+      const touch = event.touches[0];
+      const dx = touch.clientX - mobileTouchStartX;
+      const dy = touch.clientY - mobileTouchStartY;
+      if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
+        mobileTouchMoved = true;
+      }
     }
   }
 
@@ -427,8 +451,15 @@
   let longPressTimeout: any;
   let isLongPressActive = false;
 
-  function handleTagTouchStart(tagName: string) {
+  function handleTagTouchStart(tagName: string, event: TouchEvent) {
+    if (event.touches.length > 0) {
+      const touch = event.touches[0];
+      mobileTouchStartX = touch.clientX;
+      mobileTouchStartY = touch.clientY;
+    }
+    mobileTouchMoved = false;
     isLongPressActive = false;
+    
     longPressTimeout = setTimeout(() => {
       isLongPressActive = true;
       handleMobileTagLongPress(tagName);
@@ -443,16 +474,28 @@
     if (isLongPressActive) {
       event.preventDefault();
     } else {
-      // It was a tap
-      event.preventDefault(); // Prevent simulated click
-      handleTagClick(tagName);
+      if (mobileTouchMoved) {
+        event.preventDefault();
+      } else {
+        // It was a tap
+        event.preventDefault(); // Prevent simulated click
+        handleTagClick(tagName);
+      }
     }
   }
 
-  function handleTagTouchMove() {
+  function handleTagTouchMove(event: TouchEvent) {
     if (longPressTimeout) {
       clearTimeout(longPressTimeout);
       longPressTimeout = null;
+    }
+    if (event.touches.length > 0) {
+      const touch = event.touches[0];
+      const dx = touch.clientX - mobileTouchStartX;
+      const dy = touch.clientY - mobileTouchStartY;
+      if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
+        mobileTouchMoved = true;
+      }
     }
   }
 
@@ -864,7 +907,7 @@
                         appState.selectNote(note.path);
                       }
                     }}
-                    ontouchstart={() => handleNoteTouchStart(note.path)}
+                    ontouchstart={(e) => handleNoteTouchStart(note.path, e)}
                     ontouchend={(e) => handleNoteTouchEnd(note.path, e)}
                     ontouchmove={handleNoteTouchMove}
                     role="button"
@@ -954,7 +997,7 @@
                         appState.selectNote(note.path);
                       }
                     }}
-                    ontouchstart={() => handleNoteTouchStart(note.path)}
+                    ontouchstart={(e) => handleNoteTouchStart(note.path, e)}
                     ontouchend={(e) => handleNoteTouchEnd(note.path, e)}
                     ontouchmove={handleNoteTouchMove}
                     role="button"
@@ -1133,7 +1176,7 @@
                           appState.selectNote(note.path);
                         }
                       }}
-                      ontouchstart={() => handleNoteTouchStart(note.path)}
+                      ontouchstart={(e) => handleNoteTouchStart(note.path, e)}
                       ontouchend={(e) => handleNoteTouchEnd(note.path, e)}
                       ontouchmove={handleNoteTouchMove}
                       style="width: 100%; text-align: left; align-items: center; gap: 12px; border: none; background: none; cursor: pointer;"
@@ -1211,7 +1254,7 @@
                             appState.selectNote(note.path);
                           }
                         }}
-                        ontouchstart={() => handleNoteTouchStart(note.path)}
+                        ontouchstart={(e) => handleNoteTouchStart(note.path, e)}
                         ontouchend={(e) => handleNoteTouchEnd(note.path, e)}
                         ontouchmove={handleNoteTouchMove}
                         style="width: 100%; text-align: left; align-items: center; justify-content: space-between; cursor: pointer;"
@@ -1362,7 +1405,7 @@
                         appState.selectNote(note.path);
                       }
                     }}
-                    ontouchstart={() => handleNoteTouchStart(note.path)}
+                    ontouchstart={(e) => handleNoteTouchStart(note.path, e)}
                     ontouchend={(e) => handleNoteTouchEnd(note.path, e)}
                     ontouchmove={handleNoteTouchMove}
                     role="button"
@@ -1472,7 +1515,7 @@
                   {@const tagColor = getTagColor(tag.name)}
                   <button 
                     class="mobile-tag-row flex-row" 
-                    ontouchstart={() => handleTagTouchStart(tag.name)}
+                    ontouchstart={(e) => handleTagTouchStart(tag.name, e)}
                     ontouchend={(e) => handleTagTouchEnd(tag.name, e)}
                     ontouchmove={handleTagTouchMove}
                     onclick={() => handleTagClick(tag.name)}
@@ -1568,7 +1611,7 @@
                         appState.selectNote(note.path);
                       }
                     }}
-                    ontouchstart={() => handleNoteTouchStart(note.path)}
+                    ontouchstart={(e) => handleNoteTouchStart(note.path, e)}
                     ontouchend={(e) => handleNoteTouchEnd(note.path, e)}
                     ontouchmove={handleNoteTouchMove}
                     role="button"
