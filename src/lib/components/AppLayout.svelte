@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { fade, fly } from 'svelte/transition';
+  import { fade, fly, scale } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
   import { appState, generateHtmlNote, parseHtmlMetadata } from '../stores/appState.svelte';
   import type { Tag } from '../storage/TagSchema';
@@ -209,18 +209,48 @@
     }
   }
 
-  async function handleDeleteTag(tagName: string) {
+  function confirmDeleteNote(path: string, clearActive: boolean = false) {
+    appState.showConfirmation({
+      title: 'Delete Note',
+      message: 'Do you really want to delete this note? This action is permanent.',
+      confirmText: 'Delete',
+      onConfirm: async () => {
+        if (clearActive) {
+          appState.activeNotePath = null;
+        }
+        await appState.deleteNote(path);
+      }
+    });
+  }
+
+  function confirmDeleteNotebook(notebook: string) {
+    appState.showConfirmation({
+      title: 'Delete Notebook',
+      message: `Do you really want to delete folder "${notebook}" and all its notes? This action is permanent.`,
+      confirmText: 'Delete',
+      onConfirm: async () => {
+        await appState.deleteNotebook(notebook);
+      }
+    });
+  }
+
+  function handleDeleteTag(tagName: string) {
     const count = getTagCount({ name: tagName } as Tag);
     const message = count > 0 
-      ? `Are you sure you want to delete tag "${tagName}"? This will remove it from ${count} note(s).`
-      : `Are you sure you want to delete tag "${tagName}"?`;
+      ? `Do you really want to delete tag "${tagName}"? This will remove it from ${count} note(s).`
+      : `Do you really want to delete tag "${tagName}"?`;
       
-    if (confirm(message)) {
-      await appState.deleteTag(tagName);
-      if (appState.selectedTag === tagName) {
-        appState.selectedTag = null;
+    appState.showConfirmation({
+      title: 'Delete Tag',
+      message: message,
+      confirmText: 'Delete',
+      onConfirm: async () => {
+        await appState.deleteTag(tagName);
+        if (appState.selectedTag === tagName) {
+          appState.selectedTag = null;
+        }
       }
-    }
+    });
   }
 
   async function handleRenameTag(tagName: string) {
@@ -247,6 +277,149 @@
     } catch (e) {
       console.error(e);
       appState.showToast(`Failed to rename tag.`, 'error');
+    }
+  }
+
+  // ST-011: Note Long Press simulation for Select Mode
+  let noteLongPressTimeout: any;
+  let isNoteLongPressActive = false;
+
+  function handleNoteTouchStart(notePath: string) {
+    isNoteLongPressActive = false;
+    noteLongPressTimeout = setTimeout(() => {
+      isNoteLongPressActive = true;
+      if (!appState.selectMode) {
+        appState.toggleSelectMode();
+      }
+      appState.toggleNoteSelection(notePath);
+    }, 600);
+  }
+
+  function handleNoteTouchEnd(notePath: string, event: TouchEvent) {
+    if (noteLongPressTimeout) {
+      clearTimeout(noteLongPressTimeout);
+      noteLongPressTimeout = null;
+    }
+    if (isNoteLongPressActive) {
+      event.preventDefault();
+    } else {
+      if (appState.selectMode) {
+        event.preventDefault();
+        appState.toggleNoteSelection(notePath);
+      } else {
+        appState.selectNote(notePath);
+      }
+    }
+  }
+
+  function handleNoteTouchMove() {
+    if (noteLongPressTimeout) {
+      clearTimeout(noteLongPressTimeout);
+      noteLongPressTimeout = null;
+    }
+  }
+
+  // ST-011: Mobile Bulk Tag Picker State
+  let showMobileBulkPicker = $state(false);
+  let mobileBulkPickerMode = $state<'tag' | 'untag'>('tag');
+  let mobileBulkSearch = $state('');
+
+  let filteredMobileTagsForPicker = $derived.by(() => {
+    const query = mobileBulkSearch.trim().toLowerCase();
+    let availableTags = appState.tags;
+
+    if (mobileBulkPickerMode === 'untag') {
+      const selectedNotesList = appState.notes.filter(n => appState.selectedNotes.has(n.path));
+      const tagsInSelectedNotes = new Set<string>();
+      for (const note of selectedNotesList) {
+        const parsed = parseHtmlMetadata(note.content);
+        if (parsed.meta.tags) {
+          parsed.meta.tags.forEach((t: string) => tagsInSelectedNotes.add(t.trim().toLowerCase()));
+        }
+      }
+      availableTags = appState.tags.filter(t => tagsInSelectedNotes.has(t.normalizedName || t.name.toLowerCase()));
+    }
+
+    if (!query) return availableTags;
+    return availableTags.filter(t => t.name.toLowerCase().includes(query));
+  });
+
+  function openMobileBulkTagPicker(mode: 'tag' | 'untag') {
+    mobileBulkPickerMode = mode;
+    mobileBulkSearch = '';
+    showMobileBulkPicker = true;
+  }
+
+  function closeMobileBulkPicker() {
+    showMobileBulkPicker = false;
+  }
+
+  let showMobileBulkNotebookPicker = $state(false);
+
+  async function handleMobileBulkMove(notebook: string | null) {
+    try {
+      const notePaths = Array.from(appState.selectedNotes);
+      await appState.bulkMoveNotes(notePaths, notebook);
+      showMobileBulkNotebookPicker = false;
+      appState.toggleSelectMode();
+    } catch (e) {
+      console.error(e);
+      appState.showToast('Failed to move notes', 'error');
+    }
+  }
+
+  function handleMobileBulkDelete() {
+    const notePaths = Array.from(appState.selectedNotes);
+    if (notePaths.length === 0) return;
+    appState.showConfirmation({
+      title: 'Delete Multiple Notes',
+      message: `Do you really want to delete the ${notePaths.length} selected note(s)? This action is permanent and cannot be undone.`,
+      confirmText: 'Delete',
+      onConfirm: async () => {
+        try {
+          await appState.bulkDeleteNotes(notePaths);
+          appState.showToast(`Deleted ${notePaths.length} note(s)`, 'success');
+          appState.toggleSelectMode();
+        } catch (e) {
+          console.error(e);
+          appState.showToast('Failed to delete notes', 'error');
+        }
+      }
+    });
+  }
+
+  async function handleMobileBulkCreateAndAdd(tagName: string) {
+    try {
+      const cleanName = tagName.trim();
+      const normalized = cleanName.toLowerCase();
+      let existing = appState.tags.find(t => t.normalizedName === normalized);
+      if (!existing) {
+        await appState.createTag(cleanName);
+      }
+      await appState.bulkAddTag(cleanName);
+      appState.showToast(`Tag #${cleanName} applied in bulk`, 'success');
+      closeMobileBulkPicker();
+      appState.toggleSelectMode();
+    } catch (e) {
+      console.error(e);
+      appState.showToast('Failed to perform bulk operation', 'error');
+    }
+  }
+
+  async function handleMobileBulkAction(tagName: string) {
+    try {
+      if (mobileBulkPickerMode === 'tag') {
+        await appState.bulkAddTag(tagName);
+        appState.showToast(`Tag #${tagName} applied in bulk`, 'success');
+      } else {
+        await appState.bulkRemoveTag(tagName);
+        appState.showToast(`Tag #${tagName} removed in bulk`, 'success');
+      }
+      closeMobileBulkPicker();
+      appState.toggleSelectMode();
+    } catch (e) {
+      console.error(e);
+      appState.showToast('Failed to perform bulk operation', 'error');
     }
   }
 
@@ -283,17 +456,65 @@
     }
   }
 
-  async function handleMobileTagLongPress(tagName: string) {
-    const choice = prompt(`Tag options for "${tagName}":\nType 'rename' to rename, or 'delete' to delete.`);
-    if (!choice) return;
-    const action = choice.trim().toLowerCase();
-    if (action === 'rename') {
-      await handleRenameTag(tagName);
-    } else if (action === 'delete') {
-      await handleDeleteTag(tagName);
-    } else {
-      appState.showToast('Invalid option chosen', 'warning');
+  // ST-010: Tag Color Picker (Mobile)
+  const TAG_COLOR_PALETTE = [
+    '#ef4444', '#f97316', '#eab308', '#22c55e',
+    '#14b8a6', '#3b82f6', '#6366f1', '#8b5cf6',
+    '#ec4899', '#f43f5e', '#78716c', '#64748b',
+  ];
+  let mobileColorPickerTag = $state<string | null>(null);
+
+  function getTagColor(tagName: string): string | undefined {
+    return appState.tagColorMap.get(tagName.toLowerCase());
+  }
+
+  async function handleSetMobileColor(tagName: string, color: string | null) {
+    try {
+      await appState.setTagColor(tagName, color);
+      mobileColorPickerTag = null;
+      appState.showToast(`Tag color updated!`, 'success');
+    } catch (e) {
+      console.error(e);
+      appState.showToast('Failed to set tag color.', 'error');
     }
+  }
+
+  let showMobileTagActions = $state(false);
+  let mobileTagActionsTag = $state<string | null>(null);
+  let mobileCustomHexValue = $state('');
+  let isMobileCustomHexValid = $derived(/^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(mobileCustomHexValue.trim()));
+  let normalizedMobileCustomHex = $derived(isMobileCustomHexValid ? (mobileCustomHexValue.trim().startsWith('#') ? mobileCustomHexValue.trim() : '#' + mobileCustomHexValue.trim()) : '');
+
+  $effect(() => {
+    if (mobileColorPickerTag) {
+      mobileCustomHexValue = getTagColor(mobileColorPickerTag) || '';
+    }
+  });
+
+  async function handleMobileTagLongPress(tagName: string) {
+    mobileTagActionsTag = tagName;
+    showMobileTagActions = true;
+  }
+
+  async function triggerMobileTagRename() {
+    if (!mobileTagActionsTag) return;
+    const tagName = mobileTagActionsTag;
+    showMobileTagActions = false;
+    await handleRenameTag(tagName);
+  }
+
+  function triggerMobileTagColor() {
+    if (!mobileTagActionsTag) return;
+    const tagName = mobileTagActionsTag;
+    mobileColorPickerTag = tagName;
+    showMobileTagActions = false;
+  }
+
+  async function triggerMobileTagDelete() {
+    if (!mobileTagActionsTag) return;
+    const tagName = mobileTagActionsTag;
+    showMobileTagActions = false;
+    await handleDeleteTag(tagName);
   }
 </script>
 
@@ -528,10 +749,8 @@
                 class="menu-item flex-row delete-item"
                 onclick={() => {
                   showMobileMoreMenu = false;
-                  if (confirm('Are you sure you want to delete this note?')) {
-                    const path = appState.activeNotePath;
-                    appState.activeNotePath = null;
-                    if (path) appState.deleteNote(path);
+                  if (appState.activeNotePath) {
+                    confirmDeleteNote(appState.activeNotePath, true);
                   }
                 }}
               >
@@ -548,36 +767,61 @@
         <!-- 1. HOME TAB -->
         {#if appState.activeTab === 'home'}
           <div class="mobile-tab-view flex-col">
-            <div class="mobile-header flex-row" style="justify-content: space-between; width: 100%;">
-              <div class="flex-col">
-                <h1>{greeting}</h1>
-                <span class="mobile-vault-stat" style="font-size: 12px; color: var(--text-secondary); margin-top: 4px;">{appState.notes.length} notes in your vault</span>
-              </div>
-              <div class="flex-row" style="gap: 8px; align-items: center;">
-                {#if appState.googleConnected && appState.syncEnabled}
-                  {#if appState.syncStatus === 'syncing'}
-                    <span class="sync-indicator spin" style="color: var(--accent); display: flex;" title="Syncing...">
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
-                      </svg>
-                    </span>
-                  {:else if appState.syncStatus === 'error'}
-                    <span class="sync-indicator" style="color: var(--semantic-error, #ff4444); display: flex;" title="Sync Error">
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                        <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-                      </svg>
-                    </span>
+            {#if !appState.selectMode}
+              <div class="mobile-header flex-row" style="justify-content: space-between; width: 100%;">
+                <div class="flex-col">
+                  <h1>{greeting}</h1>
+                  <span class="mobile-vault-stat" style="font-size: 12px; color: var(--text-secondary); margin-top: 4px;">{appState.notes.length} notes in your vault</span>
+                </div>
+                <div class="flex-row" style="gap: 8px; align-items: center;">
+                  {#if appState.googleConnected && appState.syncEnabled}
+                    {#if appState.syncStatus === 'syncing'}
+                      <span class="sync-indicator spin" style="color: var(--accent); display: flex;" title="Syncing...">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                          <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+                        </svg>
+                      </span>
+                    {:else if appState.syncStatus === 'error'}
+                      <span class="sync-indicator" style="color: var(--semantic-error, #ff4444); display: flex;" title="Sync Error">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                          <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                        </svg>
+                      </span>
+                    {/if}
                   {/if}
-                {/if}
+                  <button 
+                    class="icon-circle-btn flex-row" 
+                    onclick={() => appState.showSettings = true}
+                    aria-label="Settings"
+                  >
+                    <Settings size={20} />
+                  </button>
+                </div>
+              </div>
+            {:else}
+              <div class="mobile-header bulk-select-header flex-row" style="justify-content: space-between; width: 100%; align-items: center; border-bottom: 1px dashed var(--border-color); padding-bottom: 12px; margin-bottom: 8px;">
+                <div class="flex-row" style="gap: 12px; align-items: center;">
+                  <button 
+                    class="icon-circle-btn flex-row" 
+                    onclick={() => appState.toggleSelectMode()}
+                    aria-label="Exit selection mode"
+                    style="width: 32px; height: 32px;"
+                  >
+                    <X size={18} />
+                  </button>
+                  <span style="font-weight: 800; font-size: 16px; color: var(--text-primary);">
+                    {appState.selectedNotes.size} selected
+                  </span>
+                </div>
                 <button 
-                  class="icon-circle-btn flex-row" 
-                  onclick={() => appState.showSettings = true}
-                  aria-label="Settings"
+                  class="btn-pill btn-pill-outline" 
+                  onclick={() => appState.selectAllNotes(appState.filteredNotes.map(n => n.path))}
+                  style="font-size: 12px; padding: 6px 12px;"
                 >
-                  <Settings size={20} />
+                  Select All
                 </button>
               </div>
-            </div>
+            {/if}
 
             <!-- Premium Stats Dashboard Card -->
             <div class="home-section stats-section" style="margin-top: 8px; margin-bottom: 8px;">
@@ -609,61 +853,83 @@
               <div class="recent-cards-list flex-col" style="gap: 12px;">
                 {#each appState.notes.filter(n => appState.favorites.includes(n.path)) as note}
                   <div 
-                    class="recent-note-card flex-col" 
-                    onclick={() => appState.selectNote(note.path)}
+                    class="recent-note-card flex-row" 
+                    class:selected={appState.selectedNotes.has(note.path)}
+                    onclick={(e) => {
+                      if (appState.selectMode) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        appState.toggleNoteSelection(note.path);
+                      } else {
+                        appState.selectNote(note.path);
+                      }
+                    }}
+                    ontouchstart={() => handleNoteTouchStart(note.path)}
+                    ontouchend={(e) => handleNoteTouchEnd(note.path, e)}
+                    ontouchmove={handleNoteTouchMove}
                     role="button"
                     tabindex="0"
                     onkeydown={(e) => e.key === 'Enter' && appState.selectNote(note.path)}
-                    style="cursor: pointer;"
+                    style="cursor: pointer; background-color: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-comfortable); padding: 14px 16px; text-align: left; width: 100%; gap: 12px; align-items: center;"
                   >
-                    <div class="card-header-row flex-row" style="justify-content: space-between; width: 100%; align-items: center;">
-                      <span class="card-note-title" style="flex-grow: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 8px;">{note.name}</span>
-                      <div class="flex-row" style="gap: 8px; align-items: center; flex-shrink: 0;">
-                        <span class="card-note-time">{new Date(note.modified).toLocaleDateString(undefined, {month: 'short', day: 'numeric'})}</span>
-                        <!-- Rename button -->
-                        <button 
-                          class="card-action-btn flex-row" 
-                          onclick={(e) => {
-                            e.stopPropagation();
-                            const newTitle = prompt('Rename note title & file name:', note.name);
-                            if (!newTitle) return;
-                            const trimmed = newTitle.trim();
-                            if (!trimmed || trimmed === note.name) return;
-                            appState.renameNote(note.path, trimmed)
-                              .then(() => appState.showToast('Note renamed successfully', 'success'))
-                              .catch(err => {
-                                console.error(err);
-                                appState.showToast('Failed to rename note', 'error');
-                              });
-                          }}
-                          aria-label="Rename note"
-                          title="Rename note"
-                          style="background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: 4px; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center;"
-                        >
-                          <Edit3 size={14} />
-                        </button>
-                        <!-- Delete button -->
-                        <button 
-                          class="card-action-btn flex-row" 
-                          onclick={(e) => {
-                            e.stopPropagation();
-                            if (confirm('Are you sure you want to delete this note?')) {
-                              appState.deleteNote(note.path);
-                            }
-                          }}
-                          aria-label="Delete note"
-                          title="Delete note"
-                          style="background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: 4px; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center;"
-                          onmouseover={(e) => e.currentTarget.style.color = 'var(--semantic-error, #ff4d4d)'}
-                          onmouseout={(e) => e.currentTarget.style.color = 'var(--text-secondary)'}
-                        >
-                          <Trash2 size={14} />
-                        </button>
+                    {#if appState.selectMode}
+                      <div class="selection-checkbox-wrapper">
+                        <div class="selection-checkbox" class:checked={appState.selectedNotes.has(note.path)}>
+                          {#if appState.selectedNotes.has(note.path)}
+                            ✓
+                          {/if}
+                        </div>
                       </div>
-                    </div>
-                    {#if note.path.includes('/')}
-                      <span class="card-notebook-badge">{note.path.split('/')[0]}</span>
                     {/if}
+                    
+                    <div class="flex-col" style="flex-grow: 1; min-width: 0; gap: 8px;">
+                      <div class="card-header-row flex-row" style="justify-content: space-between; width: 100%; align-items: center;">
+                        <span class="card-note-title" style="flex-grow: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 8px;">{note.name}</span>
+                        <div class="flex-row" style="gap: 8px; align-items: center; flex-shrink: 0;">
+                          <span class="card-note-time">{new Date(note.modified).toLocaleDateString(undefined, {month: 'short', day: 'numeric'})}</span>
+                          {#if !appState.selectMode}
+                            <!-- Rename button -->
+                            <button 
+                              class="card-action-btn flex-row" 
+                              onclick={(e) => {
+                                e.stopPropagation();
+                                const newTitle = prompt('Rename note title & file name:', note.name);
+                                if (!newTitle) return;
+                                const trimmed = newTitle.trim();
+                                if (!trimmed || trimmed === note.name) return;
+                                appState.renameNote(note.path, trimmed)
+                                  .then(() => appState.showToast('Note renamed successfully', 'success'))
+                                  .catch(err => {
+                                    console.error(err);
+                                    appState.showToast('Failed to rename note', 'error');
+                                  });
+                              }}
+                              aria-label="Rename note"
+                              title="Rename note"
+                              style="background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: 4px; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center;"
+                            >
+                              <Edit3 size={14} />
+                            </button>
+                            <!-- Delete button -->
+                            <button 
+                              class="card-action-btn flex-row" 
+                              onclick={(e) => {
+                                e.stopPropagation();
+                                confirmDeleteNote(note.path);
+                              }}
+                              aria-label="Delete note"
+                              title="Delete note"
+                              style="background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: 4px; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center;"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          {/if}
+                        </div>
+                      </div>
+                      {#if note.path.includes('/')}
+                        <span class="card-notebook-badge">{note.path.split('/')[0]}</span>
+                      {/if}
+                    </div>
                   </div>
                 {:else}
                   <div class="empty-cards" style="font-size: 12px; color: var(--text-tertiary); text-align: center; padding: 10px 0;">No favorites starred yet.</div>
@@ -677,61 +943,83 @@
               <div class="recent-cards-list flex-col" style="gap: 12px;">
                 {#each appState.recentNotes as note}
                   <div 
-                    class="recent-note-card flex-col" 
-                    onclick={() => appState.selectNote(note.path)}
+                    class="recent-note-card flex-row" 
+                    class:selected={appState.selectedNotes.has(note.path)}
+                    onclick={(e) => {
+                      if (appState.selectMode) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        appState.toggleNoteSelection(note.path);
+                      } else {
+                        appState.selectNote(note.path);
+                      }
+                    }}
+                    ontouchstart={() => handleNoteTouchStart(note.path)}
+                    ontouchend={(e) => handleNoteTouchEnd(note.path, e)}
+                    ontouchmove={handleNoteTouchMove}
                     role="button"
                     tabindex="0"
                     onkeydown={(e) => e.key === 'Enter' && appState.selectNote(note.path)}
-                    style="cursor: pointer;"
+                    style="cursor: pointer; background-color: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-comfortable); padding: 14px 16px; text-align: left; width: 100%; gap: 12px; align-items: center;"
                   >
-                    <div class="card-header-row flex-row" style="justify-content: space-between; width: 100%; align-items: center;">
-                      <span class="card-note-title" style="flex-grow: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 8px;">{note.name}</span>
-                      <div class="flex-row" style="gap: 8px; align-items: center; flex-shrink: 0;">
-                        <span class="card-note-time">{new Date(note.modified).toLocaleDateString(undefined, {month: 'short', day: 'numeric'})}</span>
-                        <!-- Rename button -->
-                        <button 
-                          class="card-action-btn flex-row" 
-                          onclick={(e) => {
-                            e.stopPropagation();
-                            const newTitle = prompt('Rename note title & file name:', note.name);
-                            if (!newTitle) return;
-                            const trimmed = newTitle.trim();
-                            if (!trimmed || trimmed === note.name) return;
-                            appState.renameNote(note.path, trimmed)
-                              .then(() => appState.showToast('Note renamed successfully', 'success'))
-                              .catch(err => {
-                                console.error(err);
-                                appState.showToast('Failed to rename note', 'error');
-                              });
-                          }}
-                          aria-label="Rename note"
-                          title="Rename note"
-                          style="background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: 4px; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center;"
-                        >
-                          <Edit3 size={14} />
-                        </button>
-                        <!-- Delete button -->
-                        <button 
-                          class="card-action-btn flex-row" 
-                          onclick={(e) => {
-                            e.stopPropagation();
-                            if (confirm('Are you sure you want to delete this note?')) {
-                              appState.deleteNote(note.path);
-                            }
-                          }}
-                          aria-label="Delete note"
-                          title="Delete note"
-                          style="background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: 4px; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center;"
-                          onmouseover={(e) => e.currentTarget.style.color = 'var(--semantic-error, #ff4d4d)'}
-                          onmouseout={(e) => e.currentTarget.style.color = 'var(--text-secondary)'}
-                        >
-                          <Trash2 size={14} />
-                        </button>
+                    {#if appState.selectMode}
+                      <div class="selection-checkbox-wrapper">
+                        <div class="selection-checkbox" class:checked={appState.selectedNotes.has(note.path)}>
+                          {#if appState.selectedNotes.has(note.path)}
+                            ✓
+                          {/if}
+                        </div>
                       </div>
-                    </div>
-                    {#if note.path.includes('/')}
-                      <span class="card-notebook-badge">{note.path.split('/')[0]}</span>
                     {/if}
+                    
+                    <div class="flex-col" style="flex-grow: 1; min-width: 0; gap: 8px;">
+                      <div class="card-header-row flex-row" style="justify-content: space-between; width: 100%; align-items: center;">
+                        <span class="card-note-title" style="flex-grow: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 8px;">{note.name}</span>
+                        <div class="flex-row" style="gap: 8px; align-items: center; flex-shrink: 0;">
+                          <span class="card-note-time">{new Date(note.modified).toLocaleDateString(undefined, {month: 'short', day: 'numeric'})}</span>
+                          {#if !appState.selectMode}
+                            <!-- Rename button -->
+                            <button 
+                              class="card-action-btn flex-row" 
+                              onclick={(e) => {
+                                e.stopPropagation();
+                                const newTitle = prompt('Rename note title & file name:', note.name);
+                                if (!newTitle) return;
+                                const trimmed = newTitle.trim();
+                                if (!trimmed || trimmed === note.name) return;
+                                appState.renameNote(note.path, trimmed)
+                                  .then(() => appState.showToast('Note renamed successfully', 'success'))
+                                  .catch(err => {
+                                    console.error(err);
+                                    appState.showToast('Failed to rename note', 'error');
+                                  });
+                              }}
+                              aria-label="Rename note"
+                              title="Rename note"
+                              style="background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: 4px; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center;"
+                            >
+                              <Edit3 size={14} />
+                            </button>
+                            <!-- Delete button -->
+                            <button 
+                              class="card-action-btn flex-row" 
+                              onclick={(e) => {
+                                e.stopPropagation();
+                                confirmDeleteNote(note.path);
+                              }}
+                              aria-label="Delete note"
+                              title="Delete note"
+                              style="background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: 4px; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center;"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          {/if}
+                        </div>
+                      </div>
+                      {#if note.path.includes('/')}
+                        <span class="card-notebook-badge">{note.path.split('/')[0]}</span>
+                      {/if}
+                    </div>
                   </div>
                 {:else}
                   <div class="empty-cards" style="font-size: 12px; color: var(--text-tertiary); text-align: center; padding: 20px 0;">No notes found. Click the + button below to create one!</div>
@@ -757,8 +1045,9 @@
           <div class="mobile-tab-view flex-col">
             {#if appState.activeNotebook === null}
               <!-- Library Home / Search View -->
-                <div class="mobile-header mobile-library-header flex-row" style="justify-content: space-between; width: 100%; align-items: center;">
-                  <h1>Your Library</h1>
+            {#if !appState.selectMode}
+              <div class="mobile-header mobile-library-header flex-row" style="justify-content: space-between; width: 100%; align-items: center;">
+                <h1>Your Library</h1>
                 <div class="flex-row" style="gap: 12px; align-items: center;">
                   <button 
                     class="icon-circle-btn flex-row" 
@@ -776,6 +1065,30 @@
                   </button>
                 </div>
               </div>
+            {:else}
+              <div class="mobile-header bulk-select-header flex-row" style="justify-content: space-between; width: 100%; align-items: center; border-bottom: 1px dashed var(--border-color); padding-bottom: 12px; margin-bottom: 8px;">
+                <div class="flex-row" style="gap: 12px; align-items: center;">
+                  <button 
+                    class="icon-circle-btn flex-row" 
+                    onclick={() => appState.toggleSelectMode()}
+                    aria-label="Exit selection mode"
+                    style="width: 32px; height: 32px;"
+                  >
+                    <X size={18} />
+                  </button>
+                  <span style="font-weight: 800; font-size: 16px; color: var(--text-primary);">
+                    {appState.selectedNotes.size} selected
+                  </span>
+                </div>
+                <button 
+                  class="btn-pill btn-pill-outline" 
+                  onclick={() => appState.selectAllNotes(appState.filteredNotes.map(n => n.path))}
+                  style="font-size: 12px; padding: 6px 12px;"
+                >
+                  Select All
+                </button>
+              </div>
+            {/if}
 
               {#if showMobileFolderForm}
                 <form onsubmit={createMobileFolder} class="mobile-folder-form" style="width: 100%; margin-bottom: 8px;">
@@ -810,9 +1123,30 @@
                   {#each appState.filteredNotes as note}
                     <button 
                       class="search-result-row flex-row" 
-                      onclick={() => appState.selectNote(note.path)}
-                      style="width: 100%; text-align: left;"
+                      class:selected={appState.selectedNotes.has(note.path)}
+                      onclick={(e) => {
+                        if (appState.selectMode) {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          appState.toggleNoteSelection(note.path);
+                        } else {
+                          appState.selectNote(note.path);
+                        }
+                      }}
+                      ontouchstart={() => handleNoteTouchStart(note.path)}
+                      ontouchend={(e) => handleNoteTouchEnd(note.path, e)}
+                      ontouchmove={handleNoteTouchMove}
+                      style="width: 100%; text-align: left; align-items: center; gap: 12px; border: none; background: none; cursor: pointer;"
                     >
+                      {#if appState.selectMode}
+                        <div class="selection-checkbox-wrapper">
+                          <div class="selection-checkbox" class:checked={appState.selectedNotes.has(note.path)}>
+                            {#if appState.selectedNotes.has(note.path)}
+                              ✓
+                            {/if}
+                          </div>
+                        </div>
+                      {/if}
                       <div class="row-art">📄</div>
                       <div class="row-info flex-col">
                         <span class="row-title">{note.name}</span>
@@ -844,9 +1178,7 @@
                         <button
                           onclick={(e) => {
                             e.stopPropagation();
-                            if (confirm(`Delete folder "${notebook}" and all its notes?`)) {
-                              appState.deleteNotebook(notebook);
-                            }
+                            confirmDeleteNotebook(notebook);
                           }}
                           style="position: absolute; top: 50%; transform: translateY(-50%); right: 12px; background: none; border: none; color: var(--text-tertiary); cursor: pointer; padding: 6px; z-index: 2; display: flex; align-items: center; justify-content: center;"
                           aria-label="Delete notebook"
@@ -869,13 +1201,34 @@
                     {#each appState.recentNotes.slice(0, 8) as note}
                       <div 
                         class="search-result-row flex-row" 
-                        onclick={() => appState.selectNote(note.path)}
+                        class:selected={appState.selectedNotes.has(note.path)}
+                        onclick={(e) => {
+                          if (appState.selectMode) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            appState.toggleNoteSelection(note.path);
+                          } else {
+                            appState.selectNote(note.path);
+                          }
+                        }}
+                        ontouchstart={() => handleNoteTouchStart(note.path)}
+                        ontouchend={(e) => handleNoteTouchEnd(note.path, e)}
+                        ontouchmove={handleNoteTouchMove}
                         style="width: 100%; text-align: left; align-items: center; justify-content: space-between; cursor: pointer;"
                         role="button"
                         tabindex="0"
                         onkeydown={(e) => e.key === 'Enter' && appState.selectNote(note.path)}
                       >
                         <div class="flex-row" style="gap: 12px; align-items: center; flex-grow: 1; min-width: 0;">
+                          {#if appState.selectMode}
+                            <div class="selection-checkbox-wrapper">
+                              <div class="selection-checkbox" class:checked={appState.selectedNotes.has(note.path)}>
+                                {#if appState.selectedNotes.has(note.path)}
+                                  ✓
+                                {/if}
+                              </div>
+                            </div>
+                          {/if}
                           <div class="row-art">📄</div>
                           <div class="row-info flex-col" style="min-width: 0; flex-grow: 1;">
                             <span class="row-title" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{note.name}</span>
@@ -883,45 +1236,43 @@
                           </div>
                         </div>
                         <div class="flex-row" style="gap: 6px; align-items: center; flex-shrink: 0; margin-left: 8px;">
-                          <!-- Rename button -->
-                          <button 
-                            class="row-action-btn flex-row" 
-                            onclick={(e) => {
-                              e.stopPropagation();
-                              const newTitle = prompt('Rename note title & file name:', note.name);
-                              if (!newTitle) return;
-                              const trimmed = newTitle.trim();
-                              if (!trimmed || trimmed === note.name) return;
-                              appState.renameNote(note.path, trimmed)
-                                .then(() => appState.showToast('Note renamed successfully', 'success'))
-                                .catch(err => {
-                                  console.error(err);
-                                  appState.showToast('Failed to rename note', 'error');
-                                });
-                            }}
-                            aria-label="Rename note"
-                            title="Rename note"
-                            style="background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: 4px; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center;"
-                          >
-                            <Edit3 size={14} />
-                          </button>
-                          <!-- Delete button -->
-                          <button 
-                            class="row-action-btn flex-row" 
-                            onclick={(e) => {
-                              e.stopPropagation();
-                              if (confirm('Are you sure you want to delete this note?')) {
-                                appState.deleteNote(note.path);
-                              }
-                            }}
-                            aria-label="Delete note"
-                            title="Delete note"
-                            style="background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: 4px; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center;"
-                            onmouseover={(e) => e.currentTarget.style.color = 'var(--semantic-error, #ff4d4d)'}
-                            onmouseout={(e) => e.currentTarget.style.color = 'var(--text-secondary)'}
-                          >
-                            <Trash2 size={14} />
-                          </button>
+                          {#if !appState.selectMode}
+                            <!-- Rename button -->
+                            <button 
+                              class="row-action-btn flex-row" 
+                              onclick={(e) => {
+                                e.stopPropagation();
+                                const newTitle = prompt('Rename note title & file name:', note.name);
+                                if (!newTitle) return;
+                                const trimmed = newTitle.trim();
+                                if (!trimmed || trimmed === note.name) return;
+                                appState.renameNote(note.path, trimmed)
+                                  .then(() => appState.showToast('Note renamed successfully', 'success'))
+                                  .catch(err => {
+                                    console.error(err);
+                                    appState.showToast('Failed to rename note', 'error');
+                                  });
+                              }}
+                              aria-label="Rename note"
+                              title="Rename note"
+                              style="background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: 4px; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center;"
+                            >
+                              <Edit3 size={14} />
+                            </button>
+                            <!-- Delete button -->
+                            <button 
+                              class="row-action-btn flex-row" 
+                              onclick={(e) => {
+                                e.stopPropagation();
+                                confirmDeleteNote(note.path);
+                              }}
+                              aria-label="Delete note"
+                              title="Delete note"
+                              style="background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: 4px; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center;"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          {/if}
                         </div>
                       </div>
                     {:else}
@@ -932,32 +1283,57 @@
               {/if}
             {:else}
               <!-- Folder Notes List View (Sub-view inside active notebook) -->
-              <div class="mobile-header flex-row" style="justify-content: space-between; width: 100%; border-bottom: 1px dashed var(--border-color); padding-bottom: 12px; margin-bottom: 8px;">
-                <div class="flex-row" style="gap: 8px; max-width: 70%; align-items: center;">
+              {#if !appState.selectMode}
+                <div class="mobile-header flex-row" style="justify-content: space-between; width: 100%; border-bottom: 1px dashed var(--border-color); padding-bottom: 12px; margin-bottom: 8px;">
+                  <div class="flex-row" style="gap: 8px; max-width: 70%; align-items: center;">
+                    <button 
+                      class="icon-circle-btn flex-row" 
+                      onclick={() => { appState.activeNotebook = null; }}
+                      aria-label="Back to Library"
+                      style="width: 32px; height: 32px;"
+                    >
+                      <ChevronLeft size={18} />
+                    </button>
+                    <span style="font-weight: 800; font-size: 16px; color: var(--text-primary); text-overflow: ellipsis; overflow: hidden; white-space: nowrap; max-width: calc(100% - 40px);">
+                      {appState.activeNotebook}
+                    </span>
+                  </div>
+                  
                   <button 
-                    class="icon-circle-btn flex-row" 
-                    onclick={() => { appState.activeNotebook = null; }}
-                    aria-label="Back to Library"
-                    style="width: 32px; height: 32px;"
+                    class="btn-pill btn-pill-primary flex-row" 
+                    onclick={() => {
+                      const title = prompt('Enter note title:', 'New Note');
+                      if (title) appState.createNote(title, appState.activeNotebook);
+                    }}
+                    style="font-size: 11px; padding: 6px 12px;"
                   >
-                    <ChevronLeft size={18} />
+                    <Plus size={12} style="margin-right: 4px;" /> Add Note
                   </button>
-                  <span style="font-weight: 800; font-size: 16px; color: var(--text-primary); text-overflow: ellipsis; overflow: hidden; white-space: nowrap; max-width: calc(100% - 40px);">
-                    {appState.activeNotebook}
-                  </span>
                 </div>
-                
-                <button 
-                  class="btn-pill btn-pill-primary flex-row" 
-                  onclick={() => {
-                    const title = prompt('Enter note title:', 'New Note');
-                    if (title) appState.createNote(title, appState.activeNotebook);
-                  }}
-                  style="font-size: 11px; padding: 6px 12px;"
-                >
-                  <Plus size={12} style="margin-right: 4px;" /> Add Note
-                </button>
-              </div>
+              {:else}
+                <div class="mobile-header bulk-select-header flex-row" style="justify-content: space-between; width: 100%; align-items: center; border-bottom: 1px dashed var(--border-color); padding-bottom: 12px; margin-bottom: 8px;">
+                  <div class="flex-row" style="gap: 12px; align-items: center;">
+                    <button 
+                      class="icon-circle-btn flex-row" 
+                      onclick={() => appState.toggleSelectMode()}
+                      aria-label="Exit selection mode"
+                      style="width: 32px; height: 32px;"
+                    >
+                      <X size={18} />
+                    </button>
+                    <span style="font-weight: 800; font-size: 16px; color: var(--text-primary);">
+                      {appState.selectedNotes.size} selected
+                    </span>
+                  </div>
+                  <button 
+                    class="btn-pill btn-pill-outline" 
+                    onclick={() => appState.selectAllNotes(appState.filteredNotes.map(n => n.path))}
+                    style="font-size: 12px; padding: 6px 12px;"
+                  >
+                    Select All
+                  </button>
+                </div>
+              {/if}
 
               <!-- Search inside notebook -->
               <div class="mobile-search-bar flex-row" style="margin-bottom: 10px;">
@@ -975,59 +1351,80 @@
               <div class="mobile-notes-list flex-col" style="width: 100%; gap: 10px;">
                 {#each appState.filteredNotes as note}
                   <div 
-                    class="recent-note-card flex-col" 
-                    onclick={() => appState.selectNote(note.path)}
+                    class="recent-note-card flex-row" 
+                    class:selected={appState.selectedNotes.has(note.path)}
+                    onclick={(e) => {
+                      if (appState.selectMode) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        appState.toggleNoteSelection(note.path);
+                      } else {
+                        appState.selectNote(note.path);
+                      }
+                    }}
+                    ontouchstart={() => handleNoteTouchStart(note.path)}
+                    ontouchend={(e) => handleNoteTouchEnd(note.path, e)}
+                    ontouchmove={handleNoteTouchMove}
                     role="button"
                     tabindex="0"
                     onkeydown={(e) => e.key === 'Enter' && appState.selectNote(note.path)}
-                    style="background-color: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-comfortable); padding: 14px 16px; text-align: left; width: 100%; gap: 8px; cursor: pointer;"
+                    style="background-color: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-comfortable); padding: 14px 16px; text-align: left; width: 100%; gap: 12px; cursor: pointer; align-items: center;"
                   >
-                    <div class="card-header-row flex-row" style="justify-content: space-between; width: 100%; align-items: center;">
-                      <span class="card-note-title" style="font-weight: 700; font-size: 14px; color: var(--text-primary); flex-grow: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 8px;">{note.name}</span>
-                      <div class="flex-row" style="gap: 8px; align-items: center; flex-shrink: 0;">
-                        <span class="card-note-time" style="font-size: 10px; color: var(--text-tertiary);">{new Date(note.modified).toLocaleDateString(undefined, {month: 'short', day: 'numeric'})}</span>
-                        <!-- Rename button -->
-                        <button 
-                          class="card-action-btn flex-row" 
-                          onclick={(e) => {
-                            e.stopPropagation();
-                            const newTitle = prompt('Rename note title & file name:', note.name);
-                            if (!newTitle) return;
-                            const trimmed = newTitle.trim();
-                            if (!trimmed || trimmed === note.name) return;
-                            appState.renameNote(note.path, trimmed)
-                              .then(() => appState.showToast('Note renamed successfully', 'success'))
-                              .catch(err => {
-                                console.error(err);
-                                appState.showToast('Failed to rename note', 'error');
-                              });
-                          }}
-                          aria-label="Rename note"
-                          title="Rename note"
-                          style="background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: 4px; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center;"
-                        >
-                          <Edit3 size={14} />
-                        </button>
-                        <!-- Delete button -->
-                        <button 
-                          class="card-action-btn flex-row" 
-                          onclick={(e) => {
-                            e.stopPropagation();
-                            if (confirm('Are you sure you want to delete this note?')) {
-                              appState.deleteNote(note.path);
-                            }
-                          }}
-                          aria-label="Delete note"
-                          title="Delete note"
-                          style="background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: 4px; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center;"
-                          onmouseover={(e) => e.currentTarget.style.color = 'var(--semantic-error, #ff4d4d)'}
-                          onmouseout={(e) => e.currentTarget.style.color = 'var(--text-secondary)'}
-                        >
-                          <Trash2 size={14} />
-                        </button>
+                    {#if appState.selectMode}
+                      <div class="selection-checkbox-wrapper">
+                        <div class="selection-checkbox" class:checked={appState.selectedNotes.has(note.path)}>
+                          {#if appState.selectedNotes.has(note.path)}
+                            ✓
+                          {/if}
+                        </div>
+                      </div>
+                    {/if}
+                    
+                    <div class="flex-col" style="flex-grow: 1; min-width: 0; gap: 8px;">
+                      <div class="card-header-row flex-row" style="justify-content: space-between; width: 100%; align-items: center;">
+                        <span class="card-note-title" style="font-weight: 700; font-size: 14px; color: var(--text-primary); flex-grow: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 8px;">{note.name}</span>
+                        <div class="flex-row" style="gap: 8px; align-items: center; flex-shrink: 0;">
+                          <span class="card-note-time" style="font-size: 10px; color: var(--text-tertiary);">{new Date(note.modified).toLocaleDateString(undefined, {month: 'short', day: 'numeric'})}</span>
+                          {#if !appState.selectMode}
+                            <!-- Rename button -->
+                            <button 
+                              class="card-action-btn flex-row" 
+                              onclick={(e) => {
+                                e.stopPropagation();
+                                const newTitle = prompt('Rename note title & file name:', note.name);
+                                if (!newTitle) return;
+                                const trimmed = newTitle.trim();
+                                if (!trimmed || trimmed === note.name) return;
+                                appState.renameNote(note.path, trimmed)
+                                  .then(() => appState.showToast('Note renamed successfully', 'success'))
+                                  .catch(err => {
+                                    console.error(err);
+                                    appState.showToast('Failed to rename note', 'error');
+                                  });
+                              }}
+                              aria-label="Rename note"
+                              title="Rename note"
+                              style="background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: 4px; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center;"
+                            >
+                              <Edit3 size={14} />
+                            </button>
+                            <!-- Delete button -->
+                            <button 
+                              class="card-action-btn flex-row" 
+                              onclick={(e) => {
+                                e.stopPropagation();
+                                confirmDeleteNote(note.path);
+                              }}
+                              aria-label="Delete note"
+                              title="Delete note"
+                              style="background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: 4px; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center;"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          {/if}
+                        </div>
                       </div>
                     </div>
-
                   </div>
                 {:else}
                   <div class="empty-lib flex-col" style="align-items: center; justify-content: center; gap: 8px; padding: 40px 0; color: var(--text-tertiary);">
@@ -1072,6 +1469,7 @@
               <div class="mobile-tags-list flex-col" style="gap: 8px; width: 100%; margin-top: 8px;">
                 {#each sortedTags.filter(t => t.name.toLowerCase().includes(appState.searchQuery.toLowerCase())) as tag}
                   {@const count = getTagCount(tag)}
+                  {@const tagColor = getTagColor(tag.name)}
                   <button 
                     class="mobile-tag-row flex-row" 
                     ontouchstart={() => handleTagTouchStart(tag.name)}
@@ -1081,9 +1479,9 @@
                     oncontextmenu={(e) => { e.preventDefault(); handleMobileTagLongPress(tag.name); }}
                     style="width: 100%; padding: 12px 14px; border-radius: var(--radius-comfortable); border: 1px solid var(--border-color); background-color: var(--bg-surface); gap: 12px; text-align: left; align-items: center; position: relative; cursor: pointer;"
                   >
-                    <div class="tag-hash-icon" style="font-size: 14px; font-weight: 700; color: var(--accent); opacity: 0.8; width: 16px; text-align: center;">#</div>
+                    <div class="tag-hash-icon" style="font-size: 14px; font-weight: 700; color: {tagColor || 'var(--accent)'}; opacity: 0.8; width: 16px; text-align: center;">#</div>
                     <span style="font-size: 13px; font-weight: 700; color: var(--text-primary); flex-grow: 1; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">{tag.name}</span>
-                    <span class="mobile-tag-badge" style="font-size: 10px; font-weight: 700; color: var(--text-secondary); background-color: var(--bg-mid-dark); padding: 2px 6px; border-radius: 999px;">{count}</span>
+                    <span class="mobile-tag-badge" style="font-size: 10px; font-weight: 700; color: {tagColor || 'var(--text-secondary)'}; background-color: {tagColor ? tagColor + '33' : 'var(--bg-mid-dark)'}; padding: 2px 6px; border-radius: 999px;">{count}</span>
                   </button>
                 {:else}
                   <div class="empty-list" style="font-size: 12px; color: var(--text-tertiary); text-align: center; padding: 24px 0; border: 1px dashed var(--border-color); border-radius: var(--radius-standard);">No tags found.</div>
@@ -1091,32 +1489,57 @@
               </div>
             {:else}
               <!-- Tag Notes List View (Sub-view inside active tag) -->
-              <div class="mobile-header flex-row" style="justify-content: space-between; width: 100%; border-bottom: 1px dashed var(--border-color); padding-bottom: 12px; margin-bottom: 8px;">
-                <div class="flex-row" style="gap: 8px; max-width: 70%; align-items: center;">
+              {#if !appState.selectMode}
+                <div class="mobile-header flex-row" style="justify-content: space-between; width: 100%; border-bottom: 1px dashed var(--border-color); padding-bottom: 12px; margin-bottom: 8px;">
+                  <div class="flex-row" style="gap: 8px; max-width: 70%; align-items: center;">
+                    <button 
+                      class="icon-circle-btn flex-row" 
+                      onclick={() => { appState.selectedTag = null; }}
+                      aria-label="Back to Tags"
+                      style="width: 32px; height: 32px;"
+                    >
+                      <ChevronLeft size={18} />
+                    </button>
+                    <span style="font-weight: 800; font-size: 16px; color: var(--text-primary); text-overflow: ellipsis; overflow: hidden; white-space: nowrap; max-width: calc(100% - 40px);">
+                      Tagged: {appState.selectedTag}
+                    </span>
+                  </div>
+                  
                   <button 
-                    class="icon-circle-btn flex-row" 
-                    onclick={() => { appState.selectedTag = null; }}
-                    aria-label="Back to Tags"
-                    style="width: 32px; height: 32px;"
+                    class="btn-pill btn-pill-primary flex-row" 
+                    onclick={() => {
+                      const title = prompt('Enter note title:', 'New Note');
+                      if (title) appState.createNote(title, appState.activeNotebook);
+                    }}
+                    style="font-size: 11px; padding: 6px 12px;"
                   >
-                    <ChevronLeft size={18} />
+                    <Plus size={12} style="margin-right: 4px;" /> Add Note
                   </button>
-                  <span style="font-weight: 800; font-size: 16px; color: var(--text-primary); text-overflow: ellipsis; overflow: hidden; white-space: nowrap; max-width: calc(100% - 40px);">
-                    Tagged: {appState.selectedTag}
-                  </span>
                 </div>
-                
-                <button 
-                  class="btn-pill btn-pill-primary flex-row" 
-                  onclick={() => {
-                    const title = prompt('Enter note title:', 'New Note');
-                    if (title) appState.createNote(title, appState.activeNotebook);
-                  }}
-                  style="font-size: 11px; padding: 6px 12px;"
-                >
-                  <Plus size={12} style="margin-right: 4px;" /> Add Note
-                </button>
-              </div>
+              {:else}
+                <div class="mobile-header bulk-select-header flex-row" style="justify-content: space-between; width: 100%; align-items: center; border-bottom: 1px dashed var(--border-color); padding-bottom: 12px; margin-bottom: 8px;">
+                  <div class="flex-row" style="gap: 12px; align-items: center;">
+                    <button 
+                      class="icon-circle-btn flex-row" 
+                      onclick={() => appState.toggleSelectMode()}
+                      aria-label="Exit selection mode"
+                      style="width: 32px; height: 32px;"
+                    >
+                      <X size={18} />
+                    </button>
+                    <span style="font-weight: 800; font-size: 16px; color: var(--text-primary);">
+                      {appState.selectedNotes.size} selected
+                    </span>
+                  </div>
+                  <button 
+                    class="btn-pill btn-pill-outline" 
+                    onclick={() => appState.selectAllNotes(appState.filteredNotes.map(n => n.path))}
+                    style="font-size: 12px; padding: 6px 12px;"
+                  >
+                    Select All
+                  </button>
+                </div>
+              {/if}
 
               <!-- Search inside selected tag -->
               <div class="mobile-search-bar flex-row" style="margin-bottom: 10px;">
@@ -1134,62 +1557,83 @@
               <div class="mobile-notes-list flex-col" style="width: 100%; gap: 10px;">
                 {#each appState.filteredNotes as note}
                   <div 
-                    class="recent-note-card flex-col" 
-                    onclick={() => appState.selectNote(note.path)}
+                    class="recent-note-card flex-row" 
+                    class:selected={appState.selectedNotes.has(note.path)}
+                    onclick={(e) => {
+                      if (appState.selectMode) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        appState.toggleNoteSelection(note.path);
+                      } else {
+                        appState.selectNote(note.path);
+                      }
+                    }}
+                    ontouchstart={() => handleNoteTouchStart(note.path)}
+                    ontouchend={(e) => handleNoteTouchEnd(note.path, e)}
+                    ontouchmove={handleNoteTouchMove}
                     role="button"
                     tabindex="0"
                     onkeydown={(e) => e.key === 'Enter' && appState.selectNote(note.path)}
-                    style="background-color: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-comfortable); padding: 14px 16px; text-align: left; width: 100%; gap: 8px; cursor: pointer;"
+                    style="background-color: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-comfortable); padding: 14px 16px; text-align: left; width: 100%; gap: 12px; cursor: pointer; align-items: center;"
                   >
-                    <div class="card-header-row flex-row" style="justify-content: space-between; width: 100%; align-items: center;">
-                      <span class="card-note-title" style="font-weight: 700; font-size: 14px; color: var(--text-primary); flex-grow: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 8px;">{note.name}</span>
-                      <div class="flex-row" style="gap: 8px; align-items: center; flex-shrink: 0;">
-                        <span class="card-note-time" style="font-size: 10px; color: var(--text-tertiary);">{new Date(note.modified).toLocaleDateString(undefined, {month: 'short', day: 'numeric'})}</span>
-                        <!-- Rename button -->
-                        <button 
-                          class="card-action-btn flex-row" 
-                          onclick={(e) => {
-                            e.stopPropagation();
-                            const newTitle = prompt('Rename note title & file name:', note.name);
-                            if (!newTitle) return;
-                            const trimmed = newTitle.trim();
-                            if (!trimmed || trimmed === note.name) return;
-                            appState.renameNote(note.path, trimmed)
-                              .then(() => appState.showToast('Note renamed successfully', 'success'))
-                              .catch(err => {
-                                console.error(err);
-                                appState.showToast('Failed to rename note', 'error');
-                              });
-                          }}
-                          aria-label="Rename note"
-                          title="Rename note"
-                          style="background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: 4px; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center;"
-                        >
-                          <Edit3 size={14} />
-                        </button>
-                        <!-- Delete button -->
-                        <button 
-                          class="card-action-btn flex-row" 
-                          onclick={(e) => {
-                            e.stopPropagation();
-                            if (confirm('Are you sure you want to delete this note?')) {
-                              appState.deleteNote(note.path);
-                            }
-                          }}
-                          aria-label="Delete note"
-                          title="Delete note"
-                          style="background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: 4px; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center;"
-                          onmouseover={(e) => e.currentTarget.style.color = 'var(--semantic-error, #ff4d4d)'}
-                          onmouseout={(e) => e.currentTarget.style.color = 'var(--text-secondary)'}
-                        >
-                          <Trash2 size={14} />
-                        </button>
+                    {#if appState.selectMode}
+                      <div class="selection-checkbox-wrapper">
+                        <div class="selection-checkbox" class:checked={appState.selectedNotes.has(note.path)}>
+                          {#if appState.selectedNotes.has(note.path)}
+                            ✓
+                          {/if}
+                        </div>
                       </div>
-                    </div>
-                    {#if note.path.includes('/')}
-                      <span class="card-notebook-badge" style="align-self: flex-start; font-size: 9px; background: rgba(255,255,255,0.05); padding: 2px 6px; border-radius: 4px; color: var(--text-secondary); font-weight: 600;">{note.path.split('/')[0]}</span>
                     {/if}
-
+                    
+                    <div class="flex-col" style="flex-grow: 1; min-width: 0; gap: 8px;">
+                      <div class="card-header-row flex-row" style="justify-content: space-between; width: 100%; align-items: center;">
+                        <span class="card-note-title" style="font-weight: 700; font-size: 14px; color: var(--text-primary); flex-grow: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 8px;">{note.name}</span>
+                        <div class="flex-row" style="gap: 8px; align-items: center; flex-shrink: 0;">
+                          <span class="card-note-time" style="font-size: 10px; color: var(--text-tertiary);">{new Date(note.modified).toLocaleDateString(undefined, {month: 'short', day: 'numeric'})}</span>
+                          {#if !appState.selectMode}
+                            <!-- Rename button -->
+                            <button 
+                              class="card-action-btn flex-row" 
+                              onclick={(e) => {
+                                e.stopPropagation();
+                                const newTitle = prompt('Rename note title & file name:', note.name);
+                                if (!newTitle) return;
+                                const trimmed = newTitle.trim();
+                                if (!trimmed || trimmed === note.name) return;
+                                appState.renameNote(note.path, trimmed)
+                                  .then(() => appState.showToast('Note renamed successfully', 'success'))
+                                  .catch(err => {
+                                    console.error(err);
+                                    appState.showToast('Failed to rename note', 'error');
+                                  });
+                              }}
+                              aria-label="Rename note"
+                              title="Rename note"
+                              style="background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: 4px; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center;"
+                            >
+                              <Edit3 size={14} />
+                            </button>
+                            <!-- Delete button -->
+                            <button 
+                              class="card-action-btn flex-row" 
+                              onclick={(e) => {
+                                e.stopPropagation();
+                                confirmDeleteNote(note.path);
+                              }}
+                              aria-label="Delete note"
+                              title="Delete note"
+                              style="background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: 4px; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center;"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          {/if}
+                        </div>
+                      </div>
+                      {#if note.path.includes('/')}
+                        <span class="card-notebook-badge" style="align-self: flex-start; font-size: 9px; background: rgba(255,255,255,0.05); padding: 2px 6px; border-radius: 4px; color: var(--text-secondary); font-weight: 600;">{note.path.split('/')[0]}</span>
+                      {/if}
+                    </div>
                   </div>
                 {:else}
                   <div class="empty-lib flex-col" style="align-items: center; justify-content: center; gap: 8px; padding: 40px 0; color: var(--text-tertiary);">
@@ -1264,9 +1708,7 @@
                         class="row-action-btn flex-row" 
                         onclick={(e) => {
                           e.stopPropagation();
-                          if (confirm('Are you sure you want to delete this note?')) {
-                            appState.deleteNote(note.path);
-                          }
+                          confirmDeleteNote(note.path);
                         }}
                         aria-label="Delete note"
                         title="Delete note"
@@ -1308,7 +1750,7 @@
         <button 
           class="nav-tab flex-col" 
           class:active={appState.activeTab === 'home'} 
-          onclick={() => { appState.activeTab = 'home'; appState.activeNotebook = null; appState.selectedTag = null; }}
+          onclick={() => { appState.activeTab = 'home'; appState.activeNotebook = null; appState.selectedTag = null; if (appState.selectMode) appState.toggleSelectMode(); }}
         >
           <Home size={22} />
           <span>Home</span>
@@ -1317,7 +1759,7 @@
         <button 
           class="nav-tab flex-col" 
           class:active={appState.activeTab === 'tags'} 
-          onclick={() => { appState.activeTab = 'tags'; appState.activeNotebook = null; appState.selectedTag = null; appState.searchQuery = ''; mobileSearchInput = ''; }}
+          onclick={() => { appState.activeTab = 'tags'; appState.activeNotebook = null; appState.selectedTag = null; appState.searchQuery = ''; mobileSearchInput = ''; if (appState.selectMode) appState.toggleSelectMode(); }}
         >
           <TagIcon size={22} />
           <span>Tags</span>
@@ -1326,7 +1768,7 @@
         <button 
           class="nav-tab flex-col" 
           class:active={appState.activeTab === 'library'} 
-          onclick={() => { appState.activeTab = 'library'; appState.activeNotebook = null; appState.selectedTag = null; appState.searchQuery = ''; mobileSearchInput = ''; }}
+          onclick={() => { appState.activeTab = 'library'; appState.activeNotebook = null; appState.selectedTag = null; appState.searchQuery = ''; mobileSearchInput = ''; if (appState.selectMode) appState.toggleSelectMode(); }}
         >
           <Library size={22} />
           <span>Library</span>
@@ -1335,13 +1777,288 @@
          <button 
           class="nav-tab flex-col" 
           class:active={appState.activeTab === 'daily'} 
-          onclick={() => { appState.activeTab = 'daily'; appState.selectedTag = null; }}
+          onclick={() => { appState.activeTab = 'daily'; appState.selectedTag = null; if (appState.selectMode) appState.toggleSelectMode(); }}
         >
           <Calendar size={22} />
           <span>Daily</span>
         </button>
 
 
+      </div>
+    {/if}
+
+    <!-- ST-013: Mobile Tag Actions Menu Bottom Sheet -->
+    {#if showMobileTagActions && mobileTagActionsTag}
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div 
+        class="color-picker-backdrop"
+        onclick={() => showMobileTagActions = false}
+        onkeydown={(e) => e.key === 'Escape' && (showMobileTagActions = false)}
+      ></div>
+      <div class="mobile-color-picker-popover flex-col" transition:fly={{ y: 200, duration: 200, easing: cubicOut }}>
+        <div class="color-picker-header flex-row" style="justify-content: space-between; align-items: center; width: 100%;">
+          <span style="font-size: 13px; font-weight: 700; color: var(--text-primary);">Tag Options: #{mobileTagActionsTag}</span>
+          <button 
+            class="icon-circle-btn flex-row" 
+            onclick={() => showMobileTagActions = false}
+            aria-label="Close"
+            style="width: 24px; height: 24px; min-width: 24px; border: none; background: rgba(255, 255, 255, 0.08);"
+          >
+            <X size={14} />
+          </button>
+        </div>
+        
+        <div class="mobile-tag-options-list flex-col" style="width: 100%; gap: 10px; margin-top: 4px;">
+          <button 
+            class="btn-pill flex-row" 
+            onclick={triggerMobileTagRename}
+            style="background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.08); padding: 12px 16px; border-radius: 8px; justify-content: flex-start; gap: 12px; color: var(--text-primary); cursor: pointer;"
+          >
+            <Edit3 size={16} style="color: var(--accent);" />
+            <span style="font-size: 14px; font-weight: 600;">Rename Tag</span>
+          </button>
+
+          <button 
+            class="btn-pill flex-row" 
+            onclick={triggerMobileTagColor}
+            style="background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.08); padding: 12px 16px; border-radius: 8px; justify-content: flex-start; gap: 12px; color: var(--text-primary); cursor: pointer;"
+          >
+            <Palette size={16} style="color: var(--accent);" />
+            <span style="font-size: 14px; font-weight: 600;">Change Color</span>
+          </button>
+
+          <button 
+            class="btn-pill flex-row" 
+            onclick={triggerMobileTagDelete}
+            style="background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.08); padding: 12px 16px; border-radius: 8px; justify-content: flex-start; gap: 12px; color: var(--semantic-error, #ff4d4d); cursor: pointer;"
+            onmouseover={(e) => e.currentTarget.style.backgroundColor = 'rgba(255, 77, 77, 0.08)'}
+            onmouseout={(e) => e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.04)'}
+          >
+            <Trash2 size={16} style="color: var(--semantic-error, #ff4d4d);" />
+            <span style="font-size: 14px; font-weight: 600;">Delete Tag</span>
+          </button>
+        </div>
+      </div>
+    {/if}
+
+    <!-- ST-010: Mobile Tag Color Picker Popover / Bottom Sheet -->
+    {#if mobileColorPickerTag}
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div 
+        class="color-picker-backdrop"
+        onclick={() => mobileColorPickerTag = null}
+        onkeydown={(e) => e.key === 'Escape' && (mobileColorPickerTag = null)}
+      ></div>
+      <div class="mobile-color-picker-popover flex-col" transition:fly={{ y: 200, duration: 200, easing: cubicOut }}>
+        <div class="color-picker-header flex-row" style="justify-content: space-between; align-items: center; width: 100%;">
+          <span style="font-size: 13px; font-weight: 700; color: var(--text-primary);">Color for #{mobileColorPickerTag}</span>
+          <button 
+            class="icon-circle-btn flex-row" 
+            onclick={() => mobileColorPickerTag = null}
+            aria-label="Close"
+            style="width: 24px; height: 24px; min-width: 24px; border: none; background: rgba(255, 255, 255, 0.08);"
+          >
+            <X size={14} />
+          </button>
+        </div>
+        <div class="color-picker-grid">
+          {#each TAG_COLOR_PALETTE as color}
+            {@const isActive = getTagColor(mobileColorPickerTag) === color}
+            <button 
+              class="color-swatch" 
+              class:active={isActive}
+              style="background-color: {color};"
+              onclick={() => handleSetMobileColor(mobileColorPickerTag ?? '', color)}
+              aria-label="Set color to {color}"
+            >
+              {#if isActive}<span class="swatch-check">✓</span>{/if}
+            </button>
+          {/each}
+        </div>
+        <div class="custom-hex-container flex-row" style="margin: 12px 0; gap: 10px; align-items: center; border-top: 1px dashed rgba(255, 255, 255, 0.08); padding-top: 12px; width: 100%;">
+          <div class="color-preview-circle" style="width: 20px; height: 20px; border-radius: 50%; background-color: {normalizedMobileCustomHex || 'transparent'}; border: 1px solid rgba(255,255,255,0.2); flex-shrink: 0;"></div>
+          <input 
+            type="text" 
+            placeholder="Custom Hex (e.g. #ff0055)" 
+            bind:value={mobileCustomHexValue}
+            style="flex: 1; padding: 8px 12px; font-size: 13px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; color: var(--text-primary); outline: none;"
+          />
+          <button 
+            type="button" 
+            disabled={!isMobileCustomHexValid}
+            onclick={() => handleSetMobileColor(mobileColorPickerTag ?? '', normalizedMobileCustomHex)}
+            style="padding: 8px 16px; font-size: 13px; cursor: pointer; opacity: {isMobileCustomHexValid ? 1 : 0.5}; background: var(--accent); border: none; border-radius: 6px; color: #fff; font-weight: 600;"
+          >
+            Apply
+          </button>
+        </div>
+        <button class="color-reset-btn" onclick={() => handleSetMobileColor(mobileColorPickerTag ?? '', null)} style="margin-top: 8px;">
+          <X size={12} />
+          <span>Reset Color</span>
+        </button>
+      </div>
+    {/if}
+    <!-- ST-011: Mobile Bulk Action Bar -->
+    {#if appState.selectMode}
+      <div class="mobile-bulk-action-bar" transition:fly={{ y: 80, duration: 250, easing: cubicOut }}>
+        <!-- Header row -->
+        <div class="flex-row" style="justify-content: space-between; align-items: center; width: 100%; border-bottom: 1px solid rgba(255, 255, 255, 0.06); padding-bottom: 8px;">
+          <span class="selected-count" style="font-weight: 700; font-size: 13px; color: var(--text-primary);">
+            {appState.selectedNotes.size} {appState.selectedNotes.size === 1 ? 'note' : 'notes'} selected
+          </span>
+          <button 
+            class="flex-row" 
+            onclick={() => appState.toggleSelectMode()}
+            style="background: transparent; border: none; color: var(--text-secondary); font-size: 12px; font-weight: 600; cursor: pointer; padding: 4px;"
+          >
+            Cancel
+          </button>
+        </div>
+        <!-- Actions row -->
+        <div class="flex-row" style="gap: 6px; width: 100%; justify-content: space-between;">
+          <button 
+            class="btn-pill btn-pill-primary flex-row" 
+            disabled={appState.selectedNotes.size === 0}
+            onclick={() => openMobileBulkTagPicker('tag')}
+            style="flex: 1; gap: 4px; padding: 8px 4px; align-items: center; justify-content: center; font-size: 11px; text-transform: uppercase; font-weight: 700; border-radius: 20px;"
+          >
+            <Plus size={12} />
+            <span>Tag</span>
+          </button>
+          <button 
+            class="btn-pill btn-pill-outline flex-row" 
+            disabled={appState.selectedNotes.size === 0}
+            onclick={() => openMobileBulkTagPicker('untag')}
+            style="flex: 1; gap: 4px; padding: 8px 4px; align-items: center; justify-content: center; font-size: 11px; text-transform: uppercase; font-weight: 700; border-radius: 20px;"
+          >
+            <X size={12} />
+            <span>Untag</span>
+          </button>
+          <button 
+            class="btn-pill btn-pill-outline flex-row" 
+            disabled={appState.selectedNotes.size === 0}
+            onclick={() => showMobileBulkNotebookPicker = true}
+            style="flex: 1; gap: 4px; padding: 8px 4px; align-items: center; justify-content: center; font-size: 11px; text-transform: uppercase; font-weight: 700; border-radius: 20px;"
+          >
+            <Folder size={12} />
+            <span>Move</span>
+          </button>
+          <button 
+            class="btn-pill btn-pill-outline flex-row" 
+            disabled={appState.selectedNotes.size === 0}
+            onclick={handleMobileBulkDelete}
+            style="flex: 1; gap: 4px; padding: 8px 4px; align-items: center; justify-content: center; font-size: 11px; text-transform: uppercase; font-weight: 700; border-radius: 20px; color: var(--semantic-error, #ff4d4d); border-color: rgba(255, 77, 77, 0.2);"
+          >
+            <Trash2 size={12} />
+            <span>Delete</span>
+          </button>
+        </div>
+      </div>
+    {/if}
+
+    <!-- ST-011: Mobile Bulk Tag Picker Bottom Sheet -->
+    {#if showMobileBulkPicker}
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div 
+        class="picker-backdrop"
+        onclick={closeMobileBulkPicker}
+        onkeydown={(e) => e.key === 'Escape' && closeMobileBulkPicker()}
+      ></div>
+      <div class="mobile-color-picker-popover flex-col" transition:fly={{ y: 200, duration: 200, easing: cubicOut }}>
+        <div class="color-picker-header flex-row" style="justify-content: space-between; align-items: center; width: 100%;">
+          <span style="font-size: 13px; font-weight: 700; color: var(--text-primary);">
+            {mobileBulkPickerMode === 'tag' ? 'Apply Tag in Bulk' : 'Remove Tag in Bulk'}
+          </span>
+          <button 
+            class="icon-circle-btn flex-row" 
+            onclick={closeMobileBulkPicker}
+            aria-label="Close"
+            style="width: 24px; height: 24px; min-width: 24px; border: none; background: rgba(255, 255, 255, 0.08);"
+          >
+            <X size={14} />
+          </button>
+        </div>
+        
+        <div style="margin-bottom: 12px; width: 100%;">
+          <input 
+            type="text" 
+            placeholder="Search tags..." 
+            bind:value={mobileBulkSearch}
+            style="width: 100%; padding: 10px 14px; background-color: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-standard); color: var(--text-primary); outline: none;"
+          />
+        </div>
+
+        <div class="mobile-picker-list flex-col" style="max-height: 240px; overflow-y: auto; width: 100%; gap: 8px;">
+          {#each filteredMobileTagsForPicker as tag}
+            {@const tagColor = getTagColor(tag.name)}
+            <button 
+              class="mobile-tag-row flex-row" 
+              onclick={() => handleMobileBulkAction(tag.name)}
+              style="width: 100%; padding: 12px 14px; border-radius: var(--radius-comfortable); border: 1px solid var(--border-color); background-color: var(--bg-surface); gap: 12px; text-align: left; align-items: center; cursor: pointer;"
+            >
+              <div class="tag-hash-icon" style="font-size: 14px; font-weight: 700; color: {tagColor || 'var(--accent)'}; opacity: 0.8; width: 16px; text-align: center;">#</div>
+              <span style="font-size: 13px; font-weight: 700; color: var(--text-primary); flex-grow: 1;">{tag.name}</span>
+            </button>
+          {:else}
+            <div style="font-size: 12px; color: var(--text-secondary); text-align: center; padding: 16px;">No matching tags.</div>
+          {/each}
+
+          {#if mobileBulkPickerMode === 'tag' && mobileBulkSearch.trim() && !filteredMobileTagsForPicker.some(t => t.name.toLowerCase() === mobileBulkSearch.toLowerCase().trim())}
+            <button 
+              class="mobile-tag-row flex-row" 
+              onclick={() => handleMobileBulkCreateAndAdd(mobileBulkSearch)}
+              style="width: 100%; padding: 12px 14px; border-radius: var(--radius-comfortable); border: 1px solid var(--accent); background-color: rgba(138, 92, 246, 0.1); gap: 12px; text-align: left; align-items: center; cursor: pointer; color: var(--accent);"
+            >
+              <span style="font-size: 13px; font-weight: 700;">+ Create & Apply "{mobileBulkSearch.trim()}"</span>
+            </button>
+          {/if}
+        </div>
+      </div>
+    {/if}
+
+    <!-- ST-014: Mobile Bulk Move Notebook Picker Bottom Sheet -->
+    {#if showMobileBulkNotebookPicker}
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div 
+        class="picker-backdrop"
+        onclick={() => showMobileBulkNotebookPicker = false}
+        onkeydown={(e) => e.key === 'Escape' && (showMobileBulkNotebookPicker = false)}
+      ></div>
+      <div class="mobile-color-picker-popover flex-col" transition:fly={{ y: 200, duration: 200, easing: cubicOut }}>
+        <div class="color-picker-header flex-row" style="justify-content: space-between; align-items: center; width: 100%;">
+          <span style="font-size: 13px; font-weight: 700; color: var(--text-primary);">
+            Move to Notebook
+          </span>
+          <button 
+            class="icon-circle-btn flex-row" 
+            onclick={() => showMobileBulkNotebookPicker = false}
+            aria-label="Close"
+            style="width: 24px; height: 24px; min-width: 24px; border: none; background: rgba(255, 255, 255, 0.08);"
+          >
+            <X size={14} />
+          </button>
+        </div>
+        
+        <div class="mobile-picker-list flex-col" style="max-height: 240px; overflow-y: auto; width: 100%; gap: 8px;">
+          <button 
+            class="btn-pill flex-row" 
+            onclick={() => handleMobileBulkMove(null)}
+            style="background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.08); padding: 12px 16px; border-radius: 8px; justify-content: flex-start; gap: 12px; color: var(--text-primary); cursor: pointer;"
+          >
+            <FolderOpen size={16} style="color: var(--accent);" />
+            <span style="font-size: 14px; font-weight: 600;">[Root Folder]</span>
+          </button>
+          {#each appState.notebooks as notebook}
+            <button 
+              class="btn-pill flex-row" 
+              onclick={() => handleMobileBulkMove(notebook)}
+              style="background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.08); padding: 12px 16px; border-radius: 8px; justify-content: flex-start; gap: 12px; color: var(--text-primary); cursor: pointer;"
+            >
+              <Folder size={16} style="color: var(--accent);" />
+              <span style="font-size: 14px; font-weight: 600;">{notebook}</span>
+            </button>
+          {/each}
+        </div>
       </div>
     {/if}
   </div>
@@ -2020,6 +2737,54 @@
     </div>
   {/each}
 </div>
+
+<!-- ST-016: Global Custom Delete Confirmation Modal -->
+{#if appState.showConfirmModal}
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div 
+    class="custom-confirm-backdrop" 
+    onclick={() => appState.closeConfirmation()}
+    onkeydown={(e) => e.key === 'Escape' && appState.closeConfirmation()}
+    transition:fade={{ duration: 150 }}
+  >
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <div 
+      class="custom-confirm-card flex-col" 
+      onclick={(e) => e.stopPropagation()}
+      transition:scale={{ duration: 200, start: 0.95, easing: cubicOut }}
+    >
+      <div class="custom-confirm-header flex-row" style="gap: 12px; align-items: center;">
+        <div class="custom-confirm-warning-icon flex-row">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+            <line x1="12" y1="9" x2="12" y2="13"></line>
+            <line x1="12" y1="17" x2="12.01" y2="17"></line>
+          </svg>
+        </div>
+        <h3 class="custom-confirm-title">{appState.confirmTitle}</h3>
+      </div>
+      
+      <p class="custom-confirm-message">{appState.confirmMessage}</p>
+      
+      <div class="custom-confirm-actions flex-row" style="justify-content: flex-end; gap: 10px; width: 100%; margin-top: 20px;">
+        <button 
+          type="button" 
+          class="btn-pill btn-pill-outline custom-confirm-cancel-btn"
+          onclick={() => appState.closeConfirmation()}
+        >
+          Cancel
+        </button>
+        <button 
+          type="button" 
+          class="btn-pill custom-confirm-danger-btn"
+          onclick={() => appState.confirmOnConfirm?.()}
+        >
+          {appState.confirmButtonText}
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}
 
 <style>
   .flex-col {
@@ -3149,5 +3914,255 @@
   }
   .mobile-tag-badge {
     transition: background-color 0.2s;
+  }
+
+  /* ST-010: Mobile Color Picker Popover/Bottom Sheet */
+  .color-picker-backdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(4px);
+    z-index: 9998;
+  }
+
+  .mobile-color-picker-popover {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 9999;
+    background: #1e1e1e;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    border-top-left-radius: 16px;
+    border-top-right-radius: 16px;
+    padding: 16px 20px 24px 20px;
+    box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.5);
+  }
+
+  .color-picker-header {
+    margin-bottom: 16px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  }
+
+  .color-picker-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 16px;
+    justify-items: center;
+  }
+
+  .color-swatch {
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
+    border: 2px solid transparent;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.1s ease, border-color 0.1s ease;
+  }
+
+  .color-swatch:active {
+    transform: scale(0.9);
+  }
+
+  .color-swatch.active {
+    border-color: white;
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.2);
+  }
+
+  .swatch-check {
+    color: white;
+    font-size: 16px;
+    font-weight: 700;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+  }
+
+  .color-reset-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    padding: 12px;
+    border: none;
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-weight: 600;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+
+  .color-reset-btn:active {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-primary);
+  }
+
+  /* ST-011: Mobile Selection & Bulk Action Bar */
+  .recent-note-card.selected, .search-result-row.selected {
+    border-color: var(--accent) !important;
+    background-color: rgba(138, 92, 246, 0.08) !important;
+  }
+
+  .selection-checkbox-wrapper {
+    width: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    animation: slideIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateX(-10px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+
+  .selection-checkbox {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    border: 2px solid var(--text-tertiary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: bold;
+    color: white;
+    transition: all 0.2s ease;
+  }
+
+  .selection-checkbox.checked {
+    background-color: var(--accent);
+    border-color: var(--accent);
+  }
+
+  .mobile-bulk-action-bar {
+    position: fixed;
+    bottom: 84px;
+    left: 16px;
+    right: 16px;
+    background: #1e1e1e;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    border-radius: 14px;
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    z-index: 100;
+  }
+
+  .mobile-picker-list::-webkit-scrollbar {
+    width: 4px;
+  }
+  .mobile-picker-list::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 2px;
+  }
+  .bulk-actions::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* ST-016: Global Custom Delete Confirmation Modal */
+  .custom-confirm-backdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 20000;
+    padding: 20px;
+  }
+
+  .custom-confirm-card {
+    background: rgba(30, 30, 34, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.03);
+    border-radius: 16px;
+    padding: 24px;
+    max-width: 400px;
+    width: 100%;
+    gap: 12px;
+    color: var(--text-primary);
+  }
+
+  .custom-confirm-warning-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: rgba(239, 68, 68, 0.1);
+    color: var(--semantic-error, #ff4d4d);
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .custom-confirm-title {
+    font-size: 16px;
+    font-weight: 700;
+    margin: 0;
+    color: var(--text-primary);
+  }
+
+  .custom-confirm-message {
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text-secondary);
+    margin: 4px 0 8px 0;
+  }
+
+  .custom-confirm-cancel-btn {
+    border-color: rgba(255, 255, 255, 0.1);
+    color: var(--text-secondary);
+    background: transparent;
+    cursor: pointer;
+    font-size: 13px;
+    padding: 8px 18px;
+    height: 38px;
+    border-radius: 20px;
+    transition: all 0.2s ease;
+  }
+
+  .custom-confirm-cancel-btn:hover {
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-primary);
+    border-color: rgba(255, 255, 255, 0.2);
+  }
+
+  .custom-confirm-danger-btn {
+    background: var(--semantic-error, #ff4d4d);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: white;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 8px 18px;
+    height: 38px;
+    border-radius: 20px;
+    transition: all 0.2s ease;
+  }
+
+  .custom-confirm-danger-btn:hover {
+    background: #ff3333;
+    box-shadow: 0 0 12px rgba(255, 77, 77, 0.4);
+  }
+
+  .custom-confirm-danger-btn:active {
+    transform: scale(0.95);
   }
 </style>

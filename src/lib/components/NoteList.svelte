@@ -1,6 +1,8 @@
 <script lang="ts">
-  import { appState } from '../stores/appState.svelte';
-  import { FileText, Plus, Trash2, Edit2, Search, Clock, CalendarDays, X, Menu, FolderInput } from 'lucide-svelte';
+  import { appState, parseHtmlMetadata } from '../stores/appState.svelte';
+  import { FileText, Plus, Trash2, Edit2, Search, Clock, CalendarDays, X, Menu, FolderInput, CheckSquare } from 'lucide-svelte';
+  import { fly } from 'svelte/transition';
+  import { cubicOut } from 'svelte/easing';
 
   let searchInput = $state('');
   
@@ -31,11 +33,16 @@
     appState.createNote(title, appState.activeNotebook);
   }
 
-  async function handleDeleteNote(path: string, event: Event) {
+  function handleDeleteNote(path: string, event: Event) {
     event.stopPropagation();
-    if (confirm('Are you sure you want to delete this note?')) {
-      await appState.deleteNote(path);
-    }
+    appState.showConfirmation({
+      title: 'Delete Note',
+      message: 'Do you really want to delete this note? This action is permanent.',
+      confirmText: 'Delete',
+      onConfirm: async () => {
+        await appState.deleteNote(path);
+      }
+    });
   }
 
   async function handleRenameNote(path: string, currentName: string, event: Event) {
@@ -63,6 +70,133 @@
     appState.activeNotebook = null;
     appState.selectedTag = null;
     searchInput = '';
+  }
+
+  // ST-011: Bulk Tag Picker State
+  let showBulkTagPicker = $state(false);
+  let bulkTagPickerMode = $state<'tag' | 'untag'>('tag');
+  let bulkPickerPos = $state<{ x: number; y: number }>({ x: 0, y: 0 });
+  let bulkTagSearch = $state('');
+
+  let filteredTagsForPicker = $derived.by(() => {
+    const query = bulkTagSearch.trim().toLowerCase();
+    let availableTags = appState.tags;
+    
+    if (bulkTagPickerMode === 'untag') {
+      const selectedNotesList = appState.notes.filter(n => appState.selectedNotes.has(n.path));
+      const tagsInSelectedNotes = new Set<string>();
+      for (const note of selectedNotesList) {
+        const parsed = parseHtmlMetadata(note.content);
+        if (parsed.meta.tags) {
+          parsed.meta.tags.forEach((t: string) => tagsInSelectedNotes.add(t.trim().toLowerCase()));
+        }
+      }
+      availableTags = appState.tags.filter(t => tagsInSelectedNotes.has(t.normalizedName || t.name.toLowerCase()));
+    }
+    
+    if (!query) return availableTags;
+    return availableTags.filter(t => t.name.toLowerCase().includes(query));
+  });
+
+  function openBulkTagPicker(event: MouseEvent) {
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    // Position above/near the button
+    bulkPickerPos = { x: rect.left, y: Math.max(10, rect.top - 240) };
+    bulkTagPickerMode = 'tag';
+    showBulkTagPicker = true;
+    bulkTagSearch = '';
+  }
+
+  function openBulkUntagPicker(event: MouseEvent) {
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    bulkPickerPos = { x: rect.left, y: Math.max(10, rect.top - 240) };
+    bulkTagPickerMode = 'untag';
+    showBulkTagPicker = true;
+    bulkTagSearch = '';
+  }
+
+  function closeBulkTagPicker() {
+    showBulkTagPicker = false;
+  }
+
+  let showBulkNotebookPicker = $state(false);
+  let bulkNotebookPickerPos = $state<{ x: number; y: number }>({ x: 0, y: 0 });
+
+  function openBulkNotebookPicker(event: MouseEvent) {
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    bulkNotebookPickerPos = { x: rect.left, y: Math.max(10, rect.top - 200) };
+    showBulkNotebookPicker = true;
+  }
+
+  function closeBulkNotebookPicker() {
+    showBulkNotebookPicker = false;
+  }
+
+  async function handleBulkMove(notebook: string | null) {
+    try {
+      const notePaths = Array.from(appState.selectedNotes);
+      await appState.bulkMoveNotes(notePaths, notebook);
+      closeBulkNotebookPicker();
+      appState.toggleSelectMode();
+    } catch (e) {
+      console.error(e);
+      appState.showToast('Failed to move notes', 'error');
+    }
+  }
+
+  function handleBulkDelete() {
+    const notePaths = Array.from(appState.selectedNotes);
+    if (notePaths.length === 0) return;
+    appState.showConfirmation({
+      title: 'Delete Multiple Notes',
+      message: `Do you really want to delete the ${notePaths.length} selected note(s)? This action is permanent and cannot be undone.`,
+      confirmText: 'Delete',
+      onConfirm: async () => {
+        try {
+          await appState.bulkDeleteNotes(notePaths);
+          appState.showToast(`Deleted ${notePaths.length} note(s)`, 'success');
+          appState.toggleSelectMode();
+        } catch (e) {
+          console.error(e);
+          appState.showToast('Failed to delete notes', 'error');
+        }
+      }
+    });
+  }
+
+  async function handleBulkCreateAndAdd(tagName: string) {
+    try {
+      const cleanName = tagName.trim();
+      const normalized = cleanName.toLowerCase();
+      let existing = appState.tags.find(t => t.normalizedName === normalized);
+      if (!existing) {
+        await appState.createTag(cleanName);
+      }
+      await appState.bulkAddTag(cleanName);
+      appState.showToast(`Tag #${cleanName} added in bulk`, 'success');
+      closeBulkTagPicker();
+      appState.toggleSelectMode();
+    } catch (e) {
+      console.error(e);
+      appState.showToast('Failed to perform bulk operation', 'error');
+    }
+  }
+
+  async function handleBulkAction(tagName: string) {
+    try {
+      if (bulkTagPickerMode === 'tag') {
+        await appState.bulkAddTag(tagName);
+        appState.showToast(`Tag #${tagName} added in bulk`, 'success');
+      } else {
+        await appState.bulkRemoveTag(tagName);
+        appState.showToast(`Tag #${tagName} removed in bulk`, 'success');
+      }
+      closeBulkTagPicker();
+      appState.toggleSelectMode();
+    } catch (e) {
+      console.error(e);
+      appState.showToast('Failed to perform bulk operation', 'error');
+    }
   }
 </script>
 
@@ -153,10 +287,20 @@
             Show Editor
           </button>
         {/if}
-          <button class="btn-pill btn-pill-primary add-note-btn" onclick={handleCreateNote}>
-            <Plus size={16} />
-            <span>Add Note</span>
-          </button>
+        <button 
+          class="btn-pill btn-pill-outline" 
+          class:active={appState.selectMode}
+          style="font-size: 11px; padding: 6px 12px; height: 32px; gap: 4px; display: inline-flex; align-items: center;" 
+          onclick={() => appState.toggleSelectMode()}
+          title="Toggle Select Mode"
+        >
+          <CheckSquare size={14} />
+          <span>{appState.selectMode ? 'Cancel' : 'Select'}</span>
+        </button>
+        <button class="btn-pill btn-pill-primary add-note-btn" onclick={handleCreateNote}>
+          <Plus size={16} />
+          <span>Add Note</span>
+        </button>
       </div>
     </div>
   </div>
@@ -188,13 +332,45 @@
       <div 
         class="note-row flex-row"
         class:active={appState.activeNotePath === note.path}
+        class:selected={appState.selectedNotes.has(note.path)}
         style="--index: {index};"
         role="button"
         tabindex="0"
-        onclick={() => appState.selectNote(note.path)}
-        onkeydown={(e) => e.key === 'Enter' && appState.selectNote(note.path)}
+        onclick={(e) => {
+          if (appState.selectMode) {
+            e.stopPropagation();
+            appState.toggleNoteSelection(note.path);
+          } else {
+            appState.selectNote(note.path);
+          }
+        }}
+        onkeydown={(e) => {
+          if (e.key === 'Enter') {
+            if (appState.selectMode) {
+              appState.toggleNoteSelection(note.path);
+            } else {
+              appState.selectNote(note.path);
+            }
+          }
+        }}
       >
-        <div class="col-index font-mono">{index + 1}</div>
+        {#if appState.selectMode}
+          <div class="selection-checkbox-wrapper">
+            <!-- svelte-ignore a11y_click_events_have_key_events -->
+            <!-- svelte-ignore a11y_no_static_element_interactions -->
+            <div 
+              class="selection-checkbox" 
+              class:checked={appState.selectedNotes.has(note.path)}
+              onclick={(e) => { e.stopPropagation(); appState.toggleNoteSelection(note.path); }}
+            >
+              {#if appState.selectedNotes.has(note.path)}
+                ✓
+              {/if}
+            </div>
+          </div>
+        {:else}
+          <div class="col-index font-mono">{index + 1}</div>
+        {/if}
         
         <div class="col-title flex-row">
           <div class="track-icon">
@@ -213,6 +389,7 @@
         </div>
 
         <div class="col-actions flex-row" style="gap: 6px; align-items: center;">
+          {#if !appState.selectMode}
             <button 
               class="row-move-btn" 
               onclick={(e) => handleMoveCopyNote(note.path, note.name, e)}
@@ -237,6 +414,7 @@
             >
               <Trash2 size={16} />
             </button>
+          {/if}
         </div>
       </div>
     {:else}
@@ -257,6 +435,172 @@
       </div>
     {/each}
   </div>
+
+  <!-- ST-011: Bulk Action Bar -->
+  {#if appState.selectMode}
+    <div class="bulk-action-bar flex-row" transition:fly={{ y: 50, duration: 250, easing: cubicOut }}>
+      <span class="selected-count">{appState.selectedNotes.size} selected</span>
+      <div class="bulk-actions flex-row" style="gap: 8px;">
+        <button 
+          class="btn-pill btn-pill-outline" 
+          onclick={() => appState.selectAllNotes(appState.filteredNotes.map(n => n.path))}
+          title="Select all visible notes"
+        >
+          All
+        </button>
+        <button 
+          class="btn-pill btn-pill-primary tag-btn" 
+          disabled={appState.selectedNotes.size === 0}
+          onclick={(e) => openBulkTagPicker(e)}
+          title="Tag selected notes"
+        >
+          Tag
+        </button>
+        <button 
+          class="btn-pill btn-pill-outline untag-btn" 
+          disabled={appState.selectedNotes.size === 0}
+          onclick={(e) => openBulkUntagPicker(e)}
+          title="Untag selected notes"
+        >
+          Untag
+        </button>
+        <button 
+          class="btn-pill btn-pill-outline move-btn" 
+          disabled={appState.selectedNotes.size === 0}
+          onclick={(e) => openBulkNotebookPicker(e)}
+          title="Move selected notes to a notebook"
+        >
+          Move
+        </button>
+        <button 
+          class="btn-pill btn-pill-outline delete-btn" 
+          disabled={appState.selectedNotes.size === 0}
+          onclick={handleBulkDelete}
+          style="color: var(--semantic-error, #ff4d4d); border-color: rgba(255, 77, 77, 0.2);"
+          title="Delete selected notes"
+        >
+          Delete
+        </button>
+        <button 
+          class="btn-pill btn-pill-outline cancel-btn" 
+          onclick={() => appState.toggleSelectMode()}
+          title="Cancel selection"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  {/if}
+
+  <!-- ST-014: Bulk Notebook Picker Popover -->
+  {#if showBulkNotebookPicker}
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div 
+      class="picker-backdrop"
+      onclick={closeBulkNotebookPicker}
+      onkeydown={(e) => e.key === 'Escape' && closeBulkNotebookPicker()}
+    ></div>
+    <div class="bulk-tag-picker-popover" style="left: {bulkNotebookPickerPos.x}px; top: {bulkNotebookPickerPos.y}px;">
+      <div class="picker-header flex-row" style="justify-content: space-between; align-items: center; width: 100%;">
+        <span style="font-size: 11px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px;">
+          Move to Notebook
+        </span>
+        <button 
+          class="icon-circle-btn flex-row" 
+          onclick={closeBulkNotebookPicker}
+          aria-label="Close"
+          style="width: 20px; height: 20px; min-width: 20px; border: none; background: rgba(255, 255, 255, 0.08);"
+        >
+          <X size={10} />
+        </button>
+      </div>
+
+      <div class="picker-list flex-col" style="max-height: 180px; overflow-y: auto; width: 100%; gap: 4px; margin-top: 8px;">
+        <button 
+          class="picker-item flex-row" 
+          onclick={() => handleBulkMove(null)}
+          style="background: transparent; border: none; padding: 6px 8px; border-radius: 4px; color: var(--text-primary); cursor: pointer; text-align: left; justify-content: flex-start; font-size: 12px; width: 100%;"
+          onmouseover={(e) => e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.06)'}
+          onmouseout={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+        >
+          <span style="margin-right: 6px;">📂</span> [Root Folder]
+        </button>
+        {#each appState.notebooks as notebook}
+          <button 
+            class="picker-item flex-row" 
+            onclick={() => handleBulkMove(notebook)}
+            style="background: transparent; border: none; padding: 6px 8px; border-radius: 4px; color: var(--text-primary); cursor: pointer; text-align: left; justify-content: flex-start; font-size: 12px; width: 100%;"
+            onmouseover={(e) => e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.06)'}
+            onmouseout={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+          >
+            <span style="margin-right: 6px;">📂</span> {notebook}
+          </button>
+        {/each}
+      </div>
+    </div>
+  {/if}
+
+  <!-- ST-011: Bulk Tag Picker Popover -->
+  {#if showBulkTagPicker}
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div 
+      class="picker-backdrop"
+      onclick={closeBulkTagPicker}
+      onkeydown={(e) => e.key === 'Escape' && closeBulkTagPicker()}
+    ></div>
+    <div class="bulk-tag-picker-popover" style="left: {bulkPickerPos.x}px; top: {bulkPickerPos.y}px;">
+      <div class="picker-header flex-row" style="justify-content: space-between; align-items: center; width: 100%;">
+        <span style="font-size: 11px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px;">
+          {bulkTagPickerMode === 'tag' ? 'Apply Tag' : 'Remove Tag'}
+        </span>
+        <button 
+          class="close-picker-btn" 
+          onclick={closeBulkTagPicker}
+          style="background: none; border: none; color: var(--text-secondary); cursor: pointer;"
+        >
+          <X size={12} />
+        </button>
+      </div>
+      <div class="picker-search">
+        <input 
+          type="text" 
+          placeholder="Search tags..." 
+          bind:value={bulkTagSearch}
+          autofocus
+          style="width: 100%; padding: 6px 10px; background-color: var(--bg-mid-dark); border: 1px solid rgba(255,255,255,0.08); border-radius: 4px; color: var(--text-primary); font-size: 12px; outline: none;"
+        />
+      </div>
+      <div class="picker-list flex-col" style="max-height: 180px; overflow-y: auto; margin-top: 8px; gap: 4px;">
+        {#each filteredTagsForPicker as tag}
+          {@const tagColor = appState.tagColorMap.get(tag.normalizedName || tag.name.toLowerCase())}
+          <button 
+            class="picker-item flex-row" 
+            onclick={() => handleBulkAction(tag.name)}
+            style="width: 100%; padding: 6px 8px; border: none; background: none; color: var(--text-primary); text-align: left; cursor: pointer; border-radius: 4px; gap: 8px; align-items: center;"
+            onmouseover={(e) => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.04)'}
+            onmouseout={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+          >
+            <span class="picker-tag-dot" style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background-color: {tagColor || 'var(--text-secondary)'};"></span>
+            <span style="font-size: 12px; font-weight: 600;">#{tag.name}</span>
+          </button>
+        {:else}
+          <div style="font-size: 11px; color: var(--text-secondary); padding: 8px; text-align: center;">No matching tags</div>
+        {/each}
+        
+        {#if bulkTagPickerMode === 'tag' && bulkTagSearch.trim() && !filteredTagsForPicker.some(t => t.name.toLowerCase() === bulkTagSearch.toLowerCase().trim())}
+          <button 
+            class="picker-item create-item flex-row" 
+            onclick={() => handleBulkCreateAndAdd(bulkTagSearch)}
+            style="width: 100%; padding: 6px 8px; border: none; background: rgba(255,255,255,0.04); color: var(--accent); text-align: left; cursor: pointer; border-radius: 4px; gap: 8px; align-items: center; margin-top: 4px;"
+            onmouseover={(e) => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.08)'}
+            onmouseout={(e) => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.04)'}
+          >
+            <span style="font-size: 12px; font-weight: 700;">+ Create & Apply "{bulkTagSearch.trim()}"</span>
+          </button>
+        {/if}
+      </div>
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -570,5 +914,109 @@
     .row-delete-btn {
       opacity: 1;
     }
+  }
+
+  .note-row.selected {
+    background-color: rgba(255, 255, 255, 0.08);
+    box-shadow: inset 3px 0 0 0 var(--accent);
+  }
+
+  .note-row.selected .track-name {
+    color: var(--accent);
+  }
+
+  .selection-checkbox-wrapper {
+    width: 24px;
+    margin-right: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    animation: slideIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateX(-10px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+
+  .selection-checkbox {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: 2px solid var(--text-tertiary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: bold;
+    color: white;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .selection-checkbox.checked {
+    background-color: var(--accent);
+    border-color: var(--accent);
+  }
+
+  /* ST-011: Bulk Action Bar */
+  .bulk-action-bar {
+    position: absolute;
+    bottom: 16px;
+    left: 16px;
+    right: 16px;
+    background: #1e1e1e;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05);
+    border-radius: 12px;
+    padding: 12px 16px;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 100;
+  }
+
+  .selected-count {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-primary);
+  }
+
+  /* ST-011: Bulk Tag Picker */
+  .picker-backdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 9998;
+  }
+
+  .bulk-tag-picker-popover {
+    position: fixed;
+    z-index: 9999;
+    background: #1e1e1e;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+    padding: 12px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05);
+    min-width: 200px;
+    backdrop-filter: blur(20px);
+    animation: pickerFadeIn 0.15s ease-out;
+  }
+
+  @keyframes pickerFadeIn {
+    from { opacity: 0; transform: scale(0.95) translateY(4px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
+  }
+
+  .picker-header {
+    margin-bottom: 8px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  }
+
+  .picker-item {
+    transition: background-color 0.15s ease, color 0.15s ease;
   }
 </style>

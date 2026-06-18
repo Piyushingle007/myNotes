@@ -106,11 +106,16 @@
     showCreateInput = false;
   }
 
-  async function handleDeleteNotebook(notebook: string, event: Event) {
+  function handleDeleteNotebook(notebook: string, event: Event) {
     event.stopPropagation();
-    if (confirm(`Are you sure you want to delete folder "${notebook}" and all its notes?`)) {
-      await appState.deleteNotebook(notebook);
-    }
+    appState.showConfirmation({
+      title: 'Delete Notebook',
+      message: `Do you really want to delete folder "${notebook}" and all its notes? This action is permanent.`,
+      confirmText: 'Delete',
+      onConfirm: async () => {
+        await appState.deleteNotebook(notebook);
+      }
+    });
   }
 
   let tagsCollapsed = $state(false);
@@ -137,19 +142,24 @@
     }
   }
 
-  async function handleDeleteTag(tagName: string, event: Event) {
+  function handleDeleteTag(tagName: string, event: Event) {
     event.stopPropagation();
     const count = getTagCount({ name: tagName } as Tag);
     const message = count > 0 
-      ? `Are you sure you want to delete tag "${tagName}"? This will remove it from ${count} note(s).`
-      : `Are you sure you want to delete tag "${tagName}"?`;
+      ? `Do you really want to delete tag "${tagName}"? This will remove it from ${count} note(s).`
+      : `Do you really want to delete tag "${tagName}"?`;
       
-    if (confirm(message)) {
-      await appState.deleteTag(tagName);
-      if (appState.selectedTag === tagName) {
-        appState.selectedTag = null;
+    appState.showConfirmation({
+      title: 'Delete Tag',
+      message: message,
+      confirmText: 'Delete',
+      onConfirm: async () => {
+        await appState.deleteTag(tagName);
+        if (appState.selectedTag === tagName) {
+          appState.selectedTag = null;
+        }
       }
-    }
+    });
   }
 
   async function handleRenameTag(tagName: string, event: Event) {
@@ -179,6 +189,51 @@
       console.error(e);
       appState.showToast(`Failed to rename tag.`, 'error');
     }
+  }
+
+  // ST-010: Tag Color Picker
+  const TAG_COLOR_PALETTE = [
+    '#ef4444', '#f97316', '#eab308', '#22c55e',
+    '#14b8a6', '#3b82f6', '#6366f1', '#8b5cf6',
+    '#ec4899', '#f43f5e', '#78716c', '#64748b',
+  ];
+
+  let colorPickerTag = $state<string | null>(null);
+  let colorPickerPos = $state<{ x: number; y: number }>({ x: 0, y: 0 });
+  let customHexValue = $state('');
+  let isCustomHexValid = $derived(/^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(customHexValue.trim()));
+  let normalizedCustomHex = $derived(isCustomHexValid ? (customHexValue.trim().startsWith('#') ? customHexValue.trim() : '#' + customHexValue.trim()) : '');
+
+  $effect(() => {
+    if (colorPickerTag) {
+      customHexValue = getTagColor(colorPickerTag) || '';
+    }
+  });
+
+  function openColorPicker(tagName: string, event: Event) {
+    event.stopPropagation();
+    const el = event.currentTarget as HTMLElement;
+    const rect = el.getBoundingClientRect();
+    colorPickerPos = { x: rect.right + 8, y: rect.top };
+    colorPickerTag = tagName;
+  }
+
+  function closeColorPicker() {
+    colorPickerTag = null;
+  }
+
+  async function handleSetColor(tagName: string, color: string | null) {
+    try {
+      await appState.setTagColor(tagName, color);
+      closeColorPicker();
+    } catch (e) {
+      console.error(e);
+      appState.showToast('Failed to set tag color.', 'error');
+    }
+  }
+
+  function getTagColor(tagName: string): string | undefined {
+    return appState.tagColorMap.get(tagName.toLowerCase());
   }
 </script>
 
@@ -349,6 +404,7 @@
       <div class="list-scroll">
         {#each sortedTags as tag}
           {@const count = getTagCount(tag)}
+          {@const tagColor = getTagColor(tag.name)}
           <div 
             class="nav-item flex-row" 
             class:active={appState.selectedTag === tag.name}
@@ -358,11 +414,19 @@
             onkeydown={(e) => e.key === 'Enter' && handleTagClick(tag.name)}
             style="padding: 6px 8px; gap: 8px; cursor: pointer;"
           >
-            <div class="playlist-art" style="width: 28px; height: 28px; font-size: 14px; background-color: #282828;">#</div>
+            <div class="playlist-art" style="width: 28px; height: 28px; font-size: 14px; background-color: {tagColor ? tagColor + '33' : '#282828'}; color: {tagColor || 'inherit'};">#</div>
             <div class="nav-text flex-col">
               <span class="title" style="font-size: 12px; font-weight: 600;">{tag.name}</span>
             </div>
-            <span class="tag-count-badge">{count}</span>
+            <span class="tag-count-badge" style={tagColor ? `background-color: ${tagColor}33; color: ${tagColor}` : ''}>{count}</span>
+            <button 
+              class="tag-color-btn" 
+              onclick={(e) => openColorPicker(tag.name, e)}
+              aria-label="Set tag color"
+              title="Set tag color"
+            >
+              <Palette size={13} />
+            </button>
             <button 
               class="tag-rename-btn" 
               onclick={(e) => handleRenameTag(tag.name, e)}
@@ -386,6 +450,56 @@
       </div>
     {/if}
   </div>
+
+  <!-- ST-010: Tag Color Picker Popover -->
+  {#if colorPickerTag}
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div 
+      class="color-picker-backdrop"
+      onclick={closeColorPicker}
+      onkeydown={(e) => e.key === 'Escape' && closeColorPicker()}
+    ></div>
+    <div class="color-picker-popover" style="left: {colorPickerPos.x}px; top: {colorPickerPos.y}px;">
+      <div class="color-picker-header">
+        <span style="font-size: 11px; font-weight: 600; color: var(--text-secondary);">Tag Color</span>
+      </div>
+      <div class="color-picker-grid">
+        {#each TAG_COLOR_PALETTE as color}
+          {@const isActive = getTagColor(colorPickerTag) === color}
+          <button 
+            class="color-swatch" 
+            class:active={isActive}
+            style="background-color: {color};"
+            onclick={() => handleSetColor(colorPickerTag ?? '', color)}
+            aria-label="Set color to {color}"
+          >
+            {#if isActive}<span class="swatch-check">✓</span>{/if}
+          </button>
+        {/each}
+      </div>
+      <div class="custom-hex-container flex-row" style="margin: 8px 0; gap: 6px; align-items: center; border-top: 1px dashed rgba(255, 255, 255, 0.08); padding-top: 8px; width: 100%;">
+        <div class="color-preview-circle" style="width: 14px; height: 14px; border-radius: 50%; background-color: {normalizedCustomHex || 'transparent'}; border: 1px solid rgba(255,255,255,0.2); flex-shrink: 0;"></div>
+        <input 
+          type="text" 
+          placeholder="#HEX" 
+          bind:value={customHexValue}
+          style="flex: 1; min-width: 50px; padding: 2px 6px; font-size: 10px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; color: var(--text-primary); outline: none;"
+        />
+        <button 
+          type="button" 
+          disabled={!isCustomHexValid}
+          onclick={() => handleSetColor(colorPickerTag ?? '', normalizedCustomHex)}
+          style="padding: 2px 6px; font-size: 10px; cursor: pointer; opacity: {isCustomHexValid ? 1 : 0.5}; background: var(--accent); border: none; border-radius: 4px; color: #fff; font-weight: 600;"
+        >
+          Set
+        </button>
+      </div>
+      <button class="color-reset-btn" onclick={() => handleSetColor(colorPickerTag ?? '', null)}>
+        <X size={12} />
+        <span>Reset Color</span>
+      </button>
+    </div>
+  {/if}
 
   <!-- Daily Logs Section -->
   <div class="section-container flex-col daily-container">
@@ -414,7 +528,17 @@
           </div>
           <button 
             class="item-delete-btn" 
-            onclick={(e) => { e.stopPropagation(); if (confirm('Delete this daily log?')) appState.deleteNote(note.path); }}
+            onclick={(e) => { 
+              e.stopPropagation(); 
+              appState.showConfirmation({
+                title: 'Delete Daily Log',
+                message: 'Do you really want to delete this daily log? This action is permanent.',
+                confirmText: 'Delete',
+                onConfirm: async () => {
+                  await appState.deleteNote(note.path);
+                }
+              });
+            }}
             aria-label="Delete daily note"
             style="right: 4px;"
           >
@@ -790,7 +914,7 @@
     opacity: 0;
   }
 
-  .tag-rename-btn, .tag-delete-btn {
+  .tag-rename-btn, .tag-delete-btn, .tag-color-btn {
     opacity: 0;
     transition: opacity 0.2s, color 0.2s, background-color 0.2s;
     color: var(--text-secondary);
@@ -813,8 +937,13 @@
     right: 32px;
   }
 
+  .tag-color-btn {
+    right: 56px;
+  }
+
   .nav-item:hover .tag-rename-btn,
-  .nav-item:hover .tag-delete-btn {
+  .nav-item:hover .tag-delete-btn,
+  .nav-item:hover .tag-color-btn {
     opacity: 1;
   }
 
@@ -826,6 +955,101 @@
   .tag-rename-btn:hover {
     color: var(--accent);
     background-color: rgba(255, 255, 255, 0.05);
+  }
+
+  .tag-color-btn:hover {
+    color: var(--accent);
+    background-color: rgba(255, 255, 255, 0.05);
+  }
+
+  /* ST-010: Color Picker Popover */
+  .color-picker-backdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 9998;
+  }
+
+  .color-picker-popover {
+    position: fixed;
+    z-index: 9999;
+    background: #1e1e1e;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+    padding: 10px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05);
+    min-width: 160px;
+    backdrop-filter: blur(20px);
+    animation: colorPickerFadeIn 0.15s ease-out;
+  }
+
+  @keyframes colorPickerFadeIn {
+    from { opacity: 0; transform: scale(0.95) translateY(-4px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
+  }
+
+  .color-picker-header {
+    margin-bottom: 8px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  }
+
+  .color-picker-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+    margin-bottom: 8px;
+  }
+
+  .color-swatch {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    border: 2px solid transparent;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+
+  .color-swatch:hover {
+    transform: scale(1.15);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  }
+
+  .color-swatch.active {
+    border-color: white;
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.2);
+  }
+
+  .swatch-check {
+    color: white;
+    font-size: 12px;
+    font-weight: 700;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+  }
+
+  .color-reset-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    padding: 6px 8px;
+    border: none;
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-secondary);
+    font-size: 11px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+
+  .color-reset-btn:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-primary);
   }
 
   .section-header-arrow {

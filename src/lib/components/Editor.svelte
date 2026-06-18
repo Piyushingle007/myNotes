@@ -586,13 +586,18 @@
 		}
 	}
 
-	async function handleDeleteActiveNote() {
-		if (!$activeNotePath) return;
-		if (confirm('Are you sure you want to delete this note?')) {
-			const path = $activeNotePath;
-			$activeNotePath = null;
-			await appState.deleteNote(path);
-		}
+	function handleDeleteActiveNote() {
+		const path = $activeNotePath;
+		if (!path) return;
+		appState.showConfirmation({
+			title: 'Delete Note',
+			message: 'Do you really want to delete this note? This action is permanent.',
+			confirmText: 'Delete',
+			onConfirm: async () => {
+				$activeNotePath = null;
+				await appState.deleteNote(path);
+			}
+		});
 	}
 
 	async function updateNoteTitle(newTitle: string) {
@@ -7382,10 +7387,11 @@
 				{#if ($activeNote.meta.tags && $activeNote.meta.tags.length > 0) || !$readOnly}
 				<span class="note-tags">
 					{#each $activeNote.meta.tags || [] as tag}
+						{@const tagColor = appState.tagColorMap.get(tag.toLowerCase())}
 						{#if $readOnly}
-							<span class="note-tag">#{tag}</span>
+							<span class="note-tag" style={tagColor ? `background: ${tagColor}26; border-left: 2px solid ${tagColor}; color: ${tagColor}` : ''}>#{tag}</span>
 						{:else}
-							<span class="note-tag edit">
+							<span class="note-tag edit" style={tagColor ? `border-color: ${tagColor}66; background: ${tagColor}1a` : ''}>
 								<span>#{tag}</span>
 								<button type="button" class="tag-delete-btn" onclick={() => removeTag(tag)} aria-label="Remove tag">✕</button>
 							</span>
@@ -7405,10 +7411,12 @@
 							{#if showDropdown && filteredSuggestions.length > 0}
 								<ul class="tag-autocomplete-dropdown">
 									{#each filteredSuggestions as suggestion, idx}
+										{@const sugColor = appState.tagColorMap.get(suggestion.toLowerCase())}
 										<li 
 											class:active={idx === selectedIndex}
 											onmousedown={(e) => { e.preventDefault(); selectSuggestion(suggestion); }}
 										>
+											{#if sugColor}<span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: {sugColor}; margin-right: 5px; flex-shrink: 0;"></span>{/if}
 											#{suggestion}
 										</li>
 									{/each}

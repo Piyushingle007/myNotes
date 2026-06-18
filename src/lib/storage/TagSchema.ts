@@ -3,6 +3,7 @@ export interface Tag {
   name: string;          // tag display name (e.g. "Work")
   normalizedName: string; // lowercase name (e.g. "work") for unique constraint
   createdAt: number;     // timestamp
+  color?: string;        // optional hex color code (e.g. "#ef4444")
 }
 
 export interface NoteTagRelation {
@@ -295,6 +296,39 @@ export class TagDatabase {
         putReq.onerror = () => reject(putReq.error);
       };
       
+      getReq.onerror = () => reject(getReq.error);
+    });
+  }
+
+  /**
+   * Update a tag's color. Pass null/undefined to remove custom color.
+   */
+  async updateTagColor(tagId: string, color: string | null): Promise<void> {
+    const db = await this.ensureDb();
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction('tags', 'readwrite');
+      const store = transaction.objectStore('tags');
+
+      const getReq = store.get(tagId);
+
+      getReq.onsuccess = () => {
+        const tag = getReq.result as Tag;
+        if (!tag) {
+          reject(new Error(`Tag with ID ${tagId} not found`));
+          return;
+        }
+
+        if (color) {
+          tag.color = color;
+        } else {
+          delete tag.color;
+        }
+
+        const putReq = store.put(tag);
+        putReq.onsuccess = () => resolve();
+        putReq.onerror = () => reject(putReq.error);
+      };
+
       getReq.onerror = () => reject(getReq.error);
     });
   }

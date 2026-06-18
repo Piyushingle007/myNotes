@@ -158,6 +158,8 @@ class AppState {
   isReadOnly = $state<boolean>(false);
   sourceMode = $state<boolean>(localStorage.getItem('mynotes_editor_source_mode') === 'true');
   editorDirty = $state<boolean>(false);
+  selectMode = $state<boolean>(false);
+  selectedNotes = $state<Set<string>>(new Set());
   autoPruneTags = $state<boolean>(localStorage.getItem('mynotes_tags_auto_prune') === 'true');
   theme = $state<string>(localStorage.getItem('mynotes_theme') || 'steel');
   customDriveFolderId = $state<string | null>(localStorage.getItem('mynotes_custom_drive_folder_id') || null);
@@ -166,6 +168,13 @@ class AppState {
   fetchingFolders = $state<boolean>(false);
   onForceSave = null as (() => Promise<void>) | null;
   lastRenamedPath = null as { oldPath: string; newPath: string } | null;
+
+  // ST-016: Confirmation Modal State
+  showConfirmModal = $state<boolean>(false);
+  confirmTitle = $state<string>('');
+  confirmMessage = $state<string>('');
+  confirmButtonText = $state<string>('Delete');
+  confirmOnConfirm = $state<(() => void) | null>(null);
 
   // Layout States
   sidebarWidth = $state<number>(Number(localStorage.getItem('mynotes_sidebar_width')) || 260);
@@ -543,6 +552,33 @@ class AppState {
     if (enabled) {
       this.pruneUnusedTags();
     }
+  }
+
+  /**
+   * Returns a Map of normalizedTagName → color for fast lookups in UI rendering.
+   */
+  get tagColorMap(): Map<string, string> {
+    const map = new Map<string, string>();
+    for (const tag of this.tags) {
+      if (tag.color) {
+        map.set(tag.normalizedName || tag.name.toLowerCase(), tag.color);
+      }
+    }
+    return map;
+  }
+
+  /**
+   * Set or remove a tag's custom color.
+   * @param tagName - The display name of the tag
+   * @param color - Hex color string (e.g. "#ef4444") or null to reset
+   */
+  async setTagColor(tagName: string, color: string | null): Promise<void> {
+    if (!this.tagDb) throw new Error('Tag database not initialized');
+    const normalized = tagName.trim().toLowerCase();
+    const tag = this.tags.find(t => (t.normalizedName || t.name.toLowerCase()) === normalized);
+    if (!tag) throw new Error(`Tag not found: ${tagName}`);
+    await this.tagDb.updateTagColor(tag.id, color);
+    this.tags = await this.tagDb.listTags();
   }
 
   async connectGoogleDrive() {
@@ -1196,6 +1232,301 @@ class AppState {
     const tag = await this.tagDb.addTag(name);
     this.tags = await this.tagDb.listTags();
     return tag;
+  }
+
+  // ST-011: Bulk Operations Actions
+  toggleSelectMode() {
+    this.selectMode = !this.selectMode;
+    if (!this.selectMode) {
+      this.clearSelection();
+    }
+  }
+
+  toggleNoteSelection(notePath: string) {
+    if (this.selectedNotes.has(notePath)) {
+      this.selectedNotes.delete(notePath);
+    } else {
+      this.selectedNotes.add(notePath);
+    }
+    this.selectedNotes = new Set(this.selectedNotes);
+  }
+
+  selectAllNotes(visibleNotes: string[]) {
+    const allSelected = visibleNotes.every(p => this.selectedNotes.has(p));
+    if (allSelected) {
+      visibleNotes.forEach(p => this.selectedNotes.delete(p));
+    } else {
+      visibleNotes.forEach(p => this.selectedNotes.add(p));
+    }
+    this.selectedNotes = new Set(this.selectedNotes);
+  }
+
+  clearSelection() {
+    this.selectedNotes.clear();
+    this.selectedNotes = new Set();
+  }
+
+  // ST-016: Confirmation Modal Actions
+  showConfirmation(options: {
+    title: string;
+    message: string;
+    confirmText?: string;
+    onConfirm: () => void | Promise<void>;
+  }) {
+    this.confirmTitle = options.title;
+    this.confirmMessage = options.message;
+    this.confirmButtonText = options.confirmText || 'Delete';
+    this.confirmOnConfirm = async () => {
+      await options.onConfirm();
+      this.closeConfirmation();
+    };
+    this.showConfirmModal = true;
+  }
+
+  closeConfirmation() {
+    this.showConfirmModal = false;
+    this.confirmOnConfirm = null;
+  }
+
+  async bulkAddTag(tagName: string): Promise<void> {
+    if (this.selectedNotes.size === 0) return;
+    const cleanName = tagName.trim();
+    if (!cleanName) return;
+
+    const notesToUpdate = Array.from(this.selectedNotes);
+    let updatedAny = false;
+    
+    for (const notePath of notesToUpdate) {
+      const note = this.notes.find((n: NoteFile) => n.path === notePath);
+      if (!note) continue;
+
+      const parsed = parseHtmlMetadata(note.content);
+      const currentTags = parsed.meta.tags || [];
+      const normalizedNew = cleanName.toLowerCase();
+      
+      if (!currentTags.some((t: string) => t.trim().toLowerCase() === normalizedNew)) {
+        parsed.meta.tags = [...currentTags, cleanName];
+        const updatedContent = generateHtmlNote(parsed.meta, parsed.content);
+        note.content = updatedContent;
+        note.modified = Date.now();
+
+        if (this.activeNotePath === notePath) {
+          this.activeNoteContent = updatedContent;
+        }
+
+        await this.storage.writeNote(notePath, updatedContent);
+        updatedAny = true;
+      }
+    }
+
+    if (updatedAny) {
+      await this.refreshNotes();
+      if (this.syncEnabled && this.googleConnected) {
+        this.triggerDebouncedSync();
+      }
+    }
+  }
+
+  async bulkRemoveTag(tagName: string): Promise<void> {
+    if (this.selectedNotes.size === 0) return;
+    const normalizedRemove = tagName.trim().toLowerCase();
+
+    const notesToUpdate = Array.from(this.selectedNotes);
+    let updatedAny = false;
+
+    for (const notePath of notesToUpdate) {
+      const note = this.notes.find((n: NoteFile) => n.path === notePath);
+      if (!note) continue;
+
+      const parsed = parseHtmlMetadata(note.content);
+      const currentTags = parsed.meta.tags || [];
+      
+      const updatedTags = currentTags.filter((t: string) => t.trim().toLowerCase() !== normalizedRemove);
+      if (updatedTags.length !== currentTags.length) {
+        parsed.meta.tags = updatedTags;
+        const updatedContent = generateHtmlNote(parsed.meta, parsed.content);
+        note.content = updatedContent;
+        note.modified = Date.now();
+
+        if (this.activeNotePath === notePath) {
+          this.activeNoteContent = updatedContent;
+        }
+
+        await this.storage.writeNote(notePath, updatedContent);
+        updatedAny = true;
+      }
+    }
+
+    if (updatedAny) {
+      await this.refreshNotes();
+      if (this.syncEnabled && this.googleConnected) {
+        this.triggerDebouncedSync();
+      }
+    }
+  }
+
+  async bulkDeleteNotes(notePaths: string[]): Promise<void> {
+    if (notePaths.length === 0) return;
+    
+    let activeDeleted = false;
+    for (const path of notePaths) {
+      if (this.activeNotePath === path) {
+        activeDeleted = true;
+      }
+    }
+    if (activeDeleted) {
+      this.activeNotePath = null;
+      this.activeNoteContent = '';
+      this.activeNoteTitle = '';
+      this.editorDirty = false;
+    }
+
+    const mappings = JSON.parse(localStorage.getItem('mynotes_drive_mappings') || '{}');
+    const remoteIdsToDelete: { path: string; id: string }[] = [];
+
+    for (const path of notePaths) {
+      try {
+        await this.storage.deleteNote(path);
+        const mapEntry = mappings[path];
+        const remoteId = mapEntry ? (typeof mapEntry === 'string' ? mapEntry : mapEntry.id) : undefined;
+        if (remoteId) {
+          remoteIdsToDelete.push({ path, id: remoteId });
+        }
+      } catch (err) {
+        console.error(`Failed to delete note "${path}" locally:`, err);
+      }
+    }
+
+    await this.refreshNotes();
+    
+    this.showToast(`Deleted ${notePaths.length} note(s) locally.`, 'success', 3000);
+
+    if (activeDeleted && this.notes.length > 0) {
+      this.selectNote(this.notes[0].path);
+    }
+
+    if (this.syncEnabled && this.googleConnected && this.syncService && remoteIdsToDelete.length > 0) {
+      const toastId = this.showToast(`Syncing deletion of ${remoteIdsToDelete.length} note(s) to Google Drive...`, 'info', 0, undefined, true);
+      try {
+        const activeMappings = { ...mappings };
+        let successCount = 0;
+        for (const item of remoteIdsToDelete) {
+          try {
+            await this.syncService.deleteFile(item.id);
+            delete activeMappings[item.path];
+            successCount++;
+          } catch (e) {
+            console.error(`Failed to delete remote file for ${item.path}:`, e);
+          }
+        }
+        localStorage.setItem('mynotes_drive_mappings', JSON.stringify(activeMappings));
+        this.driveMappings = activeMappings;
+        
+        this.updateToast(toastId, {
+          message: `Deleted ${successCount} note(s) from Google Drive.`,
+          type: 'success',
+          loading: false,
+          duration: 3000
+        });
+      } catch (e) {
+        console.error('Remote bulk delete failed', e);
+        this.updateToast(toastId, {
+          message: `Failed to complete bulk deletion on Google Drive. Will retry on next sync.`,
+          type: 'warning',
+          loading: false,
+          duration: 4000
+        });
+      }
+    }
+    
+    this.clearSelection();
+  }
+
+  async bulkMoveNotes(notePaths: string[], targetNotebook: string | null): Promise<void> {
+    if (notePaths.length === 0) return;
+    const cleanNotebook = targetNotebook ? targetNotebook.trim() : null;
+
+    let movedAny = false;
+    const mappings = JSON.parse(localStorage.getItem('mynotes_drive_mappings') || '{}');
+    const activeMappings = { ...mappings };
+
+    for (const oldPath of notePaths) {
+      const note = this.notes.find((n: NoteFile) => n.path === oldPath);
+      if (!note) continue;
+
+      const parts = oldPath.split('/');
+      const filename = parts.pop()!;
+      const cleanTitle = filename.replace(/\.html$/, '');
+
+      let newPath = cleanNotebook ? `${cleanNotebook}/${filename}` : filename;
+      if (newPath === oldPath) continue;
+
+      let version = 1;
+      let finalNewPath = newPath;
+      let titleUpdated = false;
+      let finalTitle = cleanTitle;
+
+      while (this.notes.some(n => n.path === finalNewPath) || finalNewPath === oldPath) {
+        if (finalNewPath === oldPath) {
+          break;
+        }
+        finalTitle = `${cleanTitle} (${version})`;
+        finalNewPath = cleanNotebook 
+          ? `${cleanNotebook}/${finalTitle}.html`
+          : `${finalTitle}.html`;
+        version++;
+        titleUpdated = true;
+      }
+
+      if (finalNewPath === oldPath) continue;
+
+      try {
+        const parsed = parseHtmlMetadata(note.content);
+        parsed.meta.id = finalNewPath;
+        if (titleUpdated) {
+          parsed.meta.title = finalTitle;
+        }
+        const updatedContent = generateHtmlNote(parsed.meta, parsed.content);
+        
+        await this.storage.writeNote(oldPath, updatedContent);
+        await this.storage.renameNote(oldPath, finalNewPath);
+
+        if (this.favorites.includes(oldPath)) {
+          this.favorites = this.favorites.map(p => p === oldPath ? finalNewPath : p);
+          localStorage.setItem('mynotes_favorites', JSON.stringify(this.favorites));
+        }
+
+        if (activeMappings[oldPath]) {
+          activeMappings[finalNewPath] = activeMappings[oldPath];
+          delete activeMappings[oldPath];
+        }
+
+        if (this.activeNotePath === oldPath) {
+          this.activeNotePath = finalNewPath;
+          if (titleUpdated) {
+            this.activeNoteTitle = finalTitle;
+          }
+        }
+
+        movedAny = true;
+      } catch (err) {
+        console.error(`Failed to move note "${oldPath}" to "${finalNewPath}":`, err);
+      }
+    }
+
+    if (movedAny) {
+      localStorage.setItem('mynotes_drive_mappings', JSON.stringify(activeMappings));
+      this.driveMappings = activeMappings;
+
+      await this.refreshNotes();
+      this.showToast(`Moved ${notePaths.length} note(s) to ${cleanNotebook || 'root'}.`, 'success', 3000);
+
+      if (this.syncEnabled && this.googleConnected) {
+        this.triggerDebouncedSync();
+      }
+    }
+
+    this.clearSelection();
   }
 
   async addTagToNote(notePath: string, tagName: string): Promise<void> {
