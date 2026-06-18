@@ -12,8 +12,18 @@
 		data: string;
 		onSave: (encoded: string) => void;
 		onCancel: () => void;
+		onChangeEditorType?: (type: 'native' | 'drawio' | 'mermaid', currentData?: string) => void;
 	}
-	let { data, onSave, onCancel }: Props = $props();
+	let { data, onSave, onCancel, onChangeEditorType }: Props = $props();
+
+	function handleSwitchEditor(targetType: 'native' | 'drawio' | 'mermaid') {
+		const diagramData = decodeDiagram(data);
+		diagramData.shapes = shapes;
+		diagramData.width = canvasW;
+		diagramData.height = canvasH;
+		const encoded = encodeDiagram(diagramData);
+		onChangeEditorType?.(targetType, encoded);
+	}
 
 	const initial: DiagramData = decodeDiagram(data);
 
@@ -350,11 +360,20 @@
 <div class="diagram-overlay" onclick={onCancel}>
 	<div class="diagram-modal" onclick={(e) => e.stopPropagation()} role="dialog" aria-label="Diagram editor">
 		<!-- Header -->
-		<div class="diagram-header">
-			<span class="diagram-title">
-				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><path d="M10 6.5h4a3 3 0 0 1 3 3V14"/></svg>
-				Diagram
-			</span>
+		<div class="diagram-header" style="display: flex; justify-content: space-between; align-items: center;">
+			<div style="display: flex; align-items: center; gap: 16px;">
+				<span class="diagram-title" style="display: flex; align-items: center; gap: 6px;">
+					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><path d="M10 6.5h4a3 3 0 0 1 3 3V14"/></svg>
+					Diagram
+				</span>
+				{#if onChangeEditorType}
+					<div class="editor-host-switcher">
+						<button type="button" class="switcher-btn" onclick={() => handleSwitchEditor('mermaid')}>Mermaid</button>
+						<button type="button" class="switcher-btn" onclick={() => handleSwitchEditor('drawio')}>Draw.io</button>
+						<button type="button" class="switcher-btn active" disabled>Native</button>
+					</div>
+				{/if}
+			</div>
 			<div class="diagram-header-actions">
 				<button class="dg-btn" onclick={onCancel}>Cancel</button>
 				<button class="dg-btn primary" onclick={handleSave}>Save</button>
@@ -546,6 +565,38 @@
 </div>
 
 <style>
+	.editor-host-switcher {
+		display: inline-flex;
+		align-items: center;
+		background: rgba(255, 255, 255, 0.05);
+		border: 1px solid rgba(255, 255, 255, 0.1);
+		border-radius: 6px;
+		padding: 2px;
+		gap: 2px;
+	}
+	.switcher-btn {
+		background: transparent;
+		border: none;
+		color: #aaa;
+		font-size: 11px;
+		font-weight: 600;
+		padding: 4px 10px;
+		border-radius: 4px;
+		cursor: pointer;
+		transition: all 0.15s ease;
+	}
+	.switcher-btn:hover {
+		color: #fff;
+		background: rgba(255, 255, 255, 0.05);
+	}
+	.switcher-btn.active {
+		color: #fff;
+		background: var(--accent, #00adb5);
+	}
+	.switcher-btn:disabled {
+		cursor: default;
+	}
+
 	.diagram-overlay {
 		position: fixed;
 		inset: 0;

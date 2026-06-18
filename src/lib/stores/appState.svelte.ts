@@ -1,4 +1,5 @@
 import { type NoteFile, type StorageAdapter, IndexedDBAdapter, FileSystemAccessAdapter } from '../storage/StorageAdapter';
+import { TagDatabase, type Tag } from '../storage/TagSchema';
 import { GoogleDriveSync } from '../sync/GoogleDriveSync';
 import MiniSearch from 'minisearch';
 import MarkdownIt from 'markdown-it';
@@ -141,12 +142,15 @@ class AppState {
   // Reactive states
   vaultName = $state<string | null>(null);
   vaultReady = $state<boolean>(false);
+  tagDb = null as TagDatabase | null;
+  tags = $state<Tag[]>([]);
+  selectedTag = $state<string | null>(null);
   notes = $state<NoteFile[]>([]);
   activeNotePath = $state<string | null>(null);
   activeNoteContent = $state<string>('');
   activeNoteTitle = $state<string>('');
   activeNotebook = $state<string | null>(null);
-  activeTab = $state<'home' | 'search' | 'library' | 'daily'>('home');
+  activeTab = $state<'home' | 'search' | 'library' | 'daily' | 'tags'>('home');
   favorites = $state<string[]>(JSON.parse(localStorage.getItem('mynotes_favorites') || '[]'));
   searchQuery = $state<string>('');
   showSettings = $state<boolean>(false);
@@ -154,6 +158,7 @@ class AppState {
   isReadOnly = $state<boolean>(false);
   sourceMode = $state<boolean>(localStorage.getItem('mynotes_editor_source_mode') === 'true');
   editorDirty = $state<boolean>(false);
+  autoPruneTags = $state<boolean>(localStorage.getItem('mynotes_tags_auto_prune') === 'true');
   theme = $state<string>(localStorage.getItem('mynotes_theme') || 'steel');
   customDriveFolderId = $state<string | null>(localStorage.getItem('mynotes_custom_drive_folder_id') || null);
   customDriveFolderName = $state<string | null>(localStorage.getItem('mynotes_custom_drive_folder_name') || null);
@@ -170,7 +175,7 @@ class AppState {
   editorCollapsed = $state<boolean>(localStorage.getItem('mynotes_editor_collapsed') === 'true');
 
   // Diagram Editor Preference: 'native' (built-in), 'drawio' (embed diagrams.net), or 'mermaid'
-  diagramEditorType = $state<'native' | 'drawio' | 'mermaid'>((localStorage.getItem('mynotes_diagram_editor') as 'native' | 'drawio' | 'mermaid') || 'drawio');
+  diagramEditorType = $state<'native' | 'drawio' | 'mermaid'>((localStorage.getItem('mynotes_diagram_editor') as 'native' | 'drawio' | 'mermaid') || 'mermaid');
 
   setDiagramEditorType(type: 'native' | 'drawio' | 'mermaid') {
     this.diagramEditorType = type;
@@ -452,14 +457,41 @@ class AppState {
       list = list.filter(n => n.path.startsWith(prefix) || n.path === this.activeNotebook);
     }
 
-    if (this.searchQuery.trim()) {
+    if (this.selectedTag) {
+      const normalized = this.selectedTag.toLowerCase();
+      list = list.filter(n => {
+        const parsed = parseHtmlMetadata(n.content);
+        return (parsed.meta.tags || []).map((t: string) => t.toLowerCase()).includes(normalized);
+      });
+    }
+
+    let queryText = this.searchQuery.trim();
+    const tagFilters: string[] = [];
+    if (queryText) {
+      const tagRegex = /\btag:(\S+)/gi;
+      let match;
+      while ((match = tagRegex.exec(queryText)) !== null) {
+        tagFilters.push(match[1].toLowerCase());
+      }
+      queryText = queryText.replace(tagRegex, '').replace(/\s+/g, ' ').trim();
+    }
+
+    if (tagFilters.length > 0) {
+      list = list.filter(n => {
+        const parsed = parseHtmlMetadata(n.content);
+        const noteTags = (parsed.meta.tags || []).map((t: string) => t.toLowerCase());
+        return tagFilters.every(f => noteTags.includes(f));
+      });
+    }
+
+    if (queryText) {
       try {
-        const results = this.searchIndex.search(this.searchQuery);
+        const results = this.searchIndex.search(queryText);
         const paths = results.map(r => r.id);
         list = list.filter(n => paths.includes(n.path));
       } catch (e) {
         // Fail-safe search fallback
-        const q = this.searchQuery.toLowerCase();
+        const q = queryText.toLowerCase();
         list = list.filter(n => n.name.toLowerCase().includes(q) || n.content.toLowerCase().includes(q));
       }
     }
@@ -503,6 +535,14 @@ class AppState {
   setSyncEnabled(enabled: boolean) {
     this.syncEnabled = enabled;
     localStorage.setItem('mynotes_sync_enabled', String(enabled));
+  }
+
+  setAutoPruneTags(enabled: boolean) {
+    this.autoPruneTags = enabled;
+    localStorage.setItem('mynotes_tags_auto_prune', String(enabled));
+    if (enabled) {
+      this.pruneUnusedTags();
+    }
   }
 
   async connectGoogleDrive() {
@@ -938,6 +978,7 @@ class AppState {
       const name = await this.storage.selectDirectory();
       console.log('[MyNotes] selectDirectory returned:', name);
       this.vaultName = name;
+      this.tagDb = new TagDatabase(name);
       
       // Perform migration of markdown notes to html notes
       await this.migrateOldNotes();
@@ -985,6 +1026,7 @@ class AppState {
       const name = await adapter.selectDirectory();
       this.storage = adapter;
       this.vaultName = name;
+      this.tagDb = new TagDatabase(name);
       // Perform migration of markdown notes to html notes
       await this.migrateOldNotes();
       await this.refreshNotes();
@@ -1037,11 +1079,313 @@ class AppState {
     }
     const localFavs = JSON.parse(localStorage.getItem('mynotes_favorites') || '[]') as string[];
     const mergedFavs = Array.from(new Set([
-      ...localFavs.filter(p => list.some(n => n.path === p)),
+      ...localFavs.filter((p: string) => list.some((n: NoteFile) => n.path === p)),
       ...pinnedPaths
     ]));
     this.favorites = mergedFavs;
     localStorage.setItem('mynotes_favorites', JSON.stringify(mergedFavs));
+
+    // Sync tag database
+    if (this.tagDb) {
+      try {
+        await this.syncTagDatabase(list);
+      } catch (e) {
+        console.error('[MyNotes] Failed to sync tag database in refreshNotes:', e);
+      }
+    }
+
+    // Auto prune empty tags if enabled
+    if (this.tagDb && this.autoPruneTags) {
+      try {
+        await this.pruneUnusedTags();
+      } catch (e) {
+        console.error('[MyNotes] Failed to auto-prune empty tags in refreshNotes:', e);
+      }
+    }
+  }
+
+  async syncTagDatabase(notesList: NoteFile[]) {
+    if (!this.tagDb) return;
+    try {
+      const dbTags = await this.tagDb.listTags();
+      const activePaths = new Set(notesList.map((n: NoteFile) => n.path));
+
+      // 1. Prune relations for deleted/moved notes
+      await this.tagDb.pruneZombieRelations(activePaths);
+
+      // 2. Scan each note and synchronize tag relations
+      for (const note of notesList) {
+        if (!note.content) continue;
+        const parsed = parseHtmlMetadata(note.content);
+        const noteTags = parsed.meta.tags || [];
+
+        // Resolve tag IDs (create tags if they don't exist)
+        const tagIds: string[] = [];
+        for (const tagName of noteTags) {
+          const cleanName = tagName.trim();
+          if (!cleanName) continue;
+          const normalized = cleanName.toLowerCase();
+          
+          let tag = dbTags.find((t: Tag) => t.normalizedName === normalized);
+          if (!tag) {
+            tag = await this.tagDb.addTag(cleanName);
+            dbTags.push(tag);
+          }
+          tagIds.push(tag.id);
+        }
+
+        // Get existing relationships in database for this note
+        const dbTagIds = await this.tagDb.getTagsForNote(note.path);
+
+        // Add missing relations
+        for (const tagId of tagIds) {
+          if (!dbTagIds.includes(tagId)) {
+            await this.tagDb.addRelation(note.path, tagId);
+          }
+        }
+
+        // Remove old relations that are no longer in the note's tags list
+        for (const dbTagId of dbTagIds) {
+          if (!tagIds.includes(dbTagId)) {
+            await this.tagDb.removeRelation(note.path, dbTagId);
+          }
+        }
+      }
+
+      // 3. Update the appState's reactive tags list
+      this.tags = await this.tagDb.listTags();
+    } catch (e) {
+      console.error('[MyNotes] syncTagDatabase error:', e);
+    }
+  }
+
+  async pruneUnusedTags(): Promise<void> {
+    if (!this.tagDb) return;
+    try {
+      const globalTags = await this.tagDb.listTags();
+      
+      // Build a set of all normalized tags currently in notes
+      const activeNormalizedTags = new Set<string>();
+      this.notes.forEach((note: NoteFile) => {
+        if (!note.content) return;
+        try {
+          const parsed = parseHtmlMetadata(note.content);
+          (parsed.meta.tags || []).forEach((t: string) => activeNormalizedTags.add(t.toLowerCase()));
+        } catch (e) {
+          // ignore parsing error for this specific note
+        }
+      });
+      
+      // Delete any global tag that has no active relations (is not in activeNormalizedTags)
+      for (const tag of globalTags) {
+        if (!activeNormalizedTags.has(tag.normalizedName)) {
+          await this.tagDb.deleteTag(tag.id);
+        }
+      }
+      
+      // Refresh tags list
+      this.tags = await this.tagDb.listTags();
+    } catch (e) {
+      console.error('[MyNotes] pruneUnusedTags error:', e);
+    }
+  }
+
+  // ST-002 Tag CRUD operations API
+  async createTag(name: string): Promise<Tag> {
+    if (!this.tagDb) throw new Error('Tag database not initialized');
+    const tag = await this.tagDb.addTag(name);
+    this.tags = await this.tagDb.listTags();
+    return tag;
+  }
+
+  async addTagToNote(notePath: string, tagName: string): Promise<void> {
+    const note = this.notes.find((n: NoteFile) => n.path === notePath);
+    if (!note) throw new Error(`Note not found: ${notePath}`);
+
+    const parsed = parseHtmlMetadata(note.content);
+    const currentTags = parsed.meta.tags || [];
+    
+    // Check if tag is already associated (case-insensitively)
+    const normalizedNew = tagName.trim().toLowerCase();
+    if (currentTags.some((t: string) => t.trim().toLowerCase() === normalizedNew)) {
+      return;
+    }
+
+    // Append tag (maintaining case of user input)
+    parsed.meta.tags = [...currentTags, tagName.trim()];
+    const updatedContent = generateHtmlNote(parsed.meta, parsed.content);
+
+    // Write note
+    note.content = updatedContent;
+    note.modified = Date.now();
+    
+    if (this.activeNotePath === notePath) {
+      this.activeNoteContent = updatedContent;
+    }
+
+    await this.storage.writeNote(notePath, updatedContent);
+
+    // Refresh database index
+    await this.refreshNotes();
+
+    // Trigger background sync if enabled
+    if (this.syncEnabled && this.googleConnected) {
+      this.triggerDebouncedSync();
+    }
+  }
+
+  async removeTagFromNote(notePath: string, tagName: string): Promise<void> {
+    const note = this.notes.find((n: NoteFile) => n.path === notePath);
+    if (!note) throw new Error(`Note not found: ${notePath}`);
+
+    const parsed = parseHtmlMetadata(note.content);
+    const currentTags = parsed.meta.tags || [];
+    
+    const normalizedRemove = tagName.trim().toLowerCase();
+    const updatedTags = currentTags.filter((t: string) => t.trim().toLowerCase() !== normalizedRemove);
+
+    if (updatedTags.length === currentTags.length) {
+      return; // tag was not on note
+    }
+
+    parsed.meta.tags = updatedTags;
+    const updatedContent = generateHtmlNote(parsed.meta, parsed.content);
+
+    // Write note
+    note.content = updatedContent;
+    note.modified = Date.now();
+
+    if (this.activeNotePath === notePath) {
+      this.activeNoteContent = updatedContent;
+    }
+
+    await this.storage.writeNote(notePath, updatedContent);
+
+    // Refresh database index
+    await this.refreshNotes();
+
+    // Trigger background sync if enabled
+    if (this.syncEnabled && this.googleConnected) {
+      this.triggerDebouncedSync();
+    }
+  }
+
+  async renameTag(oldName: string, newName: string): Promise<void> {
+    if (!this.tagDb) throw new Error('Tag database not initialized');
+    const cleanOld = oldName.trim();
+    const cleanNew = newName.trim();
+    if (!cleanOld || !cleanNew) return;
+    if (cleanOld.toLowerCase() === cleanNew.toLowerCase()) return;
+
+    // Find the tag to rename
+    const dbTags = await this.tagDb.listTags();
+    const targetTag = dbTags.find((t: Tag) => t.normalizedName === cleanOld.toLowerCase());
+    if (!targetTag) return;
+
+    // Check if target tag name already exists
+    const existingTargetTag = dbTags.find((t: Tag) => t.normalizedName === cleanNew.toLowerCase());
+
+    if (existingTargetTag) {
+      // Merge case: We are renaming "oldName" to a tag that already exists!
+      // Find all notes containing oldName, replace with newName (if not already there)
+      for (const note of this.notes) {
+        const parsed = parseHtmlMetadata(note.content);
+        const currentTags = parsed.meta.tags || [];
+        
+        if (currentTags.some((t: string) => t.trim().toLowerCase() === cleanOld.toLowerCase())) {
+          // Filter out oldName
+          let updatedTags = currentTags.filter((t: string) => t.trim().toLowerCase() !== cleanOld.toLowerCase());
+          // Add newName if not already present
+          if (!updatedTags.some((t: string) => t.trim().toLowerCase() === cleanNew.toLowerCase())) {
+            updatedTags.push(cleanNew);
+          }
+          
+          parsed.meta.tags = updatedTags;
+          const updatedContent = generateHtmlNote(parsed.meta, parsed.content);
+          note.content = updatedContent;
+          note.modified = Date.now();
+          
+          if (this.activeNotePath === note.path) {
+            this.activeNoteContent = updatedContent;
+          }
+          await this.storage.writeNote(note.path, updatedContent);
+        }
+      }
+
+      // Delete the old tag globally from DB (which removes its relations)
+      await this.tagDb.deleteTag(targetTag.id);
+    } else {
+      // Standard rename case: Update tag name in DB
+      await this.tagDb.renameTagInDb(targetTag.id, cleanNew);
+
+      // Update in all note files
+      for (const note of this.notes) {
+        const parsed = parseHtmlMetadata(note.content);
+        const currentTags = parsed.meta.tags || [];
+        
+        if (currentTags.some((t: string) => t.trim().toLowerCase() === cleanOld.toLowerCase())) {
+          parsed.meta.tags = currentTags.map((t: string) => t.trim().toLowerCase() === cleanOld.toLowerCase() ? cleanNew : t);
+          
+          const updatedContent = generateHtmlNote(parsed.meta, parsed.content);
+          note.content = updatedContent;
+          note.modified = Date.now();
+          
+          if (this.activeNotePath === note.path) {
+            this.activeNoteContent = updatedContent;
+          }
+          await this.storage.writeNote(note.path, updatedContent);
+        }
+      }
+    }
+
+    // Refresh database index
+    await this.refreshNotes();
+
+    // Trigger background sync if enabled
+    if (this.syncEnabled && this.googleConnected) {
+      this.triggerDebouncedSync();
+    }
+  }
+
+  async deleteTag(tagName: string): Promise<void> {
+    if (!this.tagDb) throw new Error('Tag database not initialized');
+    const cleanName = tagName.trim();
+    if (!cleanName) return;
+
+    // Find tag in DB
+    const dbTags = await this.tagDb.listTags();
+    const targetTag = dbTags.find((t: Tag) => t.normalizedName === cleanName.toLowerCase());
+    if (!targetTag) return;
+
+    // Remove from DB (handles relations deletion as well)
+    await this.tagDb.deleteTag(targetTag.id);
+
+    // Remove from all note files
+    for (const note of this.notes) {
+      const parsed = parseHtmlMetadata(note.content);
+      const currentTags = parsed.meta.tags || [];
+      
+      if (currentTags.some((t: string) => t.trim().toLowerCase() === cleanName.toLowerCase())) {
+        parsed.meta.tags = currentTags.filter((t: string) => t.trim().toLowerCase() !== cleanName.toLowerCase());
+        
+        const updatedContent = generateHtmlNote(parsed.meta, parsed.content);
+        note.content = updatedContent;
+        note.modified = Date.now();
+        
+        if (this.activeNotePath === note.path) {
+          this.activeNoteContent = updatedContent;
+        }
+        await this.storage.writeNote(note.path, updatedContent);
+      }
+    }
+
+    // Refresh database index
+    await this.refreshNotes();
+
+    // Trigger background sync if enabled
+    if (this.syncEnabled && this.googleConnected) {
+      this.triggerDebouncedSync();
+    }
   }
 
   async readBlob(path: string): Promise<Blob | null> {
@@ -1152,7 +1496,7 @@ class AppState {
     const meta = {
       id: finalPath,
       title: cleanTitle,
-      tags: [],
+      tags: this.selectedTag ? [this.selectedTag] : [],
       pinned: false,
       created: new Date().toISOString(),
       modified: new Date().toISOString()

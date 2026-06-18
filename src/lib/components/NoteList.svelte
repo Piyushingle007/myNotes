@@ -61,6 +61,7 @@
   }
   function clearFilters() {
     appState.activeNotebook = null;
+    appState.selectedTag = null;
     searchInput = '';
   }
 </script>
@@ -105,20 +106,36 @@
         <X size={16} />
       </button>
     </div>
-    <h1 class="list-title">
-      {#if appState.activeNotebook}
-        {appState.activeNotebook}
-      {:else if appState.activeNotePath?.startsWith('Daily Notes/')}
-        Daily Logs
-      {:else}
-        All Notes
+    <div class="flex-row" style="align-items: center; gap: 8px; max-width: 100%;">
+      <h1 class="list-title">
+        {#if appState.selectedTag}
+          Tagged: {appState.selectedTag}
+        {:else if appState.activeNotebook}
+          {appState.activeNotebook}
+        {:else if appState.activeNotePath?.startsWith('Daily Notes/')}
+          Daily Logs
+        {:else}
+          All Notes
+        {/if}
+      </h1>
+      {#if appState.selectedTag}
+        <button 
+          onclick={clearFilters}
+          title="Clear tag filter"
+          aria-label="Clear tag filter"
+          style="background: transparent; border: none; color: var(--text-secondary); cursor: pointer; padding: 4px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; flex-shrink: 0; transition: background-color 0.2s, color 0.2s;"
+          onmouseover={(e) => { e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.08)'; e.currentTarget.style.color = 'var(--text-primary)'; }}
+          onmouseout={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
+        >
+          <X size={16} />
+        </button>
       {/if}
-    </h1>
+    </div>
     
     <div class="header-actions flex-row">
       <span class="count-indicator">
         {appState.filteredNotes.length} notes
-        {#if appState.activeNotebook}
+        {#if appState.activeNotebook || appState.selectedTag}
           <button class="clear-btn" onclick={clearFilters}>• Clear Filter</button>
         {/if}
         {#if appState.googleConnected && appState.syncEnabled}
@@ -224,9 +241,19 @@
       </div>
     {:else}
       <div class="empty-state flex-col">
-        <span class="empty-icon">📄</span>
-        <span class="empty-title">Your library is empty</span>
-        <span class="empty-subtitle">Click "Add Note" to write your first note.</span>
+        {#if appState.selectedTag}
+          <span class="empty-icon">🏷️</span>
+          <span class="empty-title">No notes tagged with #{appState.selectedTag}</span>
+          <span class="empty-subtitle">Create a new note or tag an existing one to see it here.</span>
+        {:else if appState.activeNotebook}
+          <span class="empty-icon">📂</span>
+          <span class="empty-title">This notebook is empty</span>
+          <span class="empty-subtitle">Click "Add Note" to create a note in this notebook.</span>
+        {:else}
+          <span class="empty-icon">📄</span>
+          <span class="empty-title">Your library is empty</span>
+          <span class="empty-subtitle">Click "Add Note" to write your first note.</span>
+        {/if}
       </div>
     {/each}
   </div>

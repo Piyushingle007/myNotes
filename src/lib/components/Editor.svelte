@@ -342,19 +342,22 @@
 	});
 
 	$effect(() => {
-		const mappedNotes = appState.notes.map(n => ({
-			path: n.path,
-			relative_path: n.path,
-			meta: {
-				id: n.path,
-				title: n.name,
-				tags: [],
-				pinned: appState.favorites.includes(n.path),
-				created: new Date(n.created).toISOString(),
-				modified: new Date(n.modified).toISOString()
-			},
-			preview: n.content.substring(0, 100)
-		}));
+		const mappedNotes = appState.notes.map(n => {
+			const parsed = parseHtmlMetadata(n.content);
+			return {
+				path: n.path,
+				relative_path: n.path,
+				meta: {
+					id: n.path,
+					title: n.name,
+					tags: parsed.meta.tags || [],
+					pinned: appState.favorites.includes(n.path),
+					created: new Date(n.created).toISOString(),
+					modified: new Date(n.modified).toISOString()
+				},
+				preview: n.content.substring(0, 100)
+			};
+		});
 		notes.set(mappedNotes);
 	});
 
@@ -456,6 +459,83 @@
 			};
 		}
 	});
+
+	let newTagVal = $state('');
+	let showDropdown = $state(false);
+	let selectedIndex = $state(0);
+
+	let filteredSuggestions = $derived(
+		appState.tags
+			.map(t => t.name)
+			.filter(name => {
+				const currentTags = ($activeNote?.meta?.tags || []).map((t: string) => t.toLowerCase());
+				const normalized = name.toLowerCase();
+				if (currentTags.includes(normalized)) return false;
+				
+				const query = newTagVal.trim().toLowerCase();
+				if (query) return normalized.includes(query);
+				return true;
+			})
+			.sort((a, b) => a.localeCompare(b))
+	);
+
+	$effect(() => {
+		if (newTagVal !== undefined) {
+			selectedIndex = 0;
+		}
+	});
+
+	async function selectSuggestion(suggestion: string) {
+		if ($activeNotePath) {
+			await appState.addTagToNote($activeNotePath, suggestion);
+		}
+		newTagVal = '';
+		showDropdown = false;
+		selectedIndex = 0;
+	}
+
+	async function handleTagInputKeydown(e: KeyboardEvent) {
+		if (e.key === 'ArrowDown') {
+			if (showDropdown && filteredSuggestions.length > 0) {
+				e.preventDefault();
+				selectedIndex = (selectedIndex + 1) % filteredSuggestions.length;
+			} else if (!showDropdown) {
+				showDropdown = true;
+			}
+		} else if (e.key === 'ArrowUp') {
+			if (showDropdown && filteredSuggestions.length > 0) {
+				e.preventDefault();
+				selectedIndex = (selectedIndex - 1 + filteredSuggestions.length) % filteredSuggestions.length;
+			}
+		} else if (e.key === 'Escape') {
+			e.preventDefault();
+			showDropdown = false;
+			selectedIndex = 0;
+			(e.target as HTMLInputElement)?.blur();
+		} else if (e.key === 'Enter' || e.key === ',') {
+			e.preventDefault();
+			if (showDropdown && filteredSuggestions.length > 0 && selectedIndex >= 0 && selectedIndex < filteredSuggestions.length) {
+				const selectedTag = filteredSuggestions[selectedIndex];
+				await selectSuggestion(selectedTag);
+			} else {
+				const cleanName = newTagVal.trim().replace(/,/g, '');
+				if (cleanName) {
+					if ($activeNotePath) {
+						await appState.addTagToNote($activeNotePath, cleanName);
+					}
+					newTagVal = '';
+					showDropdown = false;
+					selectedIndex = 0;
+				}
+			}
+		}
+	}
+
+	async function removeTag(tag: string) {
+		if ($activeNotePath) {
+			await appState.removeTagFromNote($activeNotePath, tag);
+		}
+	}
 
 	function toggleReadMode() {
 		const newReadOnly = !$readOnly;
@@ -1412,19 +1492,39 @@
 
 	// ═══ DIAGRAM (native draw.io-style) editor wiring ═══
 	let diagramModal = $state<{ pos: number | null; data: string } | null>(null);
+	let currentDiagramEditorType = $state<'native' | 'drawio' | 'mermaid' | null>(null);
 	function openDiagramInsert() {
 		diagramModal = { pos: null, data: '' };
+		currentDiagramEditorType = appState.diagramEditorType;
 	}
 	function openDiagramEditor(pos: number, data: string) {
 		diagramModal = { pos, data };
+		const d = decodeDiagram(data);
+		if (d.mermaidCode) {
+			currentDiagramEditorType = 'mermaid';
+		} else if (d.drawioXml) {
+			currentDiagramEditorType = 'drawio';
+		} else if (d.shapes.length > 0) {
+			currentDiagramEditorType = 'native';
+		} else {
+			currentDiagramEditorType = appState.diagramEditorType;
+		}
 	}
 	function cancelDiagram() {
 		diagramModal = null;
+		currentDiagramEditorType = null;
+	}
+	function changeDiagramEditorType(type: 'native' | 'drawio' | 'mermaid', currentData?: string) {
+		currentDiagramEditorType = type;
+		if (currentData !== undefined && diagramModal) {
+			diagramModal.data = currentData;
+		}
 	}
 	function commitDiagram(encoded: string) {
 		if (!editor || !diagramModal) return;
 		const { pos } = diagramModal;
 		diagramModal = null;
+		currentDiagramEditorType = null;
 		if (pos !== null) {
 			const node = editor.state.doc.nodeAt(pos);
 			if (node && node.type.name === 'diagram') {
@@ -2364,6 +2464,9 @@
 							return true;
 						}
 						return false;
+					},
+					ignoreMutation() {
+						return true;
 					},
 					update(updatedNode: any) {
 						if (updatedNode.type.name !== 'diagram') return false;
@@ -7273,14 +7376,46 @@
 						Unfiled Notes
 					{/if}
 				</span>
-				{#if $activeNote.meta.tags?.length > 0}
+				{#if ($activeNote.meta.tags && $activeNote.meta.tags.length > 0) || !$readOnly}
 					<span class="meta-divider">·</span>
 				{/if}
-				{#if $activeNote.meta.tags?.length > 0}
+				{#if ($activeNote.meta.tags && $activeNote.meta.tags.length > 0) || !$readOnly}
 				<span class="note-tags">
-					{#each $activeNote.meta.tags as tag}
-						<span class="note-tag">#{tag}</span>
+					{#each $activeNote.meta.tags || [] as tag}
+						{#if $readOnly}
+							<span class="note-tag">#{tag}</span>
+						{:else}
+							<span class="note-tag edit">
+								<span>#{tag}</span>
+								<button type="button" class="tag-delete-btn" onclick={() => removeTag(tag)} aria-label="Remove tag">✕</button>
+							</span>
+						{/if}
 					{/each}
+					{#if !$readOnly}
+						<div class="tag-input-container">
+							<input
+								type="text"
+								class="note-tag-input"
+								placeholder="+ Add tag"
+								bind:value={newTagVal}
+								onkeydown={handleTagInputKeydown}
+								onfocus={() => showDropdown = true}
+								onblur={() => showDropdown = false}
+							/>
+							{#if showDropdown && filteredSuggestions.length > 0}
+								<ul class="tag-autocomplete-dropdown">
+									{#each filteredSuggestions as suggestion, idx}
+										<li 
+											class:active={idx === selectedIndex}
+											onmousedown={(e) => { e.preventDefault(); selectSuggestion(suggestion); }}
+										>
+											#{suggestion}
+										</li>
+									{/each}
+								</ul>
+							{/if}
+						</div>
+					{/if}
 				</span>
 				{/if}
 			{/if}
@@ -9037,14 +9172,13 @@
 	<GraphView onclose={() => showGraph = false} onnavigate={(path, title) => { showGraph = false; navigateToWikiLink(path, title); }} />
 {/if}
 
-{#if diagramModal}
-	{@const d = decodeDiagram(diagramModal.data)}
-	{#if d.mermaidCode || (appState.diagramEditorType === 'mermaid' && !d.drawioXml && d.shapes.length === 0)}
-		<MermaidEditor data={diagramModal.data} onSave={commitDiagram} onCancel={cancelDiagram} />
-	{:else if d.drawioXml || (appState.diagramEditorType === 'drawio' && d.shapes.length === 0)}
-		<DrawIOEditor data={diagramModal.data} onSave={commitDiagram} onCancel={cancelDiagram} />
+{#if diagramModal && currentDiagramEditorType}
+	{#if currentDiagramEditorType === 'mermaid'}
+		<MermaidEditor data={diagramModal.data} onSave={commitDiagram} onCancel={cancelDiagram} onChangeEditorType={changeDiagramEditorType} />
+	{:else if currentDiagramEditorType === 'drawio'}
+		<DrawIOEditor data={diagramModal.data} onSave={commitDiagram} onCancel={cancelDiagram} onChangeEditorType={changeDiagramEditorType} />
 	{:else}
-		<DiagramEditor data={diagramModal.data} onSave={commitDiagram} onCancel={cancelDiagram} />
+		<DiagramEditor data={diagramModal.data} onSave={commitDiagram} onCancel={cancelDiagram} onChangeEditorType={changeDiagramEditorType} />
 	{/if}
 {/if}
 
@@ -9702,6 +9836,133 @@
 		padding: 1px 7px;
 		border-radius: 10px;
 		letter-spacing: 0.01em;
+	}
+
+	.note-tag.edit {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		padding: 1px 4px 1px 7px;
+		background: rgba(255, 255, 255, 0.06);
+		border: 1px solid rgba(255, 255, 255, 0.1);
+		color: var(--text-secondary);
+		border-radius: 12px;
+		transition: all 0.2s ease;
+		user-select: none;
+	}
+
+	.note-tag.edit:hover {
+		background: rgba(255, 255, 255, 0.1);
+		border-color: rgba(255, 255, 255, 0.2);
+	}
+
+	.tag-delete-btn {
+		background: none;
+		border: none;
+		padding: 0;
+		color: var(--text-tertiary);
+		font-size: 8px;
+		cursor: pointer;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		border-radius: 50%;
+		width: 12px;
+		height: 12px;
+		line-height: 12px;
+		transition: all 0.2s ease;
+	}
+
+	.tag-delete-btn:hover {
+		background: rgba(255, 255, 255, 0.15);
+		color: var(--semantic-error, #ff4d4d);
+	}
+
+	.note-tag-input {
+		background: transparent;
+		border: 1px dashed rgba(255, 255, 255, 0.15);
+		color: var(--text-secondary);
+		font-size: 11px;
+		padding: 1px 8px;
+		border-radius: 10px;
+		outline: none;
+		width: 75px;
+		transition: all 0.2s ease;
+	}
+
+	.note-tag-input:focus {
+		width: 110px;
+		border-color: var(--accent);
+		border-style: solid;
+		color: var(--text-primary);
+		background: rgba(255, 255, 255, 0.03);
+	}
+
+	.note-tag-input::placeholder {
+		color: var(--text-tertiary);
+		opacity: 0.6;
+	}
+
+	.tag-input-container {
+		position: relative;
+		display: inline-block;
+	}
+
+	.tag-autocomplete-dropdown {
+		position: absolute;
+		top: calc(100% + 4px);
+		left: 0;
+		background: #181818;
+		border: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+		border-radius: var(--radius-standard, 8px);
+		box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05);
+		padding: 4px;
+		margin: 0;
+		list-style: none;
+		min-width: 140px;
+		max-height: 180px;
+		overflow-y: auto;
+		z-index: 1000;
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+	}
+
+	.tag-autocomplete-dropdown li {
+		padding: 6px 10px;
+		font-size: 11px;
+		color: var(--text-secondary);
+		border-radius: var(--radius-subtle, 4px);
+		cursor: pointer;
+		user-select: none;
+		transition: background-color 0.15s ease, color 0.15s ease;
+		white-space: nowrap;
+		text-align: left;
+	}
+
+	.tag-autocomplete-dropdown li:hover {
+		background: rgba(255, 255, 255, 0.08);
+		color: var(--text-primary);
+	}
+
+	.tag-autocomplete-dropdown li.active {
+		background: var(--accent, rgba(255, 255, 255, 0.15));
+		color: var(--text-primary);
+		font-weight: 600;
+	}
+
+	.tag-autocomplete-dropdown::-webkit-scrollbar {
+		width: 4px;
+	}
+	.tag-autocomplete-dropdown::-webkit-scrollbar-track {
+		background: transparent;
+	}
+	.tag-autocomplete-dropdown::-webkit-scrollbar-thumb {
+		background: rgba(255, 255, 255, 0.15);
+		border-radius: 2px;
+	}
+	.tag-autocomplete-dropdown::-webkit-scrollbar-thumb:hover {
+		background: rgba(255, 255, 255, 0.3);
 	}
 
 	.toolbar-actions {

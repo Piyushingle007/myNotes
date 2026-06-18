@@ -10,8 +10,17 @@
 		data: string;
 		onSave: (encoded: string) => void;
 		onCancel: () => void;
+		onChangeEditorType?: (type: 'native' | 'drawio' | 'mermaid', currentData?: string) => void;
 	}
-	let { data, onSave, onCancel }: Props = $props();
+	let { data, onSave, onCancel, onChangeEditorType }: Props = $props();
+
+	function handleSwitchEditor(targetType: 'native' | 'drawio' | 'mermaid') {
+		const diagramData = decodeDiagram(data);
+		diagramData.mermaidCode = mermaidCode;
+		diagramData.mermaidSvg = svgContent;
+		const encoded = encodeDiagram(diagramData);
+		onChangeEditorType?.(targetType, encoded);
+	}
 
 	let mermaidCode = $state('');
 	let viewMode = $state<'code' | 'split' | 'preview'>('split');
@@ -278,9 +287,16 @@
 		
 		<!-- Header Toolbar -->
 		<div class="mermaid-header flex-row">
-			<div class="header-left flex-row" style="gap: 12px;">
+			<div class="header-left flex-row" style="gap: 12px; align-items: center;">
 				<span class="logo">📊</span>
 				<span class="title">Mermaid Diagram Editor</span>
+				{#if onChangeEditorType}
+					<div class="editor-host-switcher flex-row">
+						<button type="button" class="switcher-btn active" disabled>Mermaid</button>
+						<button type="button" class="switcher-btn" onclick={() => handleSwitchEditor('drawio')}>Draw.io</button>
+						<button type="button" class="switcher-btn" onclick={() => handleSwitchEditor('native')}>Native</button>
+					</div>
+				{/if}
 			</div>
 			
 			<div class="header-center flex-row" style="gap: 16px;">
@@ -415,6 +431,38 @@
 </div>
 
 <style>
+	.editor-host-switcher {
+		display: inline-flex;
+		align-items: center;
+		background: rgba(255, 255, 255, 0.05);
+		border: 1px solid rgba(255, 255, 255, 0.1);
+		border-radius: 6px;
+		padding: 2px;
+		gap: 2px;
+	}
+	.switcher-btn {
+		background: transparent;
+		border: none;
+		color: #aaa;
+		font-size: 11px;
+		font-weight: 600;
+		padding: 4px 10px;
+		border-radius: 4px;
+		cursor: pointer;
+		transition: all 0.15s ease;
+	}
+	.switcher-btn:hover {
+		color: #fff;
+		background: rgba(255, 255, 255, 0.05);
+	}
+	.switcher-btn.active {
+		color: #fff;
+		background: var(--accent, #00adb5);
+	}
+	.switcher-btn:disabled {
+		cursor: default;
+	}
+
 	.mermaid-overlay {
 		position: fixed;
 		inset: 0;

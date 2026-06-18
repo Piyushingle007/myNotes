@@ -1,6 +1,7 @@
 <script lang="ts">
-  import { appState, generateHtmlNote } from '../stores/appState.svelte';
-  import { Folder, Plus, Trash2, Calendar, Settings, Library, Palette, FolderOpen, X, ChevronRight, FileText, Download, Cloud, RefreshCw, CloudOff } from 'lucide-svelte';
+  import { appState, generateHtmlNote, parseHtmlMetadata } from '../stores/appState.svelte';
+  import type { Tag } from '../storage/TagSchema';
+  import { Folder, Plus, Trash2, Calendar, Settings, Library, Palette, FolderOpen, X, ChevronRight, FileText, Download, Cloud, RefreshCw, CloudOff, Tag as TagIcon, Edit2 } from 'lucide-svelte';
   import GoogleLogo from './GoogleLogo.svelte';
 
   let newNotebookName = $state('');
@@ -9,6 +10,7 @@
   function selectNotebook(notebook: string | null) {
     appState.activeNotebook = notebook;
     appState.activeTab = 'home';
+    appState.selectedTag = null;
   }
 
   async function handleDesktopDailyNote() {
@@ -108,6 +110,74 @@
     event.stopPropagation();
     if (confirm(`Are you sure you want to delete folder "${notebook}" and all its notes?`)) {
       await appState.deleteNotebook(notebook);
+    }
+  }
+
+  let tagsCollapsed = $state(false);
+
+  const sortedTags = $derived(
+    [...appState.tags].sort((a: Tag, b: Tag) => a.name.localeCompare(b.name))
+  );
+
+  function getTagCount(tag: Tag): number {
+    const normalized = tag.normalizedName || tag.name.toLowerCase();
+    return appState.notes.filter(note => {
+      const parsed = parseHtmlMetadata(note.content);
+      return (parsed.meta.tags || []).map((t: string) => t.toLowerCase()).includes(normalized);
+    }).length;
+  }
+
+  function handleTagClick(tagName: string) {
+    if (appState.selectedTag === tagName) {
+      appState.selectedTag = null;
+    } else {
+      appState.selectedTag = tagName;
+      appState.activeNotebook = null;
+      appState.activeTab = 'home';
+    }
+  }
+
+  async function handleDeleteTag(tagName: string, event: Event) {
+    event.stopPropagation();
+    const count = getTagCount({ name: tagName } as Tag);
+    const message = count > 0 
+      ? `Are you sure you want to delete tag "${tagName}"? This will remove it from ${count} note(s).`
+      : `Are you sure you want to delete tag "${tagName}"?`;
+      
+    if (confirm(message)) {
+      await appState.deleteTag(tagName);
+      if (appState.selectedTag === tagName) {
+        appState.selectedTag = null;
+      }
+    }
+  }
+
+  async function handleRenameTag(tagName: string, event: Event) {
+    event.stopPropagation();
+    const newName = prompt(`Rename tag "${tagName}" to:`, tagName);
+    if (!newName) return;
+    const trimmed = newName.trim();
+    if (!trimmed || trimmed === tagName) return;
+    
+    // Check if newName already exists
+    const normalizedNew = trimmed.toLowerCase();
+    const alreadyExists = appState.tags.some(t => (t.normalizedName || t.name.toLowerCase()) === normalizedNew);
+    
+    if (alreadyExists) {
+      if (!confirm(`Tag "${trimmed}" already exists. Do you want to merge "${tagName}" into "${trimmed}"?`)) {
+        return;
+      }
+    }
+    
+    try {
+      await appState.renameTag(tagName, trimmed);
+      if (appState.selectedTag === tagName) {
+        appState.selectedTag = trimmed;
+      }
+      appState.showToast(`Tag renamed successfully!`, 'success');
+    } catch (e) {
+      console.error(e);
+      appState.showToast(`Failed to rename tag.`, 'error');
     }
   }
 </script>
@@ -254,6 +324,67 @@
         </div>
       {/each}
     </div>
+  </div>
+
+  <!-- Tags Section -->
+  <div class="section-container flex-col tags-container" style="flex: 0.8; margin-bottom: 12px;">
+    <div 
+      class="section-header flex-row" 
+      role="button"
+      tabindex="0"
+      onclick={() => tagsCollapsed = !tagsCollapsed}
+      onkeydown={(e) => e.key === 'Enter' && (tagsCollapsed = !tagsCollapsed)}
+      style="cursor: pointer; justify-content: space-between; width: 100%;"
+    >
+      <div class="flex-row" style="flex-grow: 1;">
+        <TagIcon size={18} class="sec-icon" />
+        <span class="section-title">Tags</span>
+      </div>
+      <div class="section-header-arrow" class:collapsed={tagsCollapsed} style="display: flex; align-items: center; color: var(--text-secondary);">
+        <ChevronRight size={16} />
+      </div>
+    </div>
+
+    {#if !tagsCollapsed}
+      <div class="list-scroll">
+        {#each sortedTags as tag}
+          {@const count = getTagCount(tag)}
+          <div 
+            class="nav-item flex-row" 
+            class:active={appState.selectedTag === tag.name}
+            role="button"
+            tabindex="0"
+            onclick={() => handleTagClick(tag.name)}
+            onkeydown={(e) => e.key === 'Enter' && handleTagClick(tag.name)}
+            style="padding: 6px 8px; gap: 8px; cursor: pointer;"
+          >
+            <div class="playlist-art" style="width: 28px; height: 28px; font-size: 14px; background-color: #282828;">#</div>
+            <div class="nav-text flex-col">
+              <span class="title" style="font-size: 12px; font-weight: 600;">{tag.name}</span>
+            </div>
+            <span class="tag-count-badge">{count}</span>
+            <button 
+              class="tag-rename-btn" 
+              onclick={(e) => handleRenameTag(tag.name, e)}
+              aria-label="Rename tag"
+              title="Rename tag"
+            >
+              <Edit2 size={13} />
+            </button>
+            <button 
+              class="tag-delete-btn" 
+              onclick={(e) => handleDeleteTag(tag.name, e)}
+              aria-label="Delete tag"
+              title="Delete tag"
+            >
+              <Trash2 size={13} />
+            </button>
+          </div>
+        {:else}
+          <span class="empty-text">No tags found</span>
+        {/each}
+      </div>
+    {/if}
   </div>
 
   <!-- Daily Logs Section -->
@@ -615,8 +746,11 @@
   }
 
   @media (max-width: 768px) {
-    .item-delete-btn {
+    .item-delete-btn, .tag-rename-btn, .tag-delete-btn {
       opacity: 1;
+    }
+    .tag-count-badge {
+      display: none;
     }
   }
 
@@ -636,5 +770,73 @@
     0% { opacity: 0.6; }
     50% { opacity: 1; }
     100% { opacity: 0.6; }
+  }
+
+  .tags-container {
+    flex: 0.8;
+  }
+
+  .tag-count-badge {
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--text-secondary);
+    background-color: var(--bg-mid-dark);
+    padding: 2px 6px;
+    border-radius: 999px;
+    transition: opacity 0.2s, background-color 0.2s, color 0.2s;
+  }
+
+  .nav-item:hover .tag-count-badge {
+    opacity: 0;
+  }
+
+  .tag-rename-btn, .tag-delete-btn {
+    opacity: 0;
+    transition: opacity 0.2s, color 0.2s, background-color 0.2s;
+    color: var(--text-secondary);
+    padding: 4px;
+    border-radius: 4px;
+    position: absolute;
+    background: none;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .tag-delete-btn {
+    right: 8px;
+  }
+
+  .tag-rename-btn {
+    right: 32px;
+  }
+
+  .nav-item:hover .tag-rename-btn,
+  .nav-item:hover .tag-delete-btn {
+    opacity: 1;
+  }
+
+  .tag-delete-btn:hover {
+    color: var(--semantic-error, #ff4444);
+    background-color: rgba(255, 255, 255, 0.05);
+  }
+
+  .tag-rename-btn:hover {
+    color: var(--accent);
+    background-color: rgba(255, 255, 255, 0.05);
+  }
+
+  .section-header-arrow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    transform: rotate(90deg); /* Expanded by default */
+  }
+
+  .section-header-arrow.collapsed {
+    transform: rotate(0deg); /* Collapsed */
   }
 </style>

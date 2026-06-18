@@ -4,6 +4,7 @@
   import AppLayout from './lib/components/AppLayout.svelte';
   import { FolderOpen, Play } from 'lucide-svelte';
   import GoogleLogo from './lib/components/GoogleLogo.svelte';
+  import { runTagDbTest } from './lib/storage/test_tag_db';
 
   let initializing = $state(true);
 
@@ -95,6 +96,8 @@
     // Check if we can auto-init sandbox or check active vault
     try {
       await appState.initSandbox();
+      // Execute the TagDatabase schema and constraint test
+      await runTagDbTest();
     } catch (e) {
       console.warn('Sandbox init failed, user will select folder manually', e);
     } finally {

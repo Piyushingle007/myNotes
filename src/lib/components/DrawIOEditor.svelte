@@ -6,8 +6,18 @@
 		data: string;
 		onSave: (encoded: string) => void;
 		onCancel: () => void;
+		onChangeEditorType?: (type: 'native' | 'drawio' | 'mermaid', currentData?: string) => void;
 	}
-	let { data, onSave, onCancel }: Props = $props();
+	let { data, onSave, onCancel, onChangeEditorType }: Props = $props();
+
+	function handleSwitchEditor(targetType: 'native' | 'drawio' | 'mermaid') {
+		const diagramData = decodeDiagram(data);
+		if (lastXml) {
+			diagramData.drawioXml = lastXml;
+		}
+		const encoded = encodeDiagram(diagramData);
+		onChangeEditorType?.(targetType, encoded);
+	}
 
 	let iframeRef = $state<HTMLIFrameElement | null>(null);
 	let isLoading = $state(true);
@@ -256,7 +266,16 @@
 <div class="drawio-overlay" role="dialog">
 	<div class="drawio-modal">
 		<div class="drawio-header">
-			<span class="title">✏️ Edit Diagram</span>
+			<div style="display: flex; align-items: center; gap: 16px;">
+				<span class="title">✏️ Edit Diagram</span>
+				{#if onChangeEditorType}
+					<div class="editor-host-switcher">
+						<button type="button" class="switcher-btn" onclick={() => handleSwitchEditor('mermaid')}>Mermaid</button>
+						<button type="button" class="switcher-btn active" disabled>Draw.io</button>
+						<button type="button" class="switcher-btn" onclick={() => handleSwitchEditor('native')}>Native</button>
+					</div>
+				{/if}
+			</div>
 			<div class="actions">
 				<button class="btn-cancel" onclick={handleCancel}>Cancel</button>
 				<button class="btn-save" onclick={saveAndClose} disabled={isSaving || !isOnline}>
@@ -296,6 +315,38 @@
 </div>
 
 <style>
+	.editor-host-switcher {
+		display: inline-flex;
+		align-items: center;
+		background: rgba(255, 255, 255, 0.05);
+		border: 1px solid rgba(255, 255, 255, 0.1);
+		border-radius: 6px;
+		padding: 2px;
+		gap: 2px;
+	}
+	.switcher-btn {
+		background: transparent;
+		border: none;
+		color: #aaa;
+		font-size: 11px;
+		font-weight: 600;
+		padding: 4px 10px;
+		border-radius: 4px;
+		cursor: pointer;
+		transition: all 0.15s ease;
+	}
+	.switcher-btn:hover {
+		color: #fff;
+		background: rgba(255, 255, 255, 0.05);
+	}
+	.switcher-btn.active {
+		color: #fff;
+		background: var(--accent, #00adb5);
+	}
+	.switcher-btn:disabled {
+		cursor: default;
+	}
+
 	.drawio-overlay {
 		position: fixed;
 		inset: 0;
