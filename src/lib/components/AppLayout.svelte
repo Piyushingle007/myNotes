@@ -385,6 +385,30 @@
                 <span>Move or Copy Note</span>
               </button>
 
+              <!-- Rename Note -->
+              <button
+                class="menu-item flex-row"
+                onclick={() => {
+                  showMobileMoreMenu = false;
+                  if (appState.activeNotePath) {
+                    const currentName = appState.activeNote?.name || '';
+                    const newTitle = prompt('Rename note title & file name:', currentName);
+                    if (!newTitle) return;
+                    const trimmed = newTitle.trim();
+                    if (!trimmed || trimmed === currentName) return;
+                    appState.renameNote(appState.activeNotePath, trimmed)
+                      .then(() => appState.showToast('Note renamed successfully', 'success'))
+                      .catch(err => {
+                        console.error(err);
+                        appState.showToast('Failed to rename note', 'error');
+                      });
+                  }
+                }}
+              >
+                <Edit3 size={15} class="menu-item-icon" />
+                <span>Rename Note</span>
+              </button>
+
               <!-- 7. Delete Note -->
               <button
                 class="menu-item flex-row delete-item"
@@ -470,15 +494,63 @@
               <h2 class="section-title">Favorites</h2>
               <div class="recent-cards-list flex-col" style="gap: 12px;">
                 {#each appState.notes.filter(n => appState.favorites.includes(n.path)) as note}
-                  <button class="recent-note-card flex-col" onclick={() => appState.selectNote(note.path)}>
-                    <div class="card-header-row flex-row" style="justify-content: space-between; width: 100%;">
-                      <span class="card-note-title">{note.name}</span>
-                      <span class="card-note-time">{new Date(note.modified).toLocaleDateString(undefined, {month: 'short', day: 'numeric'})}</span>
+                  <div 
+                    class="recent-note-card flex-col" 
+                    onclick={() => appState.selectNote(note.path)}
+                    role="button"
+                    tabindex="0"
+                    onkeydown={(e) => e.key === 'Enter' && appState.selectNote(note.path)}
+                    style="cursor: pointer;"
+                  >
+                    <div class="card-header-row flex-row" style="justify-content: space-between; width: 100%; align-items: center;">
+                      <span class="card-note-title" style="flex-grow: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 8px;">{note.name}</span>
+                      <div class="flex-row" style="gap: 8px; align-items: center; flex-shrink: 0;">
+                        <span class="card-note-time">{new Date(note.modified).toLocaleDateString(undefined, {month: 'short', day: 'numeric'})}</span>
+                        <!-- Rename button -->
+                        <button 
+                          class="card-action-btn flex-row" 
+                          onclick={(e) => {
+                            e.stopPropagation();
+                            const newTitle = prompt('Rename note title & file name:', note.name);
+                            if (!newTitle) return;
+                            const trimmed = newTitle.trim();
+                            if (!trimmed || trimmed === note.name) return;
+                            appState.renameNote(note.path, trimmed)
+                              .then(() => appState.showToast('Note renamed successfully', 'success'))
+                              .catch(err => {
+                                console.error(err);
+                                appState.showToast('Failed to rename note', 'error');
+                              });
+                          }}
+                          aria-label="Rename note"
+                          title="Rename note"
+                          style="background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: 4px; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center;"
+                        >
+                          <Edit3 size={14} />
+                        </button>
+                        <!-- Delete button -->
+                        <button 
+                          class="card-action-btn flex-row" 
+                          onclick={(e) => {
+                            e.stopPropagation();
+                            if (confirm('Are you sure you want to delete this note?')) {
+                              appState.deleteNote(note.path);
+                            }
+                          }}
+                          aria-label="Delete note"
+                          title="Delete note"
+                          style="background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: 4px; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center;"
+                          onmouseover={(e) => e.currentTarget.style.color = 'var(--semantic-error, #ff4d4d)'}
+                          onmouseout={(e) => e.currentTarget.style.color = 'var(--text-secondary)'}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
                     </div>
                     {#if note.path.includes('/')}
                       <span class="card-notebook-badge">{note.path.split('/')[0]}</span>
                     {/if}
-                  </button>
+                  </div>
                 {:else}
                   <div class="empty-cards" style="font-size: 12px; color: var(--text-tertiary); text-align: center; padding: 10px 0;">No favorites starred yet.</div>
                 {/each}
@@ -490,15 +562,63 @@
               <h2 class="section-title">Recent Notes</h2>
               <div class="recent-cards-list flex-col" style="gap: 12px;">
                 {#each appState.recentNotes as note}
-                  <button class="recent-note-card flex-col" onclick={() => appState.selectNote(note.path)}>
-                    <div class="card-header-row flex-row" style="justify-content: space-between; width: 100%;">
-                      <span class="card-note-title">{note.name}</span>
-                      <span class="card-note-time">{new Date(note.modified).toLocaleDateString(undefined, {month: 'short', day: 'numeric'})}</span>
+                  <div 
+                    class="recent-note-card flex-col" 
+                    onclick={() => appState.selectNote(note.path)}
+                    role="button"
+                    tabindex="0"
+                    onkeydown={(e) => e.key === 'Enter' && appState.selectNote(note.path)}
+                    style="cursor: pointer;"
+                  >
+                    <div class="card-header-row flex-row" style="justify-content: space-between; width: 100%; align-items: center;">
+                      <span class="card-note-title" style="flex-grow: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 8px;">{note.name}</span>
+                      <div class="flex-row" style="gap: 8px; align-items: center; flex-shrink: 0;">
+                        <span class="card-note-time">{new Date(note.modified).toLocaleDateString(undefined, {month: 'short', day: 'numeric'})}</span>
+                        <!-- Rename button -->
+                        <button 
+                          class="card-action-btn flex-row" 
+                          onclick={(e) => {
+                            e.stopPropagation();
+                            const newTitle = prompt('Rename note title & file name:', note.name);
+                            if (!newTitle) return;
+                            const trimmed = newTitle.trim();
+                            if (!trimmed || trimmed === note.name) return;
+                            appState.renameNote(note.path, trimmed)
+                              .then(() => appState.showToast('Note renamed successfully', 'success'))
+                              .catch(err => {
+                                console.error(err);
+                                appState.showToast('Failed to rename note', 'error');
+                              });
+                          }}
+                          aria-label="Rename note"
+                          title="Rename note"
+                          style="background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: 4px; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center;"
+                        >
+                          <Edit3 size={14} />
+                        </button>
+                        <!-- Delete button -->
+                        <button 
+                          class="card-action-btn flex-row" 
+                          onclick={(e) => {
+                            e.stopPropagation();
+                            if (confirm('Are you sure you want to delete this note?')) {
+                              appState.deleteNote(note.path);
+                            }
+                          }}
+                          aria-label="Delete note"
+                          title="Delete note"
+                          style="background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: 4px; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center;"
+                          onmouseover={(e) => e.currentTarget.style.color = 'var(--semantic-error, #ff4d4d)'}
+                          onmouseout={(e) => e.currentTarget.style.color = 'var(--text-secondary)'}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
                     </div>
                     {#if note.path.includes('/')}
                       <span class="card-notebook-badge">{note.path.split('/')[0]}</span>
                     {/if}
-                  </button>
+                  </div>
                 {:else}
                   <div class="empty-cards" style="font-size: 12px; color: var(--text-tertiary); text-align: center; padding: 20px 0;">No notes found. Click the + button below to create one!</div>
                 {/each}
@@ -633,17 +753,63 @@
                   <span class="section-title">Recent Notes</span>
                   <div class="recent-list flex-col" style="gap: 6px; width: 100%;">
                     {#each appState.recentNotes.slice(0, 8) as note}
-                      <button 
+                      <div 
                         class="search-result-row flex-row" 
                         onclick={() => appState.selectNote(note.path)}
-                        style="width: 100%; text-align: left;"
+                        style="width: 100%; text-align: left; align-items: center; justify-content: space-between; cursor: pointer;"
+                        role="button"
+                        tabindex="0"
+                        onkeydown={(e) => e.key === 'Enter' && appState.selectNote(note.path)}
                       >
-                        <div class="row-art">📄</div>
-                        <div class="row-info flex-col">
-                          <span class="row-title">{note.name}</span>
-                          <span class="row-sub">{note.path}</span>
+                        <div class="flex-row" style="gap: 12px; align-items: center; flex-grow: 1; min-width: 0;">
+                          <div class="row-art">📄</div>
+                          <div class="row-info flex-col" style="min-width: 0; flex-grow: 1;">
+                            <span class="row-title" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{note.name}</span>
+                            <span class="row-sub" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{note.path}</span>
+                          </div>
                         </div>
-                      </button>
+                        <div class="flex-row" style="gap: 6px; align-items: center; flex-shrink: 0; margin-left: 8px;">
+                          <!-- Rename button -->
+                          <button 
+                            class="row-action-btn flex-row" 
+                            onclick={(e) => {
+                              e.stopPropagation();
+                              const newTitle = prompt('Rename note title & file name:', note.name);
+                              if (!newTitle) return;
+                              const trimmed = newTitle.trim();
+                              if (!trimmed || trimmed === note.name) return;
+                              appState.renameNote(note.path, trimmed)
+                                .then(() => appState.showToast('Note renamed successfully', 'success'))
+                                .catch(err => {
+                                  console.error(err);
+                                  appState.showToast('Failed to rename note', 'error');
+                                });
+                            }}
+                            aria-label="Rename note"
+                            title="Rename note"
+                            style="background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: 4px; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center;"
+                          >
+                            <Edit3 size={14} />
+                          </button>
+                          <!-- Delete button -->
+                          <button 
+                            class="row-action-btn flex-row" 
+                            onclick={(e) => {
+                              e.stopPropagation();
+                              if (confirm('Are you sure you want to delete this note?')) {
+                                appState.deleteNote(note.path);
+                              }
+                            }}
+                            aria-label="Delete note"
+                            title="Delete note"
+                            style="background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: 4px; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center;"
+                            onmouseover={(e) => e.currentTarget.style.color = 'var(--semantic-error, #ff4d4d)'}
+                            onmouseout={(e) => e.currentTarget.style.color = 'var(--text-secondary)'}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </div>
                     {:else}
                       <div class="empty-list" style="font-size: 12px; color: var(--text-tertiary); text-align: center; padding: 12px 0;">No notes found.</div>
                     {/each}
@@ -695,17 +861,61 @@
               <!-- Notes list inside selected folder -->
               <div class="mobile-notes-list flex-col" style="width: 100%; gap: 10px;">
                 {#each appState.filteredNotes as note}
-                  <button 
+                  <div 
                     class="recent-note-card flex-col" 
                     onclick={() => appState.selectNote(note.path)}
-                    style="background-color: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-comfortable); padding: 14px 16px; text-align: left; width: 100%; gap: 8px;"
+                    role="button"
+                    tabindex="0"
+                    onkeydown={(e) => e.key === 'Enter' && appState.selectNote(note.path)}
+                    style="background-color: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-comfortable); padding: 14px 16px; text-align: left; width: 100%; gap: 8px; cursor: pointer;"
                   >
-                    <div class="card-header-row flex-row" style="justify-content: space-between; width: 100%;">
-                      <span class="card-note-title" style="font-weight: 700; font-size: 14px; color: var(--text-primary);">{note.name}</span>
-                      <span class="card-note-time" style="font-size: 10px; color: var(--text-tertiary);">{new Date(note.modified).toLocaleDateString(undefined, {month: 'short', day: 'numeric'})}</span>
+                    <div class="card-header-row flex-row" style="justify-content: space-between; width: 100%; align-items: center;">
+                      <span class="card-note-title" style="font-weight: 700; font-size: 14px; color: var(--text-primary); flex-grow: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 8px;">{note.name}</span>
+                      <div class="flex-row" style="gap: 8px; align-items: center; flex-shrink: 0;">
+                        <span class="card-note-time" style="font-size: 10px; color: var(--text-tertiary);">{new Date(note.modified).toLocaleDateString(undefined, {month: 'short', day: 'numeric'})}</span>
+                        <!-- Rename button -->
+                        <button 
+                          class="card-action-btn flex-row" 
+                          onclick={(e) => {
+                            e.stopPropagation();
+                            const newTitle = prompt('Rename note title & file name:', note.name);
+                            if (!newTitle) return;
+                            const trimmed = newTitle.trim();
+                            if (!trimmed || trimmed === note.name) return;
+                            appState.renameNote(note.path, trimmed)
+                              .then(() => appState.showToast('Note renamed successfully', 'success'))
+                              .catch(err => {
+                                console.error(err);
+                                appState.showToast('Failed to rename note', 'error');
+                              });
+                          }}
+                          aria-label="Rename note"
+                          title="Rename note"
+                          style="background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: 4px; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center;"
+                        >
+                          <Edit3 size={14} />
+                        </button>
+                        <!-- Delete button -->
+                        <button 
+                          class="card-action-btn flex-row" 
+                          onclick={(e) => {
+                            e.stopPropagation();
+                            if (confirm('Are you sure you want to delete this note?')) {
+                              appState.deleteNote(note.path);
+                            }
+                          }}
+                          aria-label="Delete note"
+                          title="Delete note"
+                          style="background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: 4px; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center;"
+                          onmouseover={(e) => e.currentTarget.style.color = 'var(--semantic-error, #ff4d4d)'}
+                          onmouseout={(e) => e.currentTarget.style.color = 'var(--text-secondary)'}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
                     </div>
                     <p class="card-note-snippet" style="font-size: 12px; color: var(--text-secondary); line-height: 1.5; margin: 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">{(note.content || '').replace(/[#*`_\-\[\]()]/g, ' ').slice(0, 80)}...</p>
-                  </button>
+                  </div>
                 {:else}
                   <div class="empty-lib flex-col" style="align-items: center; justify-content: center; gap: 8px; padding: 40px 0; color: var(--text-tertiary);">
                     <span style="font-size: 32px;">📂</span>
@@ -736,13 +946,63 @@
               <div class="daily-history flex-col">
                 <span class="section-title">Past Logs</span>
                 {#each appState.notes.filter(n => n.path.startsWith('Daily Notes/')) as note}
-                  <button class="search-result-row flex-row" onclick={() => appState.selectNote(note.path)}>
-                    <div class="row-art">📅</div>
-                    <div class="row-info flex-col">
-                      <span class="row-title">{note.name}</span>
-                      <span class="row-sub">Daily Log</span>
+                  <div 
+                    class="search-result-row flex-row" 
+                    onclick={() => appState.selectNote(note.path)}
+                    style="width: 100%; text-align: left; align-items: center; justify-content: space-between; cursor: pointer;"
+                    role="button"
+                    tabindex="0"
+                    onkeydown={(e) => e.key === 'Enter' && appState.selectNote(note.path)}
+                  >
+                    <div class="flex-row" style="gap: 12px; align-items: center; flex-grow: 1; min-width: 0;">
+                      <div class="row-art">📅</div>
+                      <div class="row-info flex-col" style="min-width: 0; flex-grow: 1;">
+                        <span class="row-title" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{note.name}</span>
+                        <span class="row-sub" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Daily Log</span>
+                      </div>
                     </div>
-                  </button>
+                    <div class="flex-row" style="gap: 6px; align-items: center; flex-shrink: 0; margin-left: 8px;">
+                      <!-- Rename button -->
+                      <button 
+                        class="row-action-btn flex-row" 
+                        onclick={(e) => {
+                          e.stopPropagation();
+                          const newTitle = prompt('Rename note title & file name:', note.name);
+                          if (!newTitle) return;
+                          const trimmed = newTitle.trim();
+                          if (!trimmed || trimmed === note.name) return;
+                          appState.renameNote(note.path, trimmed)
+                            .then(() => appState.showToast('Note renamed successfully', 'success'))
+                            .catch(err => {
+                              console.error(err);
+                              appState.showToast('Failed to rename note', 'error');
+                            });
+                        }}
+                        aria-label="Rename note"
+                        title="Rename note"
+                        style="background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: 4px; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center;"
+                      >
+                        <Edit3 size={14} />
+                      </button>
+                      <!-- Delete button -->
+                      <button 
+                        class="row-action-btn flex-row" 
+                        onclick={(e) => {
+                          e.stopPropagation();
+                          if (confirm('Are you sure you want to delete this note?')) {
+                            appState.deleteNote(note.path);
+                          }
+                        }}
+                        aria-label="Delete note"
+                        title="Delete note"
+                        style="background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: 4px; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center;"
+                        onmouseover={(e) => e.currentTarget.style.color = 'var(--semantic-error, #ff4d4d)'}
+                        onmouseout={(e) => e.currentTarget.style.color = 'var(--text-secondary)'}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </div>
                 {:else}
                   <span class="empty-text">No daily notes written yet</span>
                 {/each}

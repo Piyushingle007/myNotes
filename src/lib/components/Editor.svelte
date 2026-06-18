@@ -984,8 +984,20 @@
 			const left = (fromCoords.left + toCoords.left) / 2;
 			const top = Math.min(fromCoords.top, toCoords.top);
 			
+			// Clamp selection center to prevent floating bubble menu from going off-screen horizontally
+			const menuWidth = 272; // Width of bubble menu container
+			const halfWidth = menuWidth / 2;
+			let clampedLeft = left;
+			if (rect.width > menuWidth + 16) {
+				const minLeft = rect.left + halfWidth + 8;
+				const maxLeft = rect.right - halfWidth - 8;
+				clampedLeft = Math.max(minLeft, Math.min(maxLeft, left));
+			} else {
+				clampedLeft = rect.left + rect.width / 2;
+			}
+
 			// Convert to editor-body relative coordinates, adjusting for borders, padding, and scroll
-			const x = left - rect.left - borderLeft - paddingLeft + editorBody.scrollLeft;
+			const x = clampedLeft - rect.left - borderLeft - paddingLeft + editorBody.scrollLeft;
 			const y = top - rect.top - borderTop - paddingTop + editorBody.scrollTop - 44; // 44px above selection
 			
 			bubbleMenuCoords = { x, y };
@@ -3177,7 +3189,7 @@
 		},
 	});
 
-	let codeLangDropdown = $state<{ pos: number; x: number; y: number; current: string; openUp?: boolean } | null>(null);
+	let codeLangDropdown = $state<{ pos: number; x: number; y: number; current: string; openUp?: boolean; alignRight?: boolean } | null>(null);
 	let codeLangSearchQuery = $state('');
 	let filteredCodeLanguages = $derived.by(() => {
 		const q = codeLangSearchQuery.trim().toLowerCase();
@@ -3189,12 +3201,15 @@
 		const rect = triggerEl.getBoundingClientRect();
 		const spaceBelow = window.innerHeight - rect.bottom;
 		const openUp = spaceBelow < 280 && rect.top > 280;
+		const dropdownWidth = 200;
+		const alignRight = rect.left + dropdownWidth > window.innerWidth;
 		codeLangDropdown = { 
 			pos, 
-			x: rect.right, 
+			x: alignRight ? rect.right : rect.left, 
 			y: openUp ? rect.top - 4 : rect.bottom + 4, 
 			current,
-			openUp
+			openUp,
+			alignRight
 		};
 		codeLangSearchQuery = '';
 	}
@@ -8586,7 +8601,7 @@
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div class="code-lang-overlay" onclick={closeCodeLangDropdown}>
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
-		<div class="code-lang-dropdown" class:open-up={codeLangDropdown.openUp} style="left: {codeLangDropdown.x}px; top: {codeLangDropdown.y}px" onclick={(e) => e.stopPropagation()}>
+		<div class="code-lang-dropdown" class:open-up={codeLangDropdown.openUp} class:align-right={codeLangDropdown.alignRight} style="left: {codeLangDropdown.x}px; top: {codeLangDropdown.y}px" onclick={(e) => e.stopPropagation()}>
 			<div class="code-lang-search-wrapper">
 				<input
 					type="text"
@@ -10837,6 +10852,10 @@
 	}
 
 	.code-lang-dropdown.open-up {
+		transform: translateY(-100%) !important;
+	}
+
+	.code-lang-dropdown.open-up.align-right {
 		transform: translate(-100%, -100%) !important;
 	}
 
@@ -10946,8 +10965,8 @@
 		background: var(--bg-primary);
 		border: 1px solid var(--border);
 		border-radius: 8px;
-		min-width: 480px;
-		max-width: 80vw;
+		width: 480px;
+		max-width: 90vw;
 		display: flex;
 		flex-direction: column;
 		gap: 12px;
@@ -11044,6 +11063,33 @@
 	.math-modal-actions button:disabled {
 		opacity: 0.5;
 		cursor: not-allowed;
+	}
+
+	@media (max-width: 768px) {
+		.math-modal {
+			width: calc(100% - 32px);
+			max-width: 480px;
+			padding: 14px;
+			gap: 10px;
+		}
+		.math-modal-footer {
+			flex-direction: column;
+			align-items: stretch;
+			gap: 8px;
+		}
+		.math-modal-hint {
+			display: none;
+		}
+		.math-modal-actions {
+			display: flex;
+			gap: 8px;
+			width: 100%;
+		}
+		.math-modal-actions button {
+			flex: 1;
+			text-align: center;
+			padding: 8px 14px;
+		}
 	}
 
 	.viewer-banner {
@@ -11193,7 +11239,6 @@
 
 	.code-lang-dropdown {
 		position: fixed;
-		transform: translateX(-100%);
 		background: var(--bg-surface) !important;
 		border: 1px solid var(--border-color);
 		border-radius: 8px;
@@ -11204,6 +11249,10 @@
 		flex-direction: column;
 		min-width: 200px;
 		z-index: 2001;
+	}
+
+	.code-lang-dropdown.align-right {
+		transform: translateX(-100%);
 	}
 
 	.code-lang-search-wrapper {
