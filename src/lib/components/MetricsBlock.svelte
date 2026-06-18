@@ -15,9 +15,8 @@
 	// Local reactive state for rows
 	let rows: Array<{ id: string; checked: boolean; label: string }> = $state([]);
 	let showSettings = $state(false);
-
-	// Regular expression to match integers and decimals
-	const NUMBER_REGEX = /(?<!\d)-?(?:\d+(?:\.\d+)?|\.\d+)/g;
+	let editingRowIndex = $state<number | null>(null);
+	let isInsertingDate = false;
 
 	// Strip common date formats so they aren't parsed as numbers/negative signs
 	function cleanText(text: string): string {
@@ -31,14 +30,197 @@
 
 	function getRowNumbers(text: string): number[] {
 		const cleaned = cleanText(text);
-		const matches = cleaned.match(NUMBER_REGEX);
-		if (!matches) return [];
-		return matches.map(m => parseFloat(m)).filter(n => !isNaN(n));
+		const regex = /-?(?:\d+(?:\.\d+)?|\.\d+)/g;
+		const numbers: number[] = [];
+		let match;
+		
+		while ((match = regex.exec(cleaned)) !== null) {
+			const valStr = match[0];
+			const start = match.index;
+			const end = regex.lastIndex;
+			
+			let isTouching = false;
+			
+			if (start > 0) {
+				const prevChar = cleaned[start - 1];
+				if (/[a-zA-Z0-9]/.test(prevChar)) {
+					isTouching = true;
+				}
+				if (/[-+/]/.test(prevChar)) {
+					let idx = start - 1;
+					while (idx > 0 && /\s/.test(cleaned[idx - 1])) {
+						idx--;
+					}
+					if (idx > 0 && /[a-zA-Z0-9]/.test(cleaned[idx - 1])) {
+						isTouching = true;
+					}
+				}
+			}
+			
+			if (end < cleaned.length) {
+				const nextChar = cleaned[end];
+				if (/[a-zA-Z0-9]/.test(nextChar)) {
+					isTouching = true;
+				}
+				if (/[-+/]/.test(nextChar)) {
+					let idx = end;
+					while (idx < cleaned.length - 1 && /\s/.test(cleaned[idx + 1])) {
+						idx++;
+					}
+					if (idx < cleaned.length - 1 && /[a-zA-Z0-9]/.test(cleaned[idx + 1])) {
+						isTouching = true;
+					}
+				}
+			}
+			
+			if (!isTouching) {
+				const num = parseFloat(valStr);
+				if (!isNaN(num)) {
+					numbers.push(num);
+				}
+			}
+		}
+		
+		return numbers;
 	}
 
 	function getRowTotal(text: string): number {
 		const numbers = getRowNumbers(text);
 		return numbers.reduce((sum, n) => sum + n, 0);
+	}
+
+	function escapeHtml(str: string): string {
+		return str
+			.replace(/&/g, '&amp;')
+			.replace(/</g, '&lt;')
+			.replace(/>/g, '&gt;')
+			.replace(/"/g, '&quot;')
+			.replace(/'/g, '&#039;');
+	}
+
+	function renderFormattedLabel(text: string): string {
+		if (!text) return '';
+		
+		const regex = /-?(?:\d+(?:\.\d+)?|\.\d+)/g;
+		let match;
+		let result = '';
+		let lastIndex = 0;
+		
+		while ((match = regex.exec(text)) !== null) {
+			const valStr = match[0];
+			const start = match.index;
+			const end = regex.lastIndex;
+			
+			let isTouching = false;
+			if (start > 0) {
+				const prevChar = text[start - 1];
+				if (/[a-zA-Z0-9]/.test(prevChar)) {
+					isTouching = true;
+				}
+				if (/[-+/]/.test(prevChar)) {
+					let idx = start - 1;
+					while (idx > 0 && /\s/.test(text[idx - 1])) {
+						idx--;
+					}
+					if (idx > 0 && /[a-zA-Z0-9]/.test(text[idx - 1])) {
+						isTouching = true;
+					}
+				}
+			}
+			if (end < text.length) {
+				const nextChar = text[end];
+				if (/[a-zA-Z0-9]/.test(nextChar)) {
+					isTouching = true;
+				}
+				if (/[-+/]/.test(nextChar)) {
+					let idx = end;
+					while (idx < text.length - 1 && /\s/.test(text[idx + 1])) {
+						idx++;
+					}
+					if (idx < text.length - 1 && /[a-zA-Z0-9]/.test(text[idx + 1])) {
+						isTouching = true;
+					}
+				}
+			}
+			
+			result += escapeHtml(text.substring(lastIndex, start));
+			
+			if (!isTouching) {
+				const num = parseFloat(valStr);
+				if (!isNaN(num)) {
+					const className = num > 0 ? 'metrics-num-pos' : (num < 0 ? 'metrics-num-neg' : 'metrics-num-zero');
+					result += `<span class="${className}">${escapeHtml(valStr)}</span>`;
+				} else {
+					result += escapeHtml(valStr);
+				}
+			} else {
+				result += escapeHtml(valStr);
+			}
+			
+			lastIndex = end;
+		}
+		
+		result += escapeHtml(text.substring(lastIndex));
+		return result;
+	}
+
+	function focusOnMount(node: HTMLElement) {
+		node.focus();
+		const range = document.createRange();
+		range.selectNodeContents(node);
+		range.collapse(false);
+		const sel = window.getSelection();
+		sel?.removeAllRanges();
+		sel?.addRange(range);
+	}
+
+	function handleInsertDate(event: MouseEvent, rowId: string) {
+		event.preventDefault();
+		const el = document.querySelector(`.metrics-row-wrapper-${blockState.node.attrs.id || ''} [data-row-id="${rowId}"]`) as HTMLElement | null;
+		if (el) {
+			el.focus();
+			const todayStr = new Date().toISOString().split('T')[0];
+			document.execCommand('insertText', false, todayStr);
+			el.dispatchEvent(new Event('input', { bubbles: true }));
+		}
+	}
+
+	function handleRowInput(event: Event, row: any) {
+		const target = event.target as HTMLElement;
+		const text = target.textContent || '';
+		
+		const todayStr = new Date().toISOString().split('T')[0];
+		if (text.includes('@today') || text.includes('@date')) {
+			const sel = window.getSelection();
+			let offset = 0;
+			if (sel && sel.rangeCount > 0) {
+				const range = sel.getRangeAt(0);
+				offset = range.startOffset;
+			}
+			
+			const newText = text.replace(/@today/g, todayStr).replace(/@date/g, todayStr);
+			row.label = newText;
+			target.textContent = newText;
+			saveRows();
+			
+			tick().then(() => {
+				target.focus();
+				const range = document.createRange();
+				const textNode = target.firstChild || target;
+				const newOffset = Math.min(textNode.textContent?.length || 0, offset + (todayStr.length - 6));
+				try {
+					range.setStart(textNode, newOffset);
+					range.collapse(true);
+					sel?.removeAllRanges();
+					sel?.addRange(range);
+				} catch (e) {
+					focusOnMount(target);
+				}
+			});
+		} else {
+			row.label = text;
+			saveRows();
+		}
 	}
 
 	// Sync local rows from node attributes and perform legacy migrations
@@ -483,17 +665,64 @@
 				{/if}
 
 				{#if !appState.isReadOnly}
-					<div
-						contenteditable="plaintext-only"
-						class="row-label-input"
-						bind:textContent={row.label}
-						placeholder="List item (e.g. groceries 2000)..."
-						onblur={saveRows}
-						onkeydown={(e) => handleKeyDown(e, index)}
-					></div>
+					<div class="row-input-wrapper flex-row">
+						{#if editingRowIndex === index}
+							<!-- svelte-ignore a11y_no_static_element_interactions -->
+							<div
+								contenteditable="plaintext-only"
+								class="row-label-input editing"
+								data-row-id={row.id}
+								bind:textContent={row.label}
+								placeholder="List item (e.g. groceries 2000)..."
+								oninput={(e) => handleRowInput(e, row)}
+								onblur={() => {
+									if (isInsertingDate) {
+										isInsertingDate = false;
+										return;
+									}
+									saveRows();
+									editingRowIndex = null;
+								}}
+								onkeydown={(e) => handleKeyDown(e, index)}
+								use:focusOnMount
+							></div>
+							<button 
+								type="button"
+								class="row-date-insert-btn" 
+								onmousedown={(e) => {
+									e.preventDefault();
+									isInsertingDate = true;
+								}} 
+								onclick={(e) => handleInsertDate(e, row.id)} 
+								title="Insert today's date"
+							>
+								<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+							</button>
+						{:else}
+							<!-- svelte-ignore a11y_click_events_have_key_events -->
+							<!-- svelte-ignore a11y_no_static_element_interactions -->
+							<div
+								class="row-label-input preview-mode"
+								onclick={() => {
+									editingRowIndex = index;
+								}}
+								title="Click to edit"
+							>
+								{#if row.label.trim() === ''}
+									<span class="row-label-placeholder">List item (e.g. groceries 2000)...</span>
+								{:else}
+									{@html renderFormattedLabel(row.label)}
+								{/if}
+							</div>
+						{/if}
+					</div>
 				{:else}
 					<div class="row-label-input readonly-label-text">
-						{row.label}
+						{#if row.label.trim() === ''}
+							<span class="row-label-placeholder">Empty item</span>
+						{:else}
+							{@html renderFormattedLabel(row.label)}
+						{/if}
 					</div>
 				{/if}
 
@@ -762,6 +991,14 @@
 		user-select: none;
 	}
 
+	.row-input-wrapper {
+		flex: 1;
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		min-width: 0;
+	}
+
 	.row-label-input {
 		flex: 1;
 		background: transparent;
@@ -777,8 +1014,18 @@
 		white-space: pre-wrap;
 	}
 
-	.row-label-input:focus {
+	.row-label-input.editing {
 		border-bottom-color: var(--accent);
+	}
+
+	.row-label-input.preview-mode {
+		cursor: text;
+		border-bottom-color: transparent;
+	}
+
+	.row-label-input.preview-mode:hover {
+		background: rgba(255, 255, 255, 0.02);
+		border-radius: 4px;
 	}
 
 	.row-label-input[contenteditable="true"]:empty::before {
@@ -786,6 +1033,45 @@
 		color: var(--text-tertiary, #888);
 		pointer-events: none;
 		display: inline-block;
+	}
+
+	.row-label-placeholder {
+		color: var(--text-tertiary, #888);
+		font-style: italic;
+	}
+
+	.row-date-insert-btn {
+		background: transparent;
+		border: none;
+		color: var(--text-secondary);
+		cursor: pointer;
+		padding: 4px;
+		border-radius: 4px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		transition: background-color 0.15s, color 0.15s;
+		flex-shrink: 0;
+	}
+
+	.row-date-insert-btn:hover {
+		background: var(--bg-hover);
+		color: var(--accent);
+	}
+
+	:global(.metrics-num-pos) {
+		color: var(--semantic-success, #22c55e) !important;
+		font-weight: 600;
+	}
+
+	:global(.metrics-num-neg) {
+		color: var(--semantic-error, #ff4d4d) !important;
+		font-weight: 600;
+	}
+
+	:global(.metrics-num-zero) {
+		color: var(--text-secondary) !important;
+		font-weight: 600;
 	}
 
 	.row-sum-badge {
