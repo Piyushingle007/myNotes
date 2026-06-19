@@ -2,6 +2,7 @@
 	import { tick, untrack } from 'svelte';
 	import type { Writable } from 'svelte/store';
 	import { appState } from '../stores/appState.svelte';
+	import { Trash2 } from 'lucide-svelte';
 
 	interface Props {
 		nodeStore: Writable<any>;
@@ -12,10 +13,28 @@
 	let { nodeStore, getPos, editor, updateAttributes }: Props = $props();
 
 	// Local reactive state for rows
-	let rows: Array<{ id: string; checked: boolean; label: string }> = $state([]);
+	let rows: Array<{ id: string; checked: boolean; label: string; tagId?: string }> = $state([]);
 	let showSettings = $state(false);
 	let editingRowIndex = $state<number | null>(null);
 	let isInsertingDate = false;
+	let activeTagPickerRowId = $state<string | null>(null);
+
+	// Redesign: Tabbed settings dropdown menu state
+	let activeSettingsTab = $state<'options' | 'categories'>('options');
+
+	// Redesign: Budget Tag Catalog Editor state inside block dropdown
+	let newCalcTagName = $state('');
+	let calcTagColorPickerOpen = $state<string | null>(null);
+	let calcTagCustomHex = $state('');
+	
+	const CALC_TAG_COLOR_PALETTE = [
+		'#ef4444', '#f97316', '#eab308', '#22c55e',
+		'#14b8a6', '#3b82f6', '#6366f1', '#8b5cf6',
+		'#ec4899', '#f43f5e', '#78716c', '#64748b',
+	];
+
+	let isCalcTagHexValid = $derived(/^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(calcTagCustomHex.trim()));
+	let normalizedCalcTagHex = $derived(isCalcTagHexValid ? (calcTagCustomHex.trim().startsWith('#') ? calcTagCustomHex.trim() : '#' + calcTagCustomHex.trim()) : '');
 
 	// Strip common date formats so they aren't parsed as numbers/negative signs
 	function cleanText(text: string): string {
@@ -234,12 +253,14 @@
 						id: r.id,
 						checked: !!r.checked,
 						label: (r.label || '').trim() + ' ' + String(r.value).trim(),
+						tagId: r.tagId
 					};
 				}
 				return {
 					id: r.id,
 					checked: !!r.checked,
-					label: r.label || ''
+					label: r.label || '',
+					tagId: r.tagId
 				};
 			});
 
@@ -253,15 +274,37 @@
 		}
 	});
 
+	let visibleTagTotals: string[] = $derived.by(() => {
+		try {
+			const val = $nodeStore.attrs.visibleTagTotals || '[]';
+			const parsed = JSON.parse(val);
+			return Array.isArray(parsed) ? parsed : [];
+		} catch (e) {
+			return [];
+		}
+	});
+
 	// Get settings from node attributes via reactive synchronization
 	let excludeChecked = $derived($nodeStore.attrs.excludeChecked === 'true' || $nodeStore.attrs.excludeChecked === true);
-	let showIncome = $derived($nodeStore.attrs.showIncome === 'true' || $nodeStore.attrs.showIncome === true);
 	let showInflows = $derived($nodeStore.attrs.showInflows === 'true' || $nodeStore.attrs.showInflows === true);
 	let showExpenses = $derived($nodeStore.attrs.showExpenses === 'true' || $nodeStore.attrs.showExpenses === true);
 	let showMin = $derived($nodeStore.attrs.showMin === 'true' || $nodeStore.attrs.showMin === true);
 	let showMax = $derived($nodeStore.attrs.showMax === 'true' || $nodeStore.attrs.showMax === true);
 	let showMedian = $derived($nodeStore.attrs.showMedian === 'true' || $nodeStore.attrs.showMedian === true);
 	
+	let incomeLabel = $derived($nodeStore.attrs.incomeLabel || appState.defaultIncomeLabel || 'Income');
+	let currencyCode = $derived($nodeStore.attrs.currencyCode || appState.defaultCurrency || '₹');
+	let incomePlaceholder = $derived($nodeStore.attrs.incomePlaceholder || '');
+	let incomeSources = $derived.by(() => {
+		try {
+			const val = $nodeStore.attrs.incomeSources || '[]';
+			const parsed = JSON.parse(val);
+			return Array.isArray(parsed) ? parsed : [];
+		} catch (e) {
+			return [];
+		}
+	});
+
 	let incomeVal = $derived(parseFloat($nodeStore.attrs.income || '0') || 0);
 
 	let showSavings = $derived.by(() => {
@@ -275,12 +318,28 @@
 		}
 	});
 
+	let showIncome = $derived(showSavings && ($nodeStore.attrs.showIncome === 'true' || $nodeStore.attrs.showIncome === true));
+
 	let isIncomeFocused = $state(false);
 	let localIncomeStr = $state('0');
 
 	$effect(() => {
 		if (!isIncomeFocused) {
 			localIncomeStr = incomeVal.toLocaleString();
+		}
+	});
+
+	$effect(() => {
+		const currentCalcTags = appState.calcTags || [];
+		const serializedTags = JSON.stringify(currentCalcTags.map(tag => ({
+			id: tag.id,
+			name: tag.name,
+			color: tag.color,
+			enabled: tag.enabled,
+			createdAt: tag.createdAt
+		})));
+		if ($nodeStore.attrs.tagsMetadata !== serializedTags) {
+			updateAttributes({ tagsMetadata: serializedTags });
 		}
 	});
 
@@ -316,6 +375,29 @@
 	});
 
 	// Derived calculations
+	let tagTotals = $derived.by(() => {
+		const totalsMap = new Map<string, number>();
+		let untaggedTotal = 0;
+
+		activeRows.forEach((r: { id: string; checked: boolean; label: string; tagId?: string }) => {
+			const numbers = getRowNumbers(r.label);
+			if (numbers.length === 0) return;
+			const total = numbers.reduce((sum, n) => sum + n, 0);
+			
+			if (r.tagId) {
+				const current = totalsMap.get(r.tagId) || 0;
+				totalsMap.set(r.tagId, current + total);
+			} else {
+				untaggedTotal += total;
+			}
+		});
+
+		return {
+			totalsMap,
+			untaggedTotal
+		};
+	});
+
 	let activeRows = $derived.by(() => {
 		return rows.filter((r: { id: string; checked: boolean; label: string }) => {
 			if (excludeChecked && r.checked) return false;
@@ -586,110 +668,393 @@
 				>
 					<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 						<circle cx="12" cy="12" r="3"/>
-						<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+						<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06-.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06-.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
 					</svg>
 				</button>
 				{#if showSettings}
 					<!-- svelte-ignore a11y_no_static_element_interactions -->
 					<div class="settings-dropdown-menu" onclick={(e) => e.stopPropagation()}>
-						<label class="settings-option flex-row">
-							<input
-								type="checkbox"
-								checked={excludeChecked}
-								onchange={(e) => {
-									const checked = (e.target as HTMLInputElement).checked;
-									updateAttributes({ excludeChecked: checked });
-								}}
-							/>
-							<span>Exclude checked rows</span>
-						</label>
+						<!-- Tab Header -->
+						<div class="settings-tabs-header flex-row" style="border-bottom: 1px solid var(--border-color, #2a2d35); margin-bottom: 10px; padding-bottom: 8px; gap: 8px; justify-content: space-between; width: 100%;">
+							<button
+								type="button"
+								onclick={() => activeSettingsTab = 'options'}
+								class="settings-tab-btn"
+								class:active={activeSettingsTab === 'options'}
+							>
+								Options
+							</button>
+							<button
+								type="button"
+								onclick={() => activeSettingsTab = 'categories'}
+								class="settings-tab-btn"
+								class:active={activeSettingsTab === 'categories'}
+							>
+								Categories
+							</button>
+						</div>
 
-						<div class="settings-menu-divider"></div>
-						<div class="settings-menu-subtitle">Show Statistics:</div>
+						{#if activeSettingsTab === 'options'}
+							<div class="flex-col" style="gap: 8px; width: 100%;">
+								<label class="settings-option flex-row" style="cursor: pointer; user-select: none;">
+									<input
+										type="checkbox"
+										checked={excludeChecked}
+										onchange={(e) => {
+											const checked = (e.target as HTMLInputElement).checked;
+											updateAttributes({ excludeChecked: checked });
+										}}
+									/>
+									<span>Exclude checked rows</span>
+								</label>
 
-						<label class="settings-option flex-row">
-							<input
-								type="checkbox"
-								checked={showIncome}
-								onchange={(e) => {
-									const checked = (e.target as HTMLInputElement).checked;
-									updateAttributes({ showIncome: checked });
-								}}
-							/>
-							<span>Income</span>
-						</label>
+								<div class="settings-menu-divider"></div>
+								<div class="settings-menu-subtitle">Block Overrides:</div>
+								
+								<!-- svelte-ignore a11y_label_has_associated_control -->
+								<div class="flex-col" style="gap: 4px; padding: 4px 12px 8px 12px;">
+									<label style="font-size: 11px; color: var(--text-secondary); font-weight: 600;">Income Label Override:</label>
+									<input
+										type="text"
+										value={$nodeStore.attrs.incomeLabel || ''}
+										placeholder={appState.defaultIncomeLabel || 'Income'}
+										oninput={(e) => {
+											updateAttributes({ incomeLabel: e.currentTarget.value });
+										}}
+										style="background: rgba(0,0,0,0.25); border: 1px solid var(--border-color); border-radius: 4px; padding: 4px 8px; font-size: 11px; color: var(--text-primary); outline: none; width: 100%; box-sizing: border-box;"
+									/>
+								</div>
+								
+								<!-- svelte-ignore a11y_label_has_associated_control -->
+								<div class="flex-col" style="gap: 4px; padding: 4px 12px 8px 12px;">
+									<label style="font-size: 11px; color: var(--text-secondary); font-weight: 600;">Currency Symbol Override:</label>
+									<input
+										type="text"
+										value={$nodeStore.attrs.currencyCode || ''}
+										placeholder={appState.defaultCurrency || '₹'}
+										oninput={(e) => {
+											updateAttributes({ currencyCode: e.currentTarget.value });
+										}}
+										style="background: rgba(0,0,0,0.25); border: 1px solid var(--border-color); border-radius: 4px; padding: 4px 8px; font-size: 11px; color: var(--text-primary); outline: none; width: 100%; box-sizing: border-box;"
+									/>
+								</div>
 
-						<label class="settings-option flex-row">
-							<input
-								type="checkbox"
-								checked={showInflows}
-								onchange={(e) => {
-									const checked = (e.target as HTMLInputElement).checked;
-									updateAttributes({ showInflows: checked });
-								}}
-							/>
-							<span>Inflows</span>
-						</label>
+								<!-- svelte-ignore a11y_label_has_associated_control -->
+								<div class="flex-col" style="gap: 4px; padding: 4px 12px 8px 12px;">
+									<label style="font-size: 11px; color: var(--text-secondary); font-weight: 600;">Income Placeholder Override:</label>
+									<input
+										type="text"
+										value={incomePlaceholder}
+										placeholder="0"
+										oninput={(e) => {
+											updateAttributes({ incomePlaceholder: e.currentTarget.value });
+										}}
+										style="background: rgba(0,0,0,0.25); border: 1px solid var(--border-color); border-radius: 4px; padding: 4px 8px; font-size: 11px; color: var(--text-primary); outline: none; width: 100%; box-sizing: border-box;"
+									/>
+								</div>
 
-						<label class="settings-option flex-row">
-							<input
-								type="checkbox"
-								checked={showExpenses}
-								onchange={(e) => {
-									const checked = (e.target as HTMLInputElement).checked;
-									updateAttributes({ showExpenses: checked });
-								}}
-							/>
-							<span>Expenses</span>
-						</label>
+								<div class="settings-menu-divider"></div>
+								<div class="settings-menu-subtitle">Show Statistics:</div>
 
-						<label class="settings-option flex-row">
-							<input
-								type="checkbox"
-								checked={showSavings}
-								onchange={(e) => {
-									const checked = (e.target as HTMLInputElement).checked;
-									updateAttributes({ showSavings: checked });
-								}}
-							/>
-							<span>Savings</span>
-						</label>
+								<label class="settings-option flex-row" style="opacity: {showSavings ? 1 : 0.5}; pointer-events: {showSavings ? 'auto' : 'none'}; cursor: pointer; user-select: none;">
+									<input
+										type="checkbox"
+										checked={showSavings && ($nodeStore.attrs.showIncome === 'true' || $nodeStore.attrs.showIncome === true)}
+										disabled={!showSavings}
+										onchange={(e) => {
+											const checked = (e.target as HTMLInputElement).checked;
+											updateAttributes({ showIncome: checked });
+										}}
+									/>
+									<span>{incomeLabel}</span>
+								</label>
 
-						<label class="settings-option flex-row">
-							<input
-								type="checkbox"
-								checked={showMin}
-								onchange={(e) => {
-									const checked = (e.target as HTMLInputElement).checked;
-									updateAttributes({ showMin: checked });
-								}}
-							/>
-							<span>Min</span>
-						</label>
+								<label class="settings-option flex-row" style="cursor: pointer; user-select: none;">
+									<input
+										type="checkbox"
+										checked={showInflows}
+										onchange={(e) => {
+											const checked = (e.target as HTMLInputElement).checked;
+											updateAttributes({ showInflows: checked });
+										}}
+									/>
+									<span>Inflows</span>
+								</label>
 
-						<label class="settings-option flex-row">
-							<input
-								type="checkbox"
-								checked={showMax}
-								onchange={(e) => {
-									const checked = (e.target as HTMLInputElement).checked;
-									updateAttributes({ showMax: checked });
-								}}
-							/>
-							<span>Max</span>
-						</label>
+								<label class="settings-option flex-row" style="cursor: pointer; user-select: none;">
+									<input
+										type="checkbox"
+										checked={showExpenses}
+										onchange={(e) => {
+											const checked = (e.target as HTMLInputElement).checked;
+											updateAttributes({ showExpenses: checked });
+										}}
+									/>
+									<span>Expenses</span>
+								</label>
 
-						<label class="settings-option flex-row">
-							<input
-								type="checkbox"
-								checked={showMedian}
-								onchange={(e) => {
-									const checked = (e.target as HTMLInputElement).checked;
-									updateAttributes({ showMedian: checked });
-								}}
-							/>
-							<span>Median</span>
-						</label>
+								<label class="settings-option flex-row" style="cursor: pointer; user-select: none;">
+									<input
+										type="checkbox"
+										checked={showSavings}
+										onchange={(e) => {
+											const checked = (e.target as HTMLInputElement).checked;
+											updateAttributes({ showSavings: checked });
+										}}
+									/>
+									<span>Savings</span>
+								</label>
+
+								<label class="settings-option flex-row" style="cursor: pointer; user-select: none;">
+									<input
+										type="checkbox"
+										checked={showMin}
+										onchange={(e) => {
+											const checked = (e.target as HTMLInputElement).checked;
+											updateAttributes({ showMin: checked });
+										}}
+									/>
+									<span>Min</span>
+								</label>
+
+								<label class="settings-option flex-row" style="cursor: pointer; user-select: none;">
+									<input
+										type="checkbox"
+										checked={showMax}
+										onchange={(e) => {
+											const checked = (e.target as HTMLInputElement).checked;
+											updateAttributes({ showMax: checked });
+										}}
+									/>
+									<span>Max</span>
+								</label>
+
+								<label class="settings-option flex-row" style="cursor: pointer; user-select: none;">
+									<input
+										type="checkbox"
+										checked={showMedian}
+										onchange={(e) => {
+											const checked = (e.target as HTMLInputElement).checked;
+											updateAttributes({ showMedian: checked });
+										}}
+									/>
+									<span>Median</span>
+								</label>
+
+								<div class="settings-menu-divider"></div>
+								<div class="settings-menu-subtitle">Show Category Summaries:</div>
+								
+								{#each appState.calcTags as tag}
+									{@const isChecked = visibleTagTotals.includes(tag.id)}
+									<label class="settings-option flex-row" style="opacity: {tag.enabled ? 1 : 0.6}; cursor: pointer; user-select: none;">
+										<input
+											type="checkbox"
+											checked={isChecked}
+											onchange={(e) => {
+												const checked = (e.target as HTMLInputElement).checked;
+												let updated: string[];
+												if (checked) {
+													updated = [...visibleTagTotals, tag.id];
+												} else {
+													updated = visibleTagTotals.filter((id: string) => id !== tag.id);
+												}
+												updateAttributes({ visibleTagTotals: JSON.stringify(updated) });
+											}}
+										/>
+										<span class="flex-row" style="align-items: center; gap: 4px;">
+											<span style="width: 6px; height: 6px; border-radius: 50%; background: {tag.color || 'var(--text-secondary)'}; display: inline-block;"></span>
+											<span>{tag.name}</span>
+										</span>
+									</label>
+								{:else}
+									<span style="font-size: 11px; font-style: italic; color: var(--text-tertiary); padding: 2px 4px;">
+										No categories created.
+									</span>
+								{/each}
+							</div>
+						{:else if activeSettingsTab === 'categories'}
+							<!-- TAB 2: GLOBAL CATEGORIES MANAGER -->
+							<div class="flex-col" style="gap: 10px; min-width: 250px;">
+								<div style="font-size: 12px; font-weight: 700; color: var(--text-secondary); margin-bottom: 2px;">Manage Budget Categories</div>
+								
+								<!-- Add Category Form -->
+								<form
+									onsubmit={async (e) => {
+										e.preventDefault();
+										const name = newCalcTagName.trim();
+										if (!name) return;
+										if (appState.calcTags.some(t => t.normalizedName === name.toLowerCase())) {
+											appState.showToast('Category already exists!', 'error', 3000);
+											return;
+										}
+										const color = CALC_TAG_COLOR_PALETTE[Math.floor(Math.random() * CALC_TAG_COLOR_PALETTE.length)];
+										await appState.createCalcTag(name, color);
+										newCalcTagName = '';
+										appState.showToast(`Category "${name}" created.`, 'success', 2000);
+									}}
+									class="flex-row"
+									style="gap: 6px; margin-bottom: 4px;"
+								>
+									<input
+										type="text"
+										placeholder="New category..."
+										bind:value={newCalcTagName}
+										style="flex: 1; background: rgba(0,0,0,0.25); border: 1px solid var(--border-color); padding: 4px 8px; border-radius: 4px; color: var(--text-primary); outline: none; font-size: 11px;"
+									/>
+									<button
+										type="submit"
+										disabled={!newCalcTagName.trim()}
+										style="background: var(--accent); color: var(--bg-primary); border: none; padding: 4px 10px; border-radius: 4px; font-weight: 700; font-size: 11px; cursor: pointer; opacity: {newCalcTagName.trim() ? 1 : 0.5}; transition: opacity 0.2s;"
+									>
+										Add
+									</button>
+								</form>
+
+								<!-- Scrollable Categories list -->
+								<div class="flex-col" style="gap: 6px; max-height: 200px; overflow-y: auto; padding-right: 4px; width: 100%;">
+									{#each appState.calcTags as tag (tag.id)}
+										<div 
+											class="flex-row" 
+											style="align-items: center; background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); padding: 6px 8px; border-radius: 4px; gap: 8px; position: relative; width: 100%; box-sizing: border-box;"
+										>
+											<!-- Color Dot Selector -->
+											<div style="position: relative; display: flex; align-items: center;">
+												<button
+													type="button"
+													onclick={() => {
+														if (calcTagColorPickerOpen === tag.id) {
+															calcTagColorPickerOpen = null;
+														} else {
+															calcTagColorPickerOpen = tag.id;
+															calcTagCustomHex = tag.color || '';
+														}
+													}}
+													style="width: 14px; height: 14px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.2); background-color: {tag.color || 'var(--text-secondary)'}; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0;"
+													title="Change color"
+												></button>
+												
+												<!-- Color Picker Dropdown Popover -->
+												{#if calcTagColorPickerOpen === tag.id}
+													<!-- svelte-ignore a11y_no_static_element_interactions -->
+													<div 
+														style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 998;"
+														onclick={() => calcTagColorPickerOpen = null}
+													></div>
+													<div 
+														style="position: absolute; top: calc(100% + 4px); left: 0; background: var(--bg-surface, #1e2025); border: 1px solid var(--border-color); border-radius: 6px; box-shadow: var(--shadow-xl); padding: 8px; min-width: 140px; z-index: 999; display: flex; flex-direction: column; gap: 6px;"
+													>
+														<div style="font-size: 10px; font-weight: 700; color: var(--text-secondary);">Select Color</div>
+														<div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px;">
+															{#each CALC_TAG_COLOR_PALETTE as color}
+																<button
+																	type="button"
+																	onclick={async () => {
+																		await appState.setCalcTagColor(tag.id, color);
+																		calcTagColorPickerOpen = null;
+																	}}
+																	style="width: 18px; height: 18px; border-radius: 50%; border: 1px solid {tag.color === color ? 'var(--accent)' : 'transparent'}; background-color: {color}; cursor: pointer; padding: 0; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 8px;"
+																>
+																	{tag.color === color ? '✓' : ''}
+																</button>
+															{/each}
+														</div>
+														
+														<!-- Custom Hex Input -->
+														<div class="flex-row" style="gap: 4px; align-items: center; border-top: 1px dashed var(--border-color); padding-top: 6px; margin-top: 2px;">
+															<input
+																type="text"
+																placeholder="#HEX"
+																bind:value={calcTagCustomHex}
+																style="width: 55px; background: rgba(0,0,0,0.25); border: 1px solid var(--border-color); border-radius: 4px; padding: 1px 3px; font-size: 9px; color: var(--text-primary); outline: none;"
+															/>
+															<button
+																type="button"
+																disabled={!isCalcTagHexValid}
+																onclick={async () => {
+																	await appState.setCalcTagColor(tag.id, normalizedCalcTagHex);
+																	calcTagColorPickerOpen = null;
+																}}
+																style="background: var(--accent); color: var(--bg-primary); border: none; border-radius: 4px; padding: 1px 4px; font-size: 9px; font-weight: 700; cursor: pointer; opacity: {isCalcTagHexValid ? 1 : 0.5};"
+															>
+																Set
+															</button>
+														</div>
+													</div>
+												{/if}
+											</div>
+
+											<!-- Rename input -->
+											<input
+												type="text"
+												value={tag.name}
+												onblur={async (e) => {
+													const newName = e.currentTarget.value.trim();
+													if (newName === tag.name) return;
+													if (!newName) {
+														e.currentTarget.value = tag.name;
+														return;
+													}
+													if (appState.calcTags.some(t => t.id !== tag.id && t.normalizedName === newName.toLowerCase())) {
+														appState.showToast('Category name already exists!', 'error', 3000);
+														e.currentTarget.value = tag.name;
+														return;
+													}
+													await appState.renameCalcTag(tag.id, newName);
+													appState.showToast(`Category renamed to "${newName}".`, 'success', 2000);
+												}}
+												onkeydown={(e) => {
+													if (e.key === 'Enter') {
+														e.currentTarget.blur();
+													}
+												}}
+												style="flex: 1; background: transparent; border: none; font-size: 11px; font-weight: 600; color: var(--text-primary); outline: none; padding: 1px 0;"
+											/>
+
+											<!-- Enabled Toggle -->
+											<label class="flex-row" style="align-items: center; gap: 4px; cursor: pointer; font-size: 10px; color: var(--text-secondary); user-select: none; margin-left: auto;">
+												<input 
+													type="checkbox" 
+													checked={tag.enabled}
+													onchange={async (e) => {
+														const checked = e.currentTarget.checked;
+														await appState.setCalcTagEnabled(tag.id, checked);
+														appState.showToast(`Category ${tag.name} ${checked ? 'enabled' : 'disabled'}.`, 'info', 2000);
+													}}
+													style="cursor: pointer; margin: 0; width: 12px; height: 12px;"
+												/>
+												<span>Active</span>
+											</label>
+
+											<!-- Delete Button -->
+											<button
+												type="button"
+												onclick={() => {
+													appState.showConfirmation({
+														title: 'Delete Category',
+														message: `Are you sure you want to delete category "${tag.name}"? Existing row assignments in calculation boxes will revert to "Untagged".`,
+														confirmText: 'Delete',
+														onConfirm: async () => {
+															await appState.deleteCalcTag(tag.id);
+															appState.showToast(`Category "${tag.name}" deleted.`, 'success', 2000);
+														}
+													});
+												}}
+												style="background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: 2px; display: flex; align-items: center; justify-content: center; border-radius: 4px;"
+												onmouseover={(e) => e.currentTarget.style.color = 'var(--semantic-error, #ff4d4d)'}
+												onmouseout={(e) => e.currentTarget.style.color = 'var(--text-secondary)'}
+												title="Delete category"
+											>
+												<Trash2 size={12} />
+											</button>
+										</div>
+									{:else}
+										<span style="font-size: 11px; font-style: italic; color: var(--text-tertiary); text-align: center; padding: 8px 0; width: 100%;">
+											No categories. Add one above!
+										</span>
+									{/each}
+								</div>
+							</div>
+						{/if}
 					</div>
 				{/if}
 			</div>
@@ -697,29 +1062,31 @@
 	</div>
 	
 	<!-- Income Row -->
-	<div class="metrics-income-row flex-row">
-		<span class="income-label">Income</span>
-		<span class="income-currency">₹</span>
-		{#if !appState.isReadOnly}
-			<input
-				type="text"
-				class="income-input-field"
-				class:negative={incomeVal < 0}
-				bind:value={localIncomeStr}
-				onfocus={handleIncomeFocus}
-				onblur={handleIncomeBlur}
-				onkeydown={handleIncomeKeyDown}
-				placeholder="0"
-			/>
-		{:else}
-			<span class="income-value-readonly" class:negative={incomeVal < 0}>
-				{incomeVal.toLocaleString()}
-			</span>
-		{/if}
-		{#if incomeVal < 0}
-			<span class="income-warning-icon" title="Negative income is unusual">⚠️</span>
-		{/if}
-	</div>
+	{#if showIncome}
+		<div class="metrics-income-row flex-row">
+			<span class="income-label">{incomeLabel}</span>
+			<span class="income-currency">{currencyCode}</span>
+			{#if !appState.isReadOnly}
+				<input
+					type="text"
+					class="income-input-field"
+					class:negative={incomeVal < 0}
+					bind:value={localIncomeStr}
+					onfocus={handleIncomeFocus}
+					onblur={handleIncomeBlur}
+					onkeydown={handleIncomeKeyDown}
+					placeholder={incomePlaceholder || '0'}
+				/>
+			{:else}
+				<span class="income-value-readonly" class:negative={incomeVal < 0}>
+					{incomeVal.toLocaleString()}
+				</span>
+			{/if}
+			{#if incomeVal < 0}
+				<span class="income-warning-icon" title="Negative income is unusual">⚠️</span>
+			{/if}
+		</div>
+	{/if}
 
 	<!-- Rows Body -->
 	<div class="metrics-card-body">
@@ -730,6 +1097,7 @@
 		{#each rows as row, index (row.id)}
 			{@const numbers = getRowNumbers(row.label)}
 			{@const total = numbers.reduce((sum, n) => sum + n, 0)}
+			{@const rowTag = appState.calcTags.find(t => t.id === row.tagId)}
 			<div
 				class="metrics-card-row flex-row"
 				class:dragging={draggingIndex === index}
@@ -741,6 +1109,18 @@
 				ondragleave={handleDragLeave}
 				ondrop={(e) => handleDrop(e, index)}
 				ondragend={handleDragEnd}
+				onfocusout={(e) => {
+					if (isInsertingDate) {
+						isInsertingDate = false;
+						return;
+					}
+					const related = e.relatedTarget as HTMLElement | null;
+					if (related && e.currentTarget.contains(related)) {
+						return;
+					}
+					saveRows();
+					editingRowIndex = null;
+				}}
 			>
 				{#if !appState.isReadOnly}
 					<!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -768,7 +1148,7 @@
 				{/if}
 
 				{#if !appState.isReadOnly}
-					<div class="row-input-wrapper flex-row">
+					<div class="row-input-wrapper flex-row" style="align-items: center; gap: 6px;">
 						{#if editingRowIndex === index}
 							<!-- svelte-ignore a11y_no_static_element_interactions -->
 							<div
@@ -778,17 +1158,86 @@
 								bind:textContent={row.label}
 								placeholder="List item (e.g. groceries 2000)..."
 								oninput={(e) => handleRowInput(e, row)}
-								onblur={() => {
-									if (isInsertingDate) {
-										isInsertingDate = false;
-										return;
-									}
-									saveRows();
-									editingRowIndex = null;
-								}}
 								onkeydown={(e) => handleKeyDown(e, index)}
 								use:focusOnMount
 							></div>
+							
+							<!-- Custom Row tag picker dropdown -->
+							<div class="metrics-row-tag-dropdown-container">
+								<button
+									type="button"
+									class="metrics-row-tag-dropdown-btn flex-row"
+									style="border-color: {rowTag ? (rowTag.color || 'var(--border-color)') : 'var(--border-color)'}"
+									onmousedown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+									onclick={(e) => {
+										e.stopPropagation();
+										if (activeTagPickerRowId === row.id) {
+											activeTagPickerRowId = null;
+										} else {
+											activeTagPickerRowId = row.id;
+										}
+									}}
+									title="Categorize row"
+								>
+									{#if rowTag}
+										<span class="tag-dot" style="background: {rowTag.color || 'var(--text-secondary)'};"></span>
+										<span class="tag-name-text">{rowTag.name}</span>
+									{:else}
+										<span class="tag-name-text">No Tag</span>
+									{/if}
+									<span class="dropdown-chevron">▼</span>
+								</button>
+
+								{#if activeTagPickerRowId === row.id}
+									<!-- Click-away backdrop overlay -->
+									<!-- svelte-ignore a11y_no_static_element_interactions -->
+									<div 
+										class="tag-picker-backdrop"
+										onmousedown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+										onclick={(e) => {
+											e.stopPropagation();
+											activeTagPickerRowId = null;
+										}}
+									></div>
+									<!-- Dropdown List -->
+									<div 
+										class="metrics-row-tag-dropdown-menu flex-col"
+										onmousedown={(e) => e.stopPropagation()}
+										onclick={(e) => e.stopPropagation()}
+									>
+										<button
+											type="button"
+											class="tag-dropdown-item flex-row"
+											class:selected={!row.tagId}
+											onmousedown={(e) => e.preventDefault()}
+											onclick={() => {
+												row.tagId = undefined;
+												saveRows();
+												activeTagPickerRowId = null;
+											}}
+										>
+											No Tag
+										</button>
+										{#each appState.calcTags.filter(t => t.enabled || t.id === row.tagId) as tag}
+											<button
+												type="button"
+												class="tag-dropdown-item flex-row"
+												class:selected={row.tagId === tag.id}
+												onmousedown={(e) => e.preventDefault()}
+												onclick={() => {
+													row.tagId = tag.id;
+													saveRows();
+													activeTagPickerRowId = null;
+												}}
+											>
+												<span class="tag-dot" style="background: {tag.color || 'var(--text-secondary)'};"></span>
+												<span>{tag.name}</span>
+											</button>
+										{/each}
+									</div>
+								{/if}
+							</div>
+
 							<button 
 								type="button"
 								class="row-date-insert-btn" 
@@ -817,6 +1266,16 @@
 									{@html renderFormattedLabel(row.label)}
 								{/if}
 							</div>
+
+							{#if rowTag}
+								<span 
+									class="metrics-row-tag-pill" 
+									style="background: {rowTag.color || '#888'}1c; border: 1px solid {rowTag.color || '#888'}44; color: {rowTag.color || 'var(--text-secondary)'}; font-size: 10px; padding: 1px 6px; border-radius: 10px; font-weight: 600; white-space: nowrap; margin-left: 6px;"
+									title={rowTag.enabled ? rowTag.name : `${rowTag.name} (Disabled)`}
+								>
+									{rowTag.name}
+								</span>
+							{/if}
 						{/if}
 					</div>
 				{:else}
@@ -825,6 +1284,16 @@
 							<span class="row-label-placeholder">Empty item</span>
 						{:else}
 							{@html renderFormattedLabel(row.label)}
+						{/if}
+						
+						{#if rowTag}
+							<span 
+								class="metrics-row-tag-pill" 
+								style="background: {rowTag.color || '#888'}1c; border: 1px solid {rowTag.color || '#888'}44; color: {rowTag.color || 'var(--text-secondary)'}; font-size: 10px; padding: 1px 6px; border-radius: 10px; font-weight: 600; white-space: nowrap; margin-left: 6px; display: inline-block; vertical-align: middle;"
+								title={rowTag.enabled ? rowTag.name : `${rowTag.name} (Disabled)`}
+							>
+								{rowTag.name}
+							</span>
 						{/if}
 					</div>
 				{/if}
@@ -856,6 +1325,25 @@
 		{/if}
 	</div>
 
+	<!-- Category summaries display -->
+	{#if visibleTagTotals && visibleTagTotals.length > 0}
+		<div class="metrics-tag-totals-section flex-row" style="flex-wrap: wrap; gap: 8px; padding: 8px 16px; border-top: 1px dashed var(--border-color, #2a2d35); margin-top: 4px; padding-top: 12px; margin-bottom: 8px;">
+			{#each visibleTagTotals as tagId}
+				{@const tag = appState.calcTags.find(t => t.id === tagId)}
+				{@const totalVal = tagTotals.totalsMap.get(tagId) || 0}
+				{#if tag}
+					<div class="tag-total-chip flex-row" style="background: rgba(255,255,255,0.03); border: 1px solid {tag.color || 'var(--border-color)'}26; border-radius: 12px; padding: 4px 8px; font-size: 11px; align-items: center; gap: 6px; user-select: none;">
+						<span class="tag-dot" style="width: 6px; height: 6px; border-radius: 50%; background: {tag.color || 'var(--text-secondary)'}; display: inline-block;"></span>
+						<span style="font-weight: 600; color: var(--text-secondary);">{tag.name}:</span>
+						<span style="font-family: var(--font-mono); font-weight: 700; color: {totalVal > 0 ? 'var(--semantic-success, #22c55e)' : (totalVal < 0 ? 'var(--semantic-error, #ff4d4d)' : 'var(--text-primary)')};">
+							{totalVal > 0 ? '+' : ''}{totalVal.toLocaleString()}
+						</span>
+					</div>
+				{/if}
+			{/each}
+		</div>
+	{/if}
+
 	<!-- Savings Hero Panel -->
 	{#if showSavings}
 		<div class="metrics-savings-panel" class:positive={savingsVal > 0} class:negative={savingsVal < 0} class:neutral={savingsVal === 0}>
@@ -865,7 +1353,7 @@
 					<span class="savings-title">{savingsVal > 0 ? 'Safe to Spend' : (savingsVal < 0 ? 'Overspent' : 'Balanced')}</span>
 				</div>
 				<div class="savings-value flex-row">
-					<span class="savings-currency">₹</span>
+					<span class="savings-currency">{currencyCode}</span>
 					<span class="savings-amount">{savingsVal.toLocaleString()}</span>
 				</div>
 			</div>
@@ -881,7 +1369,7 @@
 			</div>
 			{#if showIncome}
 				<div class="stat-badge flex-col">
-					<span class="badge-label">Income</span>
+					<span class="badge-label">{incomeLabel}</span>
 					<span class="badge-value positive">{stats.income.toLocaleString()}</span>
 				</div>
 			{/if}
@@ -943,7 +1431,6 @@
 		border: 1px solid var(--border-color, #2a2d35);
 		border-radius: 12px;
 		margin: 20px 0;
-		overflow: hidden;
 		box-shadow: var(--shadow-lg, 0 4px 16px rgba(0,0,0,0.1));
 		box-sizing: border-box;
 		width: 100%;
@@ -957,6 +1444,8 @@
 		background: color-mix(in srgb, var(--border-color) 30%, var(--bg-surface));
 		border-bottom: 1px solid var(--border-color, #2a2d35);
 		gap: 8px;
+		border-top-left-radius: 11px;
+		border-top-right-radius: 11px;
 	}
 
 	.metrics-card-icon {
@@ -1274,6 +1763,8 @@
 		padding: 12px 16px;
 		background: color-mix(in srgb, var(--border-color) 15%, var(--bg-surface));
 		border-top: 1px solid var(--border-color, #2a2d35);
+		border-bottom-left-radius: 11px;
+		border-bottom-right-radius: 11px;
 	}
 
 	.stats-grid {
@@ -1542,5 +2033,134 @@
 
 	.metrics-savings-panel.neutral .savings-amount {
 		color: var(--text-primary, #fff);
+	}
+
+	.metrics-row-tag-dropdown-container {
+		position: relative;
+		display: inline-block;
+	}
+
+	.metrics-row-tag-dropdown-btn {
+		background: rgba(255, 255, 255, 0.04);
+		border: 1px solid var(--border-color, #2a2d35);
+		border-radius: 4px;
+		font-size: 11px;
+		color: var(--text-secondary, #a1a1aa);
+		padding: 3px 6px;
+		cursor: pointer;
+		max-width: 100px;
+		font-weight: 500;
+		transition: all 0.15s ease;
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		height: 22px;
+		box-sizing: border-box;
+		outline: none;
+	}
+	.metrics-row-tag-dropdown-btn:hover {
+		border-color: var(--accent);
+		color: var(--text-primary);
+		background: rgba(255, 255, 255, 0.08);
+	}
+
+	.metrics-row-tag-dropdown-btn .tag-name-text {
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		max-width: 60px;
+	}
+
+	.metrics-row-tag-dropdown-btn .dropdown-chevron {
+		font-size: 8px;
+		opacity: 0.6;
+		margin-left: 2px;
+	}
+
+	.metrics-row-tag-dropdown-menu {
+		position: absolute;
+		top: calc(100% + 4px);
+		left: 0;
+		background: var(--bg-surface, #1e2025);
+		border: 1px solid var(--border-color, #2a2d35);
+		border-radius: 6px;
+		box-shadow: var(--shadow-xl);
+		padding: 4px;
+		min-width: 120px;
+		z-index: 300;
+		max-height: 200px;
+		overflow-y: auto;
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+	}
+
+	.tag-dropdown-item {
+		background: transparent;
+		border: none;
+		border-radius: 4px;
+		color: var(--text-secondary);
+		font-size: 11px;
+		font-weight: 500;
+		padding: 6px 8px;
+		text-align: left;
+		cursor: pointer;
+		width: 100%;
+		transition: all 0.12s ease;
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		box-sizing: border-box;
+	}
+	.tag-dropdown-item:hover {
+		background: rgba(255, 255, 255, 0.06);
+		color: var(--text-primary);
+	}
+	.tag-dropdown-item.selected {
+		background: rgba(255, 255, 255, 0.08);
+		color: var(--text-primary);
+		font-weight: 600;
+	}
+
+	.tag-picker-backdrop {
+		position: fixed;
+		top: 0;
+		left: 0;
+		width: 100vw;
+		height: 100vh;
+		z-index: 299;
+		background: transparent;
+	}
+
+	.tag-dot {
+		width: 6px;
+		height: 6px;
+		border-radius: 50%;
+		display: inline-block;
+		flex-shrink: 0;
+	}
+
+	/* Redesign: Tabbed settings dropdown */
+	.settings-tab-btn {
+		flex: 1;
+		background: rgba(255, 255, 255, 0.03);
+		border: 1px solid var(--border-color, #2a2d35);
+		border-radius: 6px;
+		color: var(--text-secondary);
+		font-size: 11px;
+		font-weight: 600;
+		padding: 4px 10px;
+		cursor: pointer;
+		transition: all 0.15s ease;
+		text-align: center;
+	}
+	.settings-tab-btn:hover {
+		border-color: rgba(255, 255, 255, 0.15);
+		color: var(--text-primary);
+	}
+	.settings-tab-btn.active {
+		background: var(--accent);
+		border-color: var(--accent);
+		color: var(--bg-primary, #000);
 	}
 </style>

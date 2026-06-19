@@ -1,5 +1,6 @@
 import { type NoteFile, type StorageAdapter, IndexedDBAdapter, FileSystemAccessAdapter } from '../storage/StorageAdapter';
 import { TagDatabase, type Tag } from '../storage/TagSchema';
+import { CalcTagDatabase, type CalcTag } from '../storage/CalcTagSchema';
 import { GoogleDriveSync } from '../sync/GoogleDriveSync';
 import MiniSearch from 'minisearch';
 import MarkdownIt from 'markdown-it';
@@ -144,6 +145,8 @@ class AppState {
   vaultReady = $state<boolean>(false);
   tagDb = null as TagDatabase | null;
   tags = $state<Tag[]>([]);
+  calcTagDb = null as CalcTagDatabase | null;
+  calcTags = $state<CalcTag[]>([]);
   selectedTag = $state<string | null>(null);
   notes = $state<NoteFile[]>([]);
   activeNotePath = $state<string | null>(null);
@@ -1026,7 +1029,10 @@ class AppState {
       const name = await this.storage.selectDirectory();
       console.log('[MyNotes] selectDirectory returned:', name);
       this.vaultName = name;
+      if (this.tagDb) this.tagDb.close();
+      if (this.calcTagDb) this.calcTagDb.close();
       this.tagDb = new TagDatabase(name);
+      this.calcTagDb = new CalcTagDatabase(name);
       
       // Perform migration of markdown notes to html notes
       await this.migrateOldNotes();
@@ -1074,7 +1080,10 @@ class AppState {
       const name = await adapter.selectDirectory();
       this.storage = adapter;
       this.vaultName = name;
+      if (this.tagDb) this.tagDb.close();
+      if (this.calcTagDb) this.calcTagDb.close();
       this.tagDb = new TagDatabase(name);
+      this.calcTagDb = new CalcTagDatabase(name);
       // Perform migration of markdown notes to html notes
       await this.migrateOldNotes();
       await this.refreshNotes();
@@ -1149,6 +1158,16 @@ class AppState {
       } catch (e) {
         console.error('[MyNotes] Failed to auto-prune empty tags in refreshNotes:', e);
       }
+    }
+
+    // Sync and refresh budget categories
+    if (this.calcTagDb) {
+      try {
+        await this.syncCalcTags(list);
+      } catch (e) {
+        console.error('[MyNotes] Failed to sync budget categories in refreshNotes:', e);
+      }
+      await this.refreshCalcTags();
     }
   }
 
@@ -2224,6 +2243,101 @@ class AppState {
     } catch (e) {
       console.error('Failed to copy note:', e);
       alert('Failed to copy note.');
+    }
+  }
+
+  async refreshCalcTags() {
+    if (!this.calcTagDb) return;
+    try {
+      this.calcTags = await this.calcTagDb.listCalcTags();
+    } catch (e) {
+      console.error('[MyNotes] refreshCalcTags error:', e);
+    }
+  }
+
+  async createCalcTag(name: string, color?: string): Promise<CalcTag> {
+    if (!this.calcTagDb) throw new Error('Calculation database not initialized');
+    const tag = await this.calcTagDb.addCalcTag(name, color);
+    await this.refreshCalcTags();
+    return tag;
+  }
+
+  async renameCalcTag(tagId: string, newName: string): Promise<void> {
+    if (!this.calcTagDb) throw new Error('Calculation database not initialized');
+    await this.calcTagDb.renameCalcTag(tagId, newName);
+    await this.refreshCalcTags();
+  }
+
+  async deleteCalcTag(tagId: string): Promise<void> {
+    if (!this.calcTagDb) throw new Error('Calculation database not initialized');
+    await this.calcTagDb.deleteCalcTag(tagId);
+    await this.refreshCalcTags();
+  }
+
+  async setCalcTagEnabled(tagId: string, enabled: boolean): Promise<void> {
+    if (!this.calcTagDb) throw new Error('Calculation database not initialized');
+    await this.calcTagDb.setTagEnabled(tagId, enabled);
+    await this.refreshCalcTags();
+  }
+
+  async setCalcTagColor(tagId: string, color: string): Promise<void> {
+    if (!this.calcTagDb) throw new Error('Calculation database not initialized');
+    await this.calcTagDb.setTagColor(tagId, color);
+    await this.refreshCalcTags();
+  }
+
+  async syncCalcTags(notesList: NoteFile[]): Promise<void> {
+    if (!this.calcTagDb) return;
+    try {
+      const dbTags = await this.calcTagDb.listCalcTags();
+      let dbUpdated = false;
+
+      for (const note of notesList) {
+        if (!note.content) continue;
+        if (typeof DOMParser === 'undefined') continue;
+
+        try {
+          const parser = new DOMParser();
+          const doc = parser.parseFromString(note.content, 'text/html');
+          const metricsBlocks = doc.querySelectorAll('div[data-type="metrics"]');
+
+          for (const block of metricsBlocks) {
+            const tagsMetadataAttr = block.getAttribute('data-tags-metadata');
+            if (!tagsMetadataAttr) continue;
+
+            const remoteTags = JSON.parse(tagsMetadataAttr);
+            if (Array.isArray(remoteTags)) {
+              for (const remoteTag of remoteTags) {
+                if (!remoteTag || !remoteTag.id || !remoteTag.name) continue;
+                
+                const exists = dbTags.some((t: CalcTag) => t.id === remoteTag.id);
+                if (!exists) {
+                  const newTag: CalcTag = {
+                    id: remoteTag.id,
+                    name: remoteTag.name,
+                    normalizedName: remoteTag.name.toLowerCase(),
+                    enabled: remoteTag.enabled !== false,
+                    createdAt: remoteTag.createdAt || Date.now(),
+                    color: remoteTag.color
+                  };
+                  await this.calcTagDb.upsertCalcTag(newTag);
+                  dbTags.push(newTag);
+                  dbUpdated = true;
+                  console.log(`[MyNotes] Auto-imported budget category "${newTag.name}" (${newTag.id}) from note.`);
+                }
+              }
+            }
+          }
+        } catch (err) {
+          console.error(`[MyNotes] Failed to parse budget categories from note content: ${note.path}`, err);
+        }
+      }
+
+      if (dbUpdated) {
+        await this.refreshCalcTags();
+      }
+    } catch (e) {
+      console.error('[MyNotes] Failed to sync calc tags:', e);
     }
   }
 

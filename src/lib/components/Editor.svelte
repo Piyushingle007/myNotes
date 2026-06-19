@@ -2882,6 +2882,36 @@
 					default: 0,
 					parseHTML: (el: HTMLElement) => parseFloat(el.getAttribute('data-income') || '0') || 0,
 					renderHTML: (attrs) => ({ 'data-income': String(attrs.income || 0) })
+				},
+				visibleTagTotals: {
+					default: '[]',
+					parseHTML: (el: HTMLElement) => el.getAttribute('data-visible-tag-totals') || '[]',
+					renderHTML: (attrs) => ({ 'data-visible-tag-totals': attrs.visibleTagTotals || '[]' })
+				},
+				incomeLabel: {
+					default: '',
+					parseHTML: (el: HTMLElement) => el.getAttribute('data-income-label') || '',
+					renderHTML: (attrs) => ({ 'data-income-label': attrs.incomeLabel || '' })
+				},
+				currencyCode: {
+					default: '',
+					parseHTML: (el: HTMLElement) => el.getAttribute('data-currency-code') || '',
+					renderHTML: (attrs) => ({ 'data-currency-code': attrs.currencyCode || '' })
+				},
+				incomeSources: {
+					default: '[]',
+					parseHTML: (el: HTMLElement) => el.getAttribute('data-income-sources') || '[]',
+					renderHTML: (attrs) => ({ 'data-income-sources': attrs.incomeSources || '[]' })
+				},
+				tagsMetadata: {
+					default: '[]',
+					parseHTML: (el: HTMLElement) => el.getAttribute('data-tags-metadata') || '[]',
+					renderHTML: (attrs) => ({ 'data-tags-metadata': attrs.tagsMetadata || '[]' })
+				},
+				incomePlaceholder: {
+					default: '',
+					parseHTML: (el: HTMLElement) => el.getAttribute('data-income-placeholder') || '',
+					renderHTML: (attrs) => ({ 'data-income-placeholder': attrs.incomePlaceholder || '' })
 				}
 			};
 		},
@@ -2893,15 +2923,29 @@
 		renderHTML({ HTMLAttributes }) {
 			const dataStr = HTMLAttributes['data-metrics'] || '[]';
 			const excludeChecked = HTMLAttributes['data-exclude-checked'] === 'true' || HTMLAttributes['data-exclude-checked'] === true;
-			const showIncome = HTMLAttributes['data-show-income'] === 'true' || HTMLAttributes['data-show-income'] === true;
 			const showInflows = HTMLAttributes['data-show-inflows'] === 'true' || HTMLAttributes['data-show-inflows'] === true;
 			const showExpenses = HTMLAttributes['data-show-expenses'] === 'true' || HTMLAttributes['data-show-expenses'] === true;
 			const showMin = HTMLAttributes['data-show-min'] === 'true' || HTMLAttributes['data-show-min'] === true;
 			const showMax = HTMLAttributes['data-show-max'] === 'true' || HTMLAttributes['data-show-max'] === true;
 			const showMedian = HTMLAttributes['data-show-median'] === 'true' || HTMLAttributes['data-show-median'] === true;
 			const incomeVal = parseFloat(HTMLAttributes['data-income'] || '0') || 0;
+			const showSavingsAttr = HTMLAttributes['data-show-savings'];
+			let shouldShowSavings = false;
+			if (showSavingsAttr === 'true' || showSavingsAttr === true) {
+				shouldShowSavings = true;
+			} else if (showSavingsAttr === 'false' || showSavingsAttr === false) {
+				shouldShowSavings = false;
+			} else {
+				shouldShowSavings = incomeVal > 0;
+			}
+			const showIncome = shouldShowSavings && (HTMLAttributes['data-show-income'] === 'true' || HTMLAttributes['data-show-income'] === true);
 			const titleStr = HTMLAttributes['data-title'] || 'Metrics List';
 			const idStr = HTMLAttributes['data-id'] || 'metrics_' + Math.random().toString(36).substring(2, 9);
+
+			const incomeLabelAttr = HTMLAttributes['data-income-label'] || '';
+			const currencyCodeAttr = HTMLAttributes['data-currency-code'] || '';
+			const incomeLabel = incomeLabelAttr || appState.defaultIncomeLabel || 'Income';
+			const currencyCode = currencyCodeAttr || appState.defaultCurrency || '₹';
 			
 			const container = document.createElement('div');
 			container.setAttribute('data-type', 'metrics');
@@ -2918,7 +2962,34 @@
 			if (HTMLAttributes['data-show-savings'] !== undefined && HTMLAttributes['data-show-savings'] !== null) {
 				container.setAttribute('data-show-savings', String(HTMLAttributes['data-show-savings']));
 			}
+			if (HTMLAttributes['data-visible-tag-totals']) {
+				container.setAttribute('data-visible-tag-totals', HTMLAttributes['data-visible-tag-totals']);
+			}
 			container.setAttribute('data-income', String(incomeVal));
+			if (incomeLabelAttr) {
+				container.setAttribute('data-income-label', incomeLabelAttr);
+			}
+			if (currencyCodeAttr) {
+				container.setAttribute('data-currency-code', currencyCodeAttr);
+			}
+			if (HTMLAttributes['data-income-sources']) {
+				container.setAttribute('data-income-sources', HTMLAttributes['data-income-sources']);
+			}
+			if (HTMLAttributes['data-income-placeholder']) {
+				container.setAttribute('data-income-placeholder', HTMLAttributes['data-income-placeholder']);
+			}
+
+			// Write the latest tagsMetadata from appState.calcTags to the HTML
+			const currentCalcTags = appState.calcTags || [];
+			const tagsMetadataJson = JSON.stringify(currentCalcTags.map(tag => ({
+				id: tag.id,
+				name: tag.name,
+				color: tag.color,
+				enabled: tag.enabled,
+				createdAt: tag.createdAt
+			})));
+			container.setAttribute('data-tags-metadata', tagsMetadataJson);
+
 			container.className = 'metrics-block-print';
 			
 			// Build static HTML representation for export/print
@@ -2944,16 +3015,18 @@
 					if (r.value !== undefined && r.value !== null && String(r.value).trim() !== '') {
 						return {
 							checked: !!r.checked,
-							label: (r.label || '').trim() + ' ' + String(r.value).trim()
+							label: (r.label || '').trim() + ' ' + String(r.value).trim(),
+							tagId: r.tagId
 						};
 					}
 					return {
 						checked: !!r.checked,
-						label: r.label || ''
+						label: r.label || '',
+						tagId: r.tagId
 					};
 				});
 
-				if (Array.isArray(migratedRows) && migratedRows.length > 0) {
+				if (Array.isArray(migratedRows)) {
 					const header = document.createElement('div');
 					header.className = 'metrics-print-header';
 					header.innerHTML = `<strong>📊 ${titleStr}</strong>`;
@@ -2961,21 +3034,56 @@
 
 					const table = document.createElement('table');
 					table.className = 'metrics-print-table';
-					const tbody = document.createElement('tbody');
+					table.style.width = '100%';
+					table.style.borderCollapse = 'collapse';
+					table.style.marginTop = '8px';
 					
-					migratedRows.forEach(r => {
-						const tr = document.createElement('tr');
+					const tbody = document.createElement('tbody');
+
+					// Prepend Income row if showIncome is true
+					if (showIncome) {
+						const trIncome = document.createElement('tr');
+						trIncome.style.fontWeight = 'bold';
+						trIncome.style.borderBottom = '1px solid rgba(0, 0, 0, 0.08)';
 						
 						const tdCheck = document.createElement('td');
 						tdCheck.style.width = '24px';
+						tdCheck.style.padding = '4px 0';
+						tdCheck.textContent = '💵';
+						trIncome.appendChild(tdCheck);
+						
+						const tdLabel = document.createElement('td');
+						tdLabel.style.padding = '4px 8px';
+						tdLabel.textContent = incomeLabel;
+						trIncome.appendChild(tdLabel);
+						
+						const tdValue = document.createElement('td');
+						tdValue.style.padding = '4px 0';
+						tdValue.style.textAlign = 'right';
+						tdValue.style.fontFamily = 'monospace';
+						tdValue.textContent = `${currencyCode} ${incomeVal.toLocaleString()}`;
+						trIncome.appendChild(tdValue);
+						
+						tbody.appendChild(trIncome);
+					}
+					
+					migratedRows.forEach(r => {
+						const tr = document.createElement('tr');
+						tr.style.borderBottom = '1px solid rgba(0, 0, 0, 0.04)';
+						
+						const tdCheck = document.createElement('td');
+						tdCheck.style.width = '24px';
+						tdCheck.style.padding = '4px 0';
 						tdCheck.textContent = r.checked ? '☑' : '☐';
 						tr.appendChild(tdCheck);
 						
 						const tdLabel = document.createElement('td');
+						tdLabel.style.padding = '4px 8px';
 						tdLabel.textContent = r.label || '';
 						tr.appendChild(tdLabel);
 						
 						const tdValue = document.createElement('td');
+						tdValue.style.padding = '4px 0';
 						tdValue.style.textAlign = 'right';
 						tdValue.style.fontFamily = 'monospace';
 						
@@ -2990,11 +3098,94 @@
 						}
 						
 						tr.appendChild(tdValue);
-						
 						tbody.appendChild(tr);
 					});
+
+					// Append Remaining Budget/Savings row if enabled
+					if (shouldShowSavings) {
+						let net = 0;
+						migratedRows.forEach(r => {
+							if (excludeChecked && r.checked) return;
+							const rowNumbers = getRowNumbers(r.label);
+							net += rowNumbers.reduce((a, b) => a + b, 0);
+						});
+						const savingsVal = incomeVal + net;
+
+						const trSavings = document.createElement('tr');
+						trSavings.style.fontWeight = 'bold';
+						trSavings.style.borderTop = '2px double rgba(0, 0, 0, 0.15)';
+						
+						const tdCheck = document.createElement('td');
+						tdCheck.style.width = '24px';
+						tdCheck.style.padding = '6px 0';
+						tdCheck.textContent = '⚖';
+						trSavings.appendChild(tdCheck);
+						
+						const tdLabel = document.createElement('td');
+						tdLabel.style.padding = '6px 8px';
+						tdLabel.textContent = 'Remaining Budget';
+						trSavings.appendChild(tdLabel);
+						
+						const tdValue = document.createElement('td');
+						tdValue.style.padding = '6px 0';
+						tdValue.style.textAlign = 'right';
+						tdValue.style.fontFamily = 'monospace';
+						tdValue.textContent = `${currencyCode} ${savingsVal.toLocaleString()}`;
+						if (savingsVal > 0) tdValue.style.color = '#22c55e';
+						else if (savingsVal < 0) tdValue.style.color = '#ff4d4d';
+						trSavings.appendChild(tdValue);
+						
+						tbody.appendChild(trSavings);
+					}
+
 					table.appendChild(tbody);
 					container.appendChild(table);
+
+					const visibleTagTotalsAttr = HTMLAttributes['data-visible-tag-totals'] || '[]';
+					try {
+						const visibleTagsArray = JSON.parse(visibleTagTotalsAttr);
+						if (Array.isArray(visibleTagsArray) && visibleTagsArray.length > 0) {
+							const totals: Record<string, number> = {};
+							migratedRows.forEach(r => {
+								if (excludeChecked && r.checked) return;
+								const rowNumbers = getRowNumbers(r.label);
+								if (rowNumbers.length > 0) {
+									const sum = rowNumbers.reduce((a, b) => a + b, 0);
+									if (r.tagId) {
+										totals[r.tagId] = (totals[r.tagId] || 0) + sum;
+									}
+								}
+							});
+							
+							const totalsDiv = document.createElement('div');
+							totalsDiv.className = 'metrics-print-totals';
+							totalsDiv.style.marginTop = '8px';
+							totalsDiv.style.display = 'flex';
+							totalsDiv.style.flexWrap = 'wrap';
+							totalsDiv.style.gap = '8px';
+							
+							visibleTagsArray.forEach((tagId: string) => {
+								const tag = appState.calcTags.find(t => t.id === tagId);
+								const totalVal = totals[tagId] || 0;
+								if (tag) {
+									const chip = document.createElement('span');
+									chip.style.fontSize = '11px';
+									chip.style.border = `1px solid ${tag.color || '#888'}33`;
+									chip.style.borderRadius = '12px';
+									chip.style.padding = '2px 8px';
+									chip.style.display = 'inline-flex';
+									chip.style.alignItems = 'center';
+									chip.style.gap = '4px';
+									chip.innerHTML = `<span style="width: 6px; height: 6px; border-radius: 50%; background: ${tag.color || '#888'}; display: inline-block;"></span> <b>${tag.name}:</b> ${totalVal > 0 ? '+' : ''}${totalVal.toLocaleString()}`;
+									totalsDiv.appendChild(chip);
+								}
+							});
+							
+							if (totalsDiv.childNodes.length > 0) {
+								container.appendChild(totalsDiv);
+							}
+						}
+					} catch (err) {}
 				}
 			} catch (e) {}
 			
@@ -13606,7 +13797,7 @@
 		bottom: 0;
 		left: 0;
 		right: 0;
-		z-index: 50;
+		z-index: 500;
 		padding: 4px 8px;
 		padding-bottom: calc(4px + env(safe-area-inset-bottom));
 		overflow-x: auto;

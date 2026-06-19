@@ -23,7 +23,7 @@ export class TagDatabase {
     return new Promise((resolve, reject) => {
       if (this.db) return resolve(this.db);
       
-      const request = indexedDB.open(this.dbName, 1);
+      const request = indexedDB.open(this.dbName, 2);
 
       request.onupgradeneeded = (e) => {
         const db = request.result;
@@ -40,6 +40,12 @@ export class TagDatabase {
           const relationStore = db.createObjectStore('note_tags', { keyPath: ['notePath', 'tagId'] });
           relationStore.createIndex('notePath', 'notePath', { unique: false });
           relationStore.createIndex('tagId', 'tagId', { unique: false });
+        }
+
+        // 3. Create calc_tags store
+        if (!db.objectStoreNames.contains('calc_tags')) {
+          const calcTagStore = db.createObjectStore('calc_tags', { keyPath: 'id' });
+          calcTagStore.createIndex('normalizedName', 'normalizedName', { unique: true });
         }
       };
 
