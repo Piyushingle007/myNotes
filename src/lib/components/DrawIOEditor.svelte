@@ -266,18 +266,28 @@
 <div class="drawio-overlay" role="dialog">
 	<div class="drawio-modal">
 		<div class="drawio-header">
-			<div style="display: flex; align-items: center; gap: 16px;">
-				<span class="title">✏️ Edit Diagram</span>
+			<!-- Mobile-only Cancel button -->
+			<button type="button" class="btn-cancel mobile-only" onclick={handleCancel}>Cancel</button>
+
+			<div class="header-left-title flex-row">
+				<span class="logo">✏️</span>
+				<span class="title">Draw.io Editor</span>
+			</div>
+
+			<!-- Wrap switchers for mobile grid layout, using display: contents on desktop -->
+			<div class="header-switchers-wrapper">
 				{#if onChangeEditorType}
-					<div class="editor-host-switcher">
+					<div class="editor-host-switcher flex-row">
 						<button type="button" class="switcher-btn" onclick={() => handleSwitchEditor('mermaid')}>Mermaid</button>
 						<button type="button" class="switcher-btn active" disabled>Draw.io</button>
 						<button type="button" class="switcher-btn" onclick={() => handleSwitchEditor('native')}>Native</button>
 					</div>
 				{/if}
 			</div>
-			<div class="actions">
-				<button class="btn-cancel" onclick={handleCancel}>Cancel</button>
+
+			<div class="header-right-actions flex-row">
+				<!-- Desktop-only Cancel button -->
+				<button type="button" class="btn-cancel desktop-only" onclick={handleCancel}>Cancel</button>
 				<button class="btn-save" onclick={saveAndClose} disabled={isSaving || !isOnline}>
 					{#if isSaving}
 						Saving...
@@ -376,17 +386,29 @@
 		padding: 12px 20px;
 		background: #252525;
 		border-bottom: 1px solid #333;
+		gap: 16px;
+	}
+
+	.header-switchers-wrapper {
+		display: contents;
+	}
+
+	.header-left-title {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+	}
+
+	.header-right-actions {
+		display: flex;
+		align-items: center;
+		gap: 10px;
 	}
 
 	.title {
 		font-size: 15px;
 		font-weight: 600;
 		color: #fff;
-	}
-
-	.actions {
-		display: flex;
-		gap: 10px;
 	}
 
 	.btn-cancel {
@@ -414,6 +436,94 @@
 		color: #fff;
 		border: none;
 		cursor: pointer;
+	}
+
+	.mobile-only {
+		display: none !important;
+	}
+
+	.desktop-only {
+		display: inline-flex !important;
+	}
+
+	@media (max-width: 768px) {
+		.drawio-overlay {
+			padding: 0;
+		}
+
+		.drawio-modal {
+			width: 100vw;
+			height: 100vh;
+			border-radius: 0;
+		}
+
+		.drawio-header {
+			display: grid !important;
+			grid-template-columns: auto 1fr auto !important;
+			grid-template-rows: auto auto !important;
+			padding: 10px 12px !important;
+			gap: 10px 8px !important;
+			background: #252525;
+			border-bottom: 1px solid #333;
+		}
+
+		.mobile-only {
+			display: inline-flex !important;
+		}
+
+		.desktop-only {
+			display: none !important;
+		}
+
+		.btn-cancel.mobile-only {
+			grid-column: 1;
+			grid-row: 1;
+			justify-self: start;
+			padding: 6px 12px;
+			font-size: 13px;
+		}
+
+		.header-left-title {
+			grid-column: 2;
+			grid-row: 1;
+			justify-self: center;
+			gap: 6px;
+		}
+
+		.header-left-title .title {
+			font-size: 14px;
+			font-weight: 700;
+		}
+
+		.header-right-actions {
+			grid-column: 3;
+			grid-row: 1;
+			justify-self: end;
+			gap: 6px;
+		}
+
+		.header-switchers-wrapper {
+			display: flex !important;
+			grid-column: 1 / -1;
+			grid-row: 2;
+			justify-content: center;
+			align-items: center;
+			width: 100%;
+		}
+
+		.editor-host-switcher {
+			flex-shrink: 0;
+		}
+
+		.switcher-btn {
+			padding: 4px 8px;
+			font-size: 10px;
+		}
+
+		.btn-save {
+			padding: 6px 12px;
+			font-size: 13px;
+		}
 	}
 
 	.btn-save:hover:not(:disabled) {

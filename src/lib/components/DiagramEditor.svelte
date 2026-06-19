@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { fade, fly } from 'svelte/transition';
+	import { cubicOut } from 'svelte/easing';
 	import {
 		decodeDiagram,
 		encodeDiagram,
@@ -34,6 +36,7 @@
 	type Tool = 'select' | DiagramShapeType;
 	let tool = $state<Tool>('select');
 	let selectedId = $state<string | null>(null);
+	let showMobileStyleDrawer = $state(false);
 
 	// Current styling applied to new shapes (and the selected shape).
 	let stroke = $state<string>('#374151');
@@ -360,62 +363,90 @@
 <div class="diagram-overlay" onclick={onCancel}>
 	<div class="diagram-modal" onclick={(e) => e.stopPropagation()} role="dialog" aria-label="Diagram editor">
 		<!-- Header -->
-		<div class="diagram-header" style="display: flex; justify-content: space-between; align-items: center;">
-			<div style="display: flex; align-items: center; gap: 16px;">
+		<div class="diagram-header">
+			<!-- Mobile-only Cancel button -->
+			<button type="button" class="dg-btn mobile-only" onclick={onCancel}>Cancel</button>
+
+			<div class="header-left-title flex-row" style="display: flex; align-items: center; gap: 6px;">
 				<span class="diagram-title" style="display: flex; align-items: center; gap: 6px;">
 					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><path d="M10 6.5h4a3 3 0 0 1 3 3V14"/></svg>
-					Diagram
+					<span>Shape Editor</span>
 				</span>
+			</div>
+
+			<!-- Wrap switchers for mobile grid layout, using display: contents on desktop -->
+			<div class="header-switchers-wrapper">
 				{#if onChangeEditorType}
-					<div class="editor-host-switcher">
+					<div class="editor-host-switcher flex-row">
 						<button type="button" class="switcher-btn" onclick={() => handleSwitchEditor('mermaid')}>Mermaid</button>
 						<button type="button" class="switcher-btn" onclick={() => handleSwitchEditor('drawio')}>Draw.io</button>
 						<button type="button" class="switcher-btn active" disabled>Native</button>
 					</div>
 				{/if}
 			</div>
-			<div class="diagram-header-actions">
-				<button class="dg-btn" onclick={onCancel}>Cancel</button>
+
+			<div class="header-right-actions flex-row" style="display: flex; align-items: center; gap: 8px;">
+				<!-- Desktop-only Cancel button -->
+				<button type="button" class="dg-btn desktop-only" onclick={onCancel}>Cancel</button>
 				<button class="dg-btn primary" onclick={handleSave}>Save</button>
 			</div>
 		</div>
 
 		<!-- Toolbar -->
 		<div class="diagram-toolbar">
-			<div class="dg-tools">
-				{#each tools as t}
-					<button
-						class="dg-tool"
-						class:active={tool === t.id}
-						title={t.label}
-						aria-label={t.label}
-						onclick={() => { tool = t.id; }}
-					>
-						{#if t.id === 'select'}
-							<svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M4 2l7 18 2.2-6.8L20 11z"/></svg>
-						{:else if t.id === 'rect'}
-							<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/></svg>
-						{:else if t.id === 'ellipse'}
-							<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="12" rx="9" ry="7"/></svg>
-						{:else if t.id === 'diamond'}
-							<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l9 9-9 9-9-9z"/></svg>
-						{:else if t.id === 'arrow'}
-							<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="20" x2="20" y2="4"/><polyline points="10 4 20 4 20 14"/></svg>
-						{:else if t.id === 'line'}
-							<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="20" x2="20" y2="4"/></svg>
-						{:else if t.id === 'text'}
-							<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6V4h16v2M12 4v16M9 20h6"/></svg>
-						{:else if t.id === 'draw'}
-							<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18z"/><path d="M2 2l7.586 7.586"/><circle cx="11" cy="11" r="2"/></svg>
-						{/if}
-					</button>
-				{/each}
+			<div class="dg-tools-wrapper">
+				<div class="dg-tools">
+					{#each tools as t}
+						<button
+							class="dg-tool"
+							class:active={tool === t.id}
+							title={t.label}
+							aria-label={t.label}
+							onclick={() => { tool = t.id; }}
+						>
+							{#if t.id === 'select'}
+								<svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M4 2l7 18 2.2-6.8L20 11z"/></svg>
+							{:else if t.id === 'rect'}
+								<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/></svg>
+							{:else if t.id === 'ellipse'}
+								<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="12" rx="9" ry="7"/></svg>
+							{:else if t.id === 'diamond'}
+								<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l9 9-9 9-9-9z"/></svg>
+							{:else if t.id === 'arrow'}
+								<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="20" x2="20" y2="4"/><polyline points="10 4 20 4 20 14"/></svg>
+							{:else if t.id === 'line'}
+								<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="20" x2="20" y2="4"/></svg>
+							{:else if t.id === 'text'}
+								<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6V4h16v2M12 4v16M9 20h6"/></svg>
+							{:else if t.id === 'draw'}
+								<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18z"/><path d="M2 2l7.586 7.586"/><circle cx="11" cy="11" r="2"/></svg>
+							{/if}
+						</button>
+					{/each}
+				</div>
 			</div>
 
-			<div class="dg-sep"></div>
+			<button
+				type="button"
+				class="dg-tool style-toggle-btn dg-mobile-only"
+				class:active={showMobileStyleDrawer}
+				onclick={() => { showMobileStyleDrawer = true; }}
+				title="Style properties"
+				aria-label="Style properties"
+			>
+				<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+					<path d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 14.76 4.24 17 7 17H8.17C8.72 17 9.17 17.45 9.17 18C9.17 18.27 9.06 18.52 8.89 18.7L7.04 20.55C6.71 20.88 6.5 21.34 6.5 21.85C6.5 21.93 6.51 22 6.52 22.04" />
+					<circle cx="7.5" cy="10.5" r="1.5" fill="currentColor" />
+					<circle cx="11.5" cy="7.5" r="1.5" fill="currentColor" />
+					<circle cx="16.5" cy="9.5" r="1.5" fill="currentColor" />
+					<circle cx="15.5" cy="14.5" r="1.5" fill="currentColor" />
+				</svg>
+			</button>
+
+			<div class="dg-sep dg-desktop-only"></div>
 
 			<!-- Stroke color -->
-			<div class="dg-group">
+			<div class="dg-group dg-desktop-only">
 				<span class="dg-label">Stroke</span>
 				<div class="dg-swatches">
 					{#each palette as c}
@@ -426,7 +457,7 @@
 			</div>
 
 			<!-- Fill color -->
-			<div class="dg-group">
+			<div class="dg-group dg-desktop-only">
 				<span class="dg-label">Fill</span>
 				<div class="dg-swatches">
 					{#each fillPalette as c}
@@ -436,7 +467,7 @@
 			</div>
 
 			<!-- Stroke width -->
-			<div class="dg-group">
+			<div class="dg-group dg-desktop-only">
 				<span class="dg-label">Width</span>
 				{#each [1, 2, 4, 6] as w}
 					<button class="dg-w" class:active={strokeWidth === w} onclick={() => { strokeWidth = w; applyStyle(); }} aria-label="Width {w}">
@@ -446,15 +477,15 @@
 			</div>
 
 			{#if selectedShape}
-				<div class="dg-sep"></div>
-				<div class="dg-group">
+				<div class="dg-sep dg-desktop-only"></div>
+				<div class="dg-group dg-desktop-only">
 					<button class="dg-btn ghost" onclick={sendBackward} title="Send backward">⤓</button>
 					<button class="dg-btn ghost" onclick={bringForward} title="Bring forward">⤒</button>
 					<button class="dg-btn danger" onclick={deleteSelected} title="Delete (Del)">Delete</button>
 				</div>
 			{/if}
 
-			<div class="dg-spacer"></div>
+			<div class="dg-spacer dg-desktop-only"></div>
 			<button class="dg-btn ghost" onclick={clearAll}>Clear</button>
 		</div>
 
@@ -555,6 +586,130 @@
 			</div>
 		</div>
 
+		<!-- ST-017: Mobile Style Drawer -->
+		{#if showMobileStyleDrawer}
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
+			<div 
+				class="drawer-backdrop dg-mobile-only" 
+				onclick={() => { showMobileStyleDrawer = false; }}
+				onkeydown={(e) => e.key === 'Escape' && (showMobileStyleDrawer = false)}
+				transition:fade={{ duration: 150 }}
+			>
+				<!-- svelte-ignore a11y_click_events_have_key_events -->
+				<div 
+					class="drawer-sheet flex-col" 
+					onclick={(e) => e.stopPropagation()}
+					transition:fly={{ y: 300, duration: 250, easing: cubicOut }}
+				>
+					<div class="drawer-header flex-row" style="display: flex; width: 100%; justify-content: space-between; align-items: center;">
+						<span class="drawer-title">Shape Style</span>
+						<button 
+							type="button" 
+							class="dg-btn primary done-btn" 
+							onclick={() => { showMobileStyleDrawer = false; }}
+						>
+							Done
+						</button>
+					</div>
+
+					<div class="drawer-content flex-col" style="display: flex; flex-direction: column; width: 100%; gap: 16px;">
+						<!-- Stroke color -->
+						<div class="drawer-group flex-col" style="display: flex; flex-direction: column; width: 100%; gap: 6px;">
+							<span class="drawer-label">Stroke Color</span>
+							<div class="drawer-swatches" style="display: flex; gap: 6px; overflow-x: auto; width: 100%; -webkit-overflow-scrolling: touch; padding-bottom: 4px;">
+								{#each palette as c}
+									<button 
+										type="button"
+										class="dg-swatch" 
+										class:sel={stroke === c} 
+										style="background:{c}" 
+										aria-label="Stroke {c}" 
+										onclick={() => { stroke = c; applyStyle(); }}
+									></button>
+								{/each}
+								<input type="color" class="dg-color" bind:value={stroke} onchange={applyStyle} aria-label="Custom stroke color" />
+							</div>
+						</div>
+
+						<!-- Fill color -->
+						<div class="drawer-group flex-col" style="display: flex; flex-direction: column; width: 100%; gap: 6px;">
+							<span class="drawer-label">Fill Color</span>
+							<div class="drawer-swatches" style="display: flex; gap: 6px; overflow-x: auto; width: 100%; -webkit-overflow-scrolling: touch; padding-bottom: 4px;">
+								{#each fillPalette as c}
+									<button 
+										type="button"
+										class="dg-swatch" 
+										class:sel={fill === c} 
+										class:none={c === 'transparent'} 
+										style={c === 'transparent' ? '' : `background:${c}`} 
+										aria-label="Fill {c}" 
+										onclick={() => { fill = c; applyStyle(); }}
+									></button>
+								{/each}
+							</div>
+						</div>
+
+						<!-- Stroke width -->
+						<div class="drawer-group flex-col" style="display: flex; flex-direction: column; width: 100%; gap: 6px;">
+							<span class="drawer-label">Stroke Width</span>
+							<div class="drawer-widths" style="display: flex; gap: 8px; width: 100%;">
+								{#each [1, 2, 4, 6] as w}
+									<button 
+										type="button"
+										class="dg-w" 
+										class:active={strokeWidth === w} 
+										onclick={() => { strokeWidth = w; applyStyle(); }} 
+										aria-label="Width {w}"
+										style="flex: 1;"
+									>
+										<span style="height:{w}px"></span>
+									</button>
+								{/each}
+							</div>
+						</div>
+
+						{#if selectedShape}
+							<!-- Arrange layer order -->
+							<div class="drawer-group flex-col" style="display: flex; flex-direction: column; width: 100%; gap: 6px;">
+								<span class="drawer-label">Layer Arrange</span>
+								<div class="drawer-arrange" style="display: flex; gap: 12px; width: 100%;">
+									<button 
+										type="button"
+										class="dg-btn ghost" 
+										style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 10px;"
+										onclick={sendBackward}
+									>
+										Send Backward
+									</button>
+									<button 
+										type="button"
+										class="dg-btn ghost" 
+										style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 10px;"
+										onclick={bringForward}
+									>
+										Bring Forward
+									</button>
+								</div>
+							</div>
+
+							<!-- Delete Shape -->
+							<button 
+								type="button"
+								class="dg-btn danger delete-shape-btn" 
+								style="width: 100%; margin-top: 16px; padding: 12px; display: flex; align-items: center; justify-content: center; border-radius: 8px; font-weight: 600;"
+								onclick={() => {
+									deleteSelected();
+									showMobileStyleDrawer = false;
+								}}
+							>
+								Delete Shape
+							</button>
+						{/if}
+					</div>
+				</div>
+			</div>
+		{/if}
+
 		<div class="diagram-footer">
 			<span class="dg-hint">
 				{#if tool === 'select'}Click to select · drag to move · drag handle to resize · Del to delete{:else if tool === 'text'}Click to place text{:else if tool === 'draw'}Click &amp; drag to draw freehand{:else}Click &amp; drag on the canvas{/if}
@@ -627,6 +782,23 @@
 		justify-content: space-between;
 		padding: 12px 16px;
 		border-bottom: 1px solid var(--border-color, #23262d);
+		gap: 16px;
+	}
+
+	.header-switchers-wrapper {
+		display: contents;
+	}
+
+	.header-left-title {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+	}
+
+	.header-right-actions {
+		display: flex;
+		align-items: center;
+		gap: 10px;
 	}
 
 	.diagram-title {
@@ -638,7 +810,19 @@
 		color: var(--text-primary, #fff);
 	}
 
-	.diagram-header-actions { display: flex; gap: 8px; }
+	.mobile-only {
+		display: none !important;
+	}
+
+	.desktop-only {
+		display: inline-flex !important;
+	}
+
+	@media (min-width: 769px) {
+		.editor-host-switcher {
+			margin-right: auto;
+		}
+	}
 
 	.diagram-toolbar {
 		display: flex;
@@ -758,10 +942,227 @@
 
 	.dg-hint { font-size: 11px; color: var(--text-tertiary, #7c8290); }
 
+	.dg-mobile-only {
+		display: none !important;
+	}
+
 	@media (max-width: 768px) {
 		.diagram-overlay { padding: 0; }
 		.diagram-modal { width: 100vw; height: 100vh; border-radius: 0; }
 		.dg-label { display: none; }
+		
+		.dg-desktop-only {
+			display: none !important;
+		}
+		
+		.dg-mobile-only {
+			display: flex !important;
+		}
+
+		.diagram-header {
+			display: grid !important;
+			grid-template-columns: auto 1fr auto !important;
+			grid-template-rows: auto auto !important;
+			padding: 10px 12px !important;
+			gap: 10px 8px !important;
+			background: var(--bg-surface, #16181d);
+			border-bottom: 1px solid var(--border-color, #23262d);
+		}
+
+		.dg-btn.mobile-only {
+			grid-column: 1;
+			grid-row: 1;
+			justify-self: start;
+			padding: 6px 12px;
+			font-size: 13px;
+		}
+
+		.header-left-title {
+			grid-column: 2;
+			grid-row: 1;
+			justify-self: center;
+			gap: 6px;
+		}
+
+		.diagram-title {
+			display: flex !important;
+			align-items: center;
+			gap: 6px;
+			font-size: 14px !important;
+			font-weight: 700;
+		}
+
+		.header-right-actions {
+			grid-column: 3;
+			grid-row: 1;
+			justify-self: end;
+			gap: 6px;
+		}
+
+		.header-switchers-wrapper {
+			display: flex !important;
+			grid-column: 1 / -1;
+			grid-row: 2;
+			justify-content: center;
+			align-items: center;
+			width: 100%;
+		}
+
+		.editor-host-switcher {
+			flex-shrink: 0;
+		}
+
+		.switcher-btn {
+			padding: 4px 8px;
+			font-size: 10px;
+		}
+
+		.dg-btn.primary {
+			padding: 6px 12px;
+			font-size: 13px;
+		}
+
+		.diagram-toolbar {
+			justify-content: space-between !important;
+			flex-wrap: nowrap !important;
+			overflow-x: auto;
+			padding: 6px 8px;
+			gap: 8px;
+		}
+
+		.dg-tools-wrapper {
+			overflow-x: auto;
+			display: flex;
+			flex-shrink: 1;
+			min-width: 0;
+			-webkit-overflow-scrolling: touch;
+		}
+		.dg-tools-wrapper::-webkit-scrollbar {
+			display: none;
+		}
+
+		.dg-tools {
+			flex-wrap: nowrap;
+			gap: 4px;
+		}
+
+		.style-toggle-btn {
+			flex-shrink: 0;
+			background: rgba(255, 255, 255, 0.05);
+			border: 1px solid rgba(255, 255, 255, 0.1);
+			color: var(--accent, #38bdf8);
+		}
+		.style-toggle-btn.active {
+			background: var(--accent-light, rgba(56,189,248,0.16));
+			border-color: var(--accent, #38bdf8);
+		}
+
+		/* Drawer styles */
+		.drawer-backdrop {
+			position: absolute;
+			inset: 0;
+			background: rgba(0, 0, 0, 0.6);
+			backdrop-filter: blur(4px);
+			-webkit-backdrop-filter: blur(4px);
+			z-index: 1000;
+			display: flex;
+			align-items: flex-end;
+			justify-content: center;
+		}
+
+		.drawer-sheet {
+			width: 100%;
+			background: var(--bg-surface, #16181d);
+			border-top: 1px solid var(--border-highlight, #2c313a);
+			border-radius: 16px 16px 0 0;
+			padding: 20px;
+			gap: 16px;
+			box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.55);
+			max-height: 75vh;
+			overflow-y: auto;
+			box-sizing: border-box;
+		}
+
+		.drawer-header {
+			justify-content: space-between;
+			align-items: center;
+			border-bottom: 1px solid var(--border-color, #23262d);
+			padding-bottom: 12px;
+			width: 100%;
+		}
+
+		.drawer-title {
+			font-weight: 700;
+			font-size: 15px;
+			color: var(--text-primary, #fff);
+		}
+
+		.drawer-content {
+			width: 100%;
+			gap: 16px;
+		}
+
+		.drawer-group {
+			width: 100%;
+			gap: 8px;
+			align-items: flex-start;
+		}
+
+		.drawer-label {
+			font-size: 10px;
+			text-transform: uppercase;
+			letter-spacing: 0.5px;
+			color: var(--text-tertiary, #7c8290);
+			font-weight: 700;
+			margin-bottom: 2px;
+		}
+
+		.drawer-swatches {
+			width: 100%;
+			overflow-x: auto;
+			display: flex;
+			gap: 6px;
+			padding-bottom: 4px;
+			flex-wrap: nowrap;
+			-webkit-overflow-scrolling: touch;
+		}
+		.drawer-swatches::-webkit-scrollbar {
+			display: none;
+		}
+
+		.drawer-widths {
+			width: 100%;
+			display: flex;
+			gap: 8px;
+		}
+
+		.drawer-sheet .dg-swatch {
+			flex-shrink: 0;
+			width: 24px;
+			height: 24px;
+			border-radius: 6px;
+		}
+		
+		.drawer-sheet .dg-color {
+			flex-shrink: 0;
+			width: 28px;
+			height: 26px;
+		}
+
+		.drawer-sheet .dg-w {
+			flex: 1;
+			height: 36px;
+		}
+		
+		.done-btn {
+			height: 32px;
+			padding: 0 16px;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			font-size: 12px;
+			border-radius: 6px;
+		}
 	}
 </style>
 

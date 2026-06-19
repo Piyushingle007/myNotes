@@ -2397,6 +2397,11 @@
 				dom.setAttribute('data-diagram', node.attrs.data || '');
 				dom.setAttribute('data-size', node.attrs.size || 'medium');
 				dom.setAttribute('data-align', node.attrs.align || 'center');
+				
+				let lastRenderedData = node.attrs.data || '';
+				let lastRenderedSize = node.attrs.size || 'medium';
+				let lastRenderedAlign = node.attrs.align || 'center';
+
 				const render = () => {
 					const enc = dom.getAttribute('data-diagram') || '';
 					let inner = '';
@@ -2475,20 +2480,29 @@
 					},
 					update(updatedNode: any) {
 						if (updatedNode.type.name !== 'diagram') return false;
+						
+						// Update reference to node for closure access in double-click event handler
+						node = updatedNode;
+
 						const newData = updatedNode.attrs.data || '';
 						const newSize = updatedNode.attrs.size || 'medium';
 						const newAlign = updatedNode.attrs.align || 'center';
-						// Only re-render if something actually changed — this prevents a spurious
-						// re-render (which could briefly collapse the SVG) when ProseMirror
-						// re-focuses after the diagram modal is closed without saving.
+						
 						const changed =
-							newData !== (dom.getAttribute('data-diagram') || '') ||
-							newSize !== (dom.getAttribute('data-size') || 'medium') ||
-							newAlign !== (dom.getAttribute('data-align') || 'center');
+							newData !== lastRenderedData ||
+							newSize !== lastRenderedSize ||
+							newAlign !== lastRenderedAlign;
+							
 						dom.setAttribute('data-diagram', newData);
 						dom.setAttribute('data-size', newSize);
 						dom.setAttribute('data-align', newAlign);
-						if (changed) render();
+						
+						if (changed) {
+							lastRenderedData = newData;
+							lastRenderedSize = newSize;
+							lastRenderedAlign = newAlign;
+							render();
+						}
 						return true;
 					}
 				};

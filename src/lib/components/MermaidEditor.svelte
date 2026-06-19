@@ -60,7 +60,7 @@
 		mermaidCode = decoded.mermaidCode || DEFAULT_MERMAID;
 		originalCode = mermaidCode;
 
-		if (typeof window !== 'undefined' && window.innerWidth <= 600) {
+		if (typeof window !== 'undefined' && window.innerWidth <= 768) {
 			viewMode = 'preview';
 		}
 
@@ -120,7 +120,7 @@
 	});
 
 	$effect(() => {
-		if (typeof window !== 'undefined' && window.innerWidth <= 600 && viewMode === 'split') {
+		if (typeof window !== 'undefined' && window.innerWidth <= 768 && viewMode === 'split') {
 			viewMode = 'preview';
 		}
 	});
@@ -286,10 +286,17 @@
 	<div class="mermaid-modal flex-col" transition:fly={{ y: 30, duration: 300, easing: cubicOut }}>
 		
 		<!-- Header Toolbar -->
-		<div class="mermaid-header flex-row">
-			<div class="header-left flex-row" style="gap: 12px; align-items: center;">
+		<div class="mermaid-header">
+			<!-- Mobile-only Cancel button -->
+			<button type="button" class="btn-cancel mobile-only" onclick={handleCancel}>Cancel</button>
+
+			<div class="header-left-title flex-row">
 				<span class="logo">📊</span>
-				<span class="title">Mermaid Diagram Editor</span>
+				<span class="title">Mermaid Editor</span>
+			</div>
+
+			<!-- Wrap switchers for mobile grid layout, using display: contents on desktop -->
+			<div class="header-switchers-wrapper">
 				{#if onChangeEditorType}
 					<div class="editor-host-switcher flex-row">
 						<button type="button" class="switcher-btn active" disabled>Mermaid</button>
@@ -297,9 +304,7 @@
 						<button type="button" class="switcher-btn" onclick={() => handleSwitchEditor('native')}>Native</button>
 					</div>
 				{/if}
-			</div>
-			
-			<div class="header-center flex-row" style="gap: 16px;">
+				
 				<!-- Segmented View Mode Controls -->
 				<div class="segmented-control flex-row">
 					<button 
@@ -311,7 +316,7 @@
 						<span>Code</span>
 					</button>
 					<button 
-						class="control-btn flex-row" 
+						class="control-btn flex-row split-btn" 
 						class:active={viewMode === 'split'} 
 						onclick={() => viewMode = 'split'}
 					>
@@ -329,12 +334,14 @@
 				</div>
 			</div>
 
-			<div class="header-right flex-row" style="gap: 10px;">
+			<div class="header-right-actions flex-row">
 				{#if svgContent}
 					<button class="icon-action-btn" onclick={downloadSvg} title="Download SVG" aria-label="Download SVG">
 						<Download size={16} />
 					</button>
 				{/if}
+				<!-- Desktop-only Cancel button -->
+				<button type="button" class="btn-cancel desktop-only" onclick={handleCancel}>Cancel</button>
 				<button class="btn-save" onclick={handleSave} disabled={isSaving || !!errorMsg}>
 					{#if isSaving}
 						Saving...
@@ -493,6 +500,23 @@
 		background: #181818;
 		border-bottom: 1px solid #2d2d2d;
 		flex-shrink: 0;
+		gap: 16px;
+	}
+
+	.header-switchers-wrapper {
+		display: contents;
+	}
+
+	.header-left-title {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+	}
+
+	.header-right-actions {
+		display: flex;
+		align-items: center;
+		gap: 10px;
 	}
 
 	.logo {
@@ -506,9 +530,17 @@
 		letter-spacing: -0.2px;
 	}
 
-	@media (max-width: 600px) {
+	.mobile-only {
+		display: none !important;
+	}
+
+	.desktop-only {
+		display: inline-flex !important;
+	}
+
+	@media (max-width: 768px) {
 		.mermaid-overlay {
-			padding: 8px;
+			padding: 0;
 		}
 
 		.mermaid-modal {
@@ -519,17 +551,85 @@
 		}
 
 		.mermaid-header {
-			padding: 10px 12px;
+			display: grid !important;
+			grid-template-columns: auto 1fr auto !important;
+			grid-template-rows: auto auto !important;
+			padding: 10px 12px !important;
+			gap: 10px 8px !important;
+			background: #181818;
+			border-bottom: 1px solid #2d2d2d;
+		}
+
+		.mobile-only {
+			display: inline-flex !important;
+		}
+
+		.desktop-only {
+			display: none !important;
+		}
+
+		.btn-cancel.mobile-only {
+			grid-column: 1;
+			grid-row: 1;
+			justify-self: start;
+			padding: 6px 12px;
+			font-size: 13px;
+		}
+
+		.header-left-title {
+			grid-column: 2;
+			grid-row: 1;
+			justify-self: center;
+			gap: 6px;
+		}
+
+		.header-left-title .logo {
+			font-size: 16px;
+		}
+
+		.header-left-title .title {
+			font-size: 14px;
+			font-weight: 700;
+		}
+
+		.header-right-actions {
+			grid-column: 3;
+			grid-row: 1;
+			justify-self: end;
+			gap: 6px;
+		}
+
+		.header-switchers-wrapper {
+			display: flex !important;
+			grid-column: 1 / -1;
+			grid-row: 2;
+			justify-content: space-between;
+			align-items: center;
+			width: 100%;
 			gap: 8px;
 		}
 
-		.mermaid-header .logo,
-		.mermaid-header .title {
-			display: none;
+		.editor-host-switcher {
+			flex-shrink: 0;
 		}
 
-		.segmented-control button:nth-child(2) {
-			display: none;
+		.switcher-btn {
+			padding: 4px 8px;
+			font-size: 10px;
+		}
+
+		.segmented-control {
+			flex-shrink: 0;
+		}
+
+		.segmented-control .split-btn {
+			display: none !important;
+		}
+
+		.control-btn {
+			padding: 4px 10px;
+			font-size: 10px;
+			height: 22px;
 		}
 
 		.mermaid-workspace {
@@ -544,7 +644,7 @@
 
 		.btn-save {
 			padding: 6px 12px;
-			font-size: 12px;
+			font-size: 13px;
 		}
 
 		.code-textarea {
@@ -754,6 +854,8 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
+		width: 100%;
+		height: 100%;
 		max-width: 100%;
 		max-height: 100%;
 		user-select: none;
