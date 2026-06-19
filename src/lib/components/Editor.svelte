@@ -1533,7 +1533,12 @@
 		if (pos !== null) {
 			const node = editor.state.doc.nodeAt(pos);
 			if (node && node.type.name === 'diagram') {
-				const tr = editor.state.tr.setNodeAttribute(pos, 'data', encoded);
+				const newNode = editor.schema.nodes.diagram.create({
+					data: encoded,
+					size: node.attrs.size || 'medium',
+					align: node.attrs.align || 'center'
+				});
+				const tr = editor.state.tr.replaceWith(pos, pos + node.nodeSize, newNode);
 				editor.view.dispatch(tr);
 			}
 		} else {
@@ -2503,6 +2508,7 @@
 							lastRenderedAlign = newAlign;
 							render();
 						}
+						
 						return true;
 					}
 				};

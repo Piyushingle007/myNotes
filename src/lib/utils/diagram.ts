@@ -216,6 +216,16 @@ export function renderDiagramSVG(data: DiagramData, opts: { maxWidth?: number } 
 		try {
 			let svgStr = data.mermaidSvg.trim();
 
+			// Generate a unique ID to avoid ID collisions in the DOM and force WebKit/Safari to re-apply stylesheets
+			const uniqueId = `mermaid-render-${Math.random().toString(36).slice(2, 9)}`;
+			const idMatch = svgStr.match(/<svg\b[^>]*\bid=["']([^"']+)["']/i);
+			if (idMatch) {
+				const oldId = idMatch[1];
+				svgStr = svgStr.replaceAll(oldId, uniqueId);
+			} else {
+				svgStr = svgStr.replace(/<svg\b/i, `<svg id="${uniqueId}"`);
+			}
+
 			// Extract viewBox dimensions so we can set explicit width/height for correct aspect ratio
 			let widthAttr = '';
 			let heightAttr = '';
