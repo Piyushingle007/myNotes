@@ -2819,8 +2819,31 @@
 				},
 				showIncome: {
 					default: false,
-					parseHTML: (el: HTMLElement) => el.getAttribute('data-show-income') === 'true',
+					parseHTML: (el: HTMLElement) => {
+						const hasIncomeAttr = el.hasAttribute('data-income');
+						const showIncomeAttr = el.getAttribute('data-show-income') === 'true';
+						if (!hasIncomeAttr) {
+							return false;
+						}
+						return showIncomeAttr;
+					},
 					renderHTML: (attrs) => ({ 'data-show-income': String(attrs.showIncome) })
+				},
+				showInflows: {
+					default: false,
+					parseHTML: (el: HTMLElement) => {
+						const hasIncomeAttr = el.hasAttribute('data-income');
+						const showIncomeAttr = el.getAttribute('data-show-income') === 'true';
+						const showInflowsAttr = el.getAttribute('data-show-inflows');
+						if (showInflowsAttr !== null) {
+							return showInflowsAttr === 'true';
+						}
+						if (!hasIncomeAttr && showIncomeAttr) {
+							return true;
+						}
+						return false;
+					},
+					renderHTML: (attrs) => ({ 'data-show-inflows': String(attrs.showInflows) })
 				},
 				showExpenses: {
 					default: false,
@@ -2841,6 +2864,24 @@
 					default: false,
 					parseHTML: (el: HTMLElement) => el.getAttribute('data-show-median') === 'true',
 					renderHTML: (attrs) => ({ 'data-show-median': String(attrs.showMedian) })
+				},
+				showSavings: {
+					default: null,
+					parseHTML: (el: HTMLElement) => {
+						const attr = el.getAttribute('data-show-savings');
+						if (attr === 'true') return true;
+						if (attr === 'false') return false;
+						return null;
+					},
+					renderHTML: (attrs) => {
+						if (attrs.showSavings === null || attrs.showSavings === undefined) return {};
+						return { 'data-show-savings': String(attrs.showSavings) };
+					}
+				},
+				income: {
+					default: 0,
+					parseHTML: (el: HTMLElement) => parseFloat(el.getAttribute('data-income') || '0') || 0,
+					renderHTML: (attrs) => ({ 'data-income': String(attrs.income || 0) })
 				}
 			};
 		},
@@ -2853,10 +2894,12 @@
 			const dataStr = HTMLAttributes['data-metrics'] || '[]';
 			const excludeChecked = HTMLAttributes['data-exclude-checked'] === 'true' || HTMLAttributes['data-exclude-checked'] === true;
 			const showIncome = HTMLAttributes['data-show-income'] === 'true' || HTMLAttributes['data-show-income'] === true;
+			const showInflows = HTMLAttributes['data-show-inflows'] === 'true' || HTMLAttributes['data-show-inflows'] === true;
 			const showExpenses = HTMLAttributes['data-show-expenses'] === 'true' || HTMLAttributes['data-show-expenses'] === true;
 			const showMin = HTMLAttributes['data-show-min'] === 'true' || HTMLAttributes['data-show-min'] === true;
 			const showMax = HTMLAttributes['data-show-max'] === 'true' || HTMLAttributes['data-show-max'] === true;
 			const showMedian = HTMLAttributes['data-show-median'] === 'true' || HTMLAttributes['data-show-median'] === true;
+			const incomeVal = parseFloat(HTMLAttributes['data-income'] || '0') || 0;
 			const titleStr = HTMLAttributes['data-title'] || 'Metrics List';
 			const idStr = HTMLAttributes['data-id'] || 'metrics_' + Math.random().toString(36).substring(2, 9);
 			
@@ -2867,10 +2910,15 @@
 			container.setAttribute('data-metrics', dataStr);
 			container.setAttribute('data-exclude-checked', String(excludeChecked));
 			container.setAttribute('data-show-income', String(showIncome));
+			container.setAttribute('data-show-inflows', String(showInflows));
 			container.setAttribute('data-show-expenses', String(showExpenses));
 			container.setAttribute('data-show-min', String(showMin));
 			container.setAttribute('data-show-max', String(showMax));
 			container.setAttribute('data-show-median', String(showMedian));
+			if (HTMLAttributes['data-show-savings'] !== undefined && HTMLAttributes['data-show-savings'] !== null) {
+				container.setAttribute('data-show-savings', String(HTMLAttributes['data-show-savings']));
+			}
+			container.setAttribute('data-income', String(incomeVal));
 			container.className = 'metrics-block-print';
 			
 			// Build static HTML representation for export/print
@@ -2958,22 +3006,20 @@
 				dom.className = 'metrics-block-view-container';
 				dom.contentEditable = 'false';
 				
-				// Svelte 5 Deep Reactivity wrapper
-				let componentState = $state({
-					node: node,
-					getPos: getPos,
-					editor: editor
-				});
+				let currentNode = node;
+				const nodeStore = writable(node);
 				
 				const component = mount(MetricsBlock, {
 					target: dom,
 					props: {
-						blockState: componentState,
-						updateAttributes: (attrs) => {
+						nodeStore,
+						getPos,
+						editor,
+						updateAttributes: (attrs: any) => {
 							const pos = typeof getPos === 'function' ? getPos() : null;
 							if (pos !== null && pos !== undefined) {
 								editor.view.dispatch(editor.state.tr.setNodeMarkup(pos, undefined, {
-									...componentState.node.attrs,
+									...currentNode.attrs,
 									...attrs
 								}));
 							}
@@ -2985,16 +3031,8 @@
 					dom,
 					update(updatedNode) {
 						if (updatedNode.type.name !== 'metrics') return false;
-						if (updatedNode.attrs.data !== componentState.node.attrs.data ||
-							updatedNode.attrs.excludeChecked !== componentState.node.attrs.excludeChecked ||
-							updatedNode.attrs.title !== componentState.node.attrs.title ||
-							updatedNode.attrs.showIncome !== componentState.node.attrs.showIncome ||
-							updatedNode.attrs.showExpenses !== componentState.node.attrs.showExpenses ||
-							updatedNode.attrs.showMin !== componentState.node.attrs.showMin ||
-							updatedNode.attrs.showMax !== componentState.node.attrs.showMax ||
-							updatedNode.attrs.showMedian !== componentState.node.attrs.showMedian) {
-							componentState.node = updatedNode;
-						}
+						currentNode = updatedNode;
+						nodeStore.set(updatedNode);
 						return true;
 					},
 					destroy() {

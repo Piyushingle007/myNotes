@@ -154,7 +154,7 @@ class AppState {
   favorites = $state<string[]>(JSON.parse(localStorage.getItem('mynotes_favorites') || '[]'));
   searchQuery = $state<string>('');
   showSettings = $state<boolean>(false);
-  settingsActiveTab = $state<'sync' | 'styling' | 'editor'>('sync');
+  settingsActiveTab = $state<'sync' | 'styling' | 'editor' | 'calculation'>('sync');
   isReadOnly = $state<boolean>(false);
   sourceMode = $state<boolean>(localStorage.getItem('mynotes_editor_source_mode') === 'true');
   editorDirty = $state<boolean>(false);
@@ -162,6 +162,8 @@ class AppState {
   selectedNotes = $state<Set<string>>(new Set());
   autoPruneTags = $state<boolean>(localStorage.getItem('mynotes_tags_auto_prune') === 'true');
   theme = $state<string>(localStorage.getItem('mynotes_theme') || 'steel');
+  defaultCurrency = $state<string>(localStorage.getItem('mynotes_calc_currency') || '₹');
+  defaultIncomeLabel = $state<string>(localStorage.getItem('mynotes_calc_income_label') || 'Income');
   customDriveFolderId = $state<string | null>(localStorage.getItem('mynotes_custom_drive_folder_id') || null);
   customDriveFolderName = $state<string | null>(localStorage.getItem('mynotes_custom_drive_folder_name') || null);
   googleDriveFolders = $state<any[]>([]);
@@ -552,6 +554,16 @@ class AppState {
     if (enabled) {
       this.pruneUnusedTags();
     }
+  }
+
+  setDefaultCurrency(currency: string) {
+    this.defaultCurrency = currency;
+    localStorage.setItem('mynotes_calc_currency', currency);
+  }
+
+  setDefaultIncomeLabel(label: string) {
+    this.defaultIncomeLabel = label;
+    localStorage.setItem('mynotes_calc_income_label', label);
   }
 
   /**

@@ -2309,6 +2309,14 @@
         >
           Editor & Files
         </button>
+        <button 
+          class="settings-tab-btn" 
+          class:active={appState.settingsActiveTab === 'calculation'} 
+          onclick={() => appState.settingsActiveTab = 'calculation'}
+          style="flex: 1; padding: 8px 12px; border-radius: var(--radius-standard); font-size: 12px; font-weight: 600; text-align: center; border: none; background: {appState.settingsActiveTab === 'calculation' ? 'var(--accent)' : 'rgba(255,255,255,0.04)'}; color: {appState.settingsActiveTab === 'calculation' ? 'var(--bg-primary)' : 'var(--text-secondary)'}; transition: all 0.2s; cursor: pointer;"
+        >
+          Calculation
+        </button>
       </div>
 
       <div class="settings-content flex-col" style="max-height: 60vh; overflow-y: auto; gap: 20px; padding: 20px; width: 100%;">
@@ -2716,6 +2724,62 @@
                 <span>Active Vault: <b>{appState.vaultName || 'Local Sandbox'}</b></span>
                 <span>Total notes: <b>{appState.notes.length}</b></span>
               </div>
+            </div>
+          </div>
+        {:else if appState.settingsActiveTab === 'calculation'}
+          <!-- Global preferences -->
+          <div class="form-group flex-col" style="gap: 8px;">
+            <label class="form-label" style="font-weight: 700; display: flex; align-items: center; gap: 8px;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="sync-icon-accent">
+                <circle cx="12" cy="12" r="10"/>
+                <line x1="12" y1="8" x2="12" y2="16"/>
+                <line x1="8" y1="12" x2="16" y2="12"/>
+              </svg>
+              <span>Calculation Settings</span>
+            </label>
+
+            <div class="flex-col" style="background-color: var(--bg-mid-dark); padding: 16px; border-radius: var(--radius-standard); border: 1px solid var(--border-color); gap: 16px; width: 100%; box-sizing: border-box;">
+              <div class="flex-col" style="gap: 6px;">
+                <label for="calc-default-currency" style="font-size: 13px; font-weight: 600; color: var(--text-primary);">Default Currency Symbol</label>
+                <input
+                  id="calc-default-currency"
+                  type="text"
+                  placeholder="₹"
+                  value={appState.defaultCurrency}
+                  oninput={(e) => appState.setDefaultCurrency(e.currentTarget.value)}
+                  style="background: rgba(0,0,0,0.2); border: 1px solid var(--border-color); padding: 8px 12px; border-radius: 6px; color: var(--text-primary); outline: none; font-size: 14px;"
+                />
+                <span style="font-size: 10px; color: var(--text-tertiary);">Used as the default currency indicator on new calculation boxes.</span>
+              </div>
+
+              <div class="flex-col" style="gap: 6px;">
+                <label for="calc-default-income-label" style="font-size: 13px; font-weight: 600; color: var(--text-primary);">Default Income Label</label>
+                <input
+                  id="calc-default-income-label"
+                  type="text"
+                  placeholder="Income"
+                  value={appState.defaultIncomeLabel}
+                  oninput={(e) => appState.setDefaultIncomeLabel(e.currentTarget.value)}
+                  style="background: rgba(0,0,0,0.2); border: 1px solid var(--border-color); padding: 8px 12px; border-radius: 6px; color: var(--text-primary); outline: none; font-size: 14px;"
+                />
+                <span style="font-size: 10px; color: var(--text-tertiary);">Used as the default label for your income line.</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Budget Tag Catalog Shell -->
+          <div class="form-group flex-col" style="gap: 8px; margin-top: 10px; border-top: 1px dashed var(--border-color); padding-top: 20px;">
+            <label class="form-label" style="font-weight: 700; display: flex; align-items: center; gap: 8px;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="sync-icon-accent">
+                <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/>
+                <line x1="7" y1="7" x2="7.01" y2="7"/>
+              </svg>
+              <span>Budget Tag Catalog</span>
+            </label>
+            
+            <div class="flex-col" style="background-color: var(--bg-mid-dark); padding: 16px; border-radius: var(--radius-standard); border: 1px solid var(--border-color); gap: 12px; width: 100%; box-sizing: border-box; text-align: center;">
+              <span style="font-size: 13px; font-weight: 600; color: var(--text-secondary);">Manage Budget Categories</span>
+              <span style="font-size: 11px; color: var(--text-tertiary);">The Budget Tag Catalog editor will be introduced in the next phase (ST-024). These tags will let you categorize transaction rows in Calculation Boxes independently of Note Tags.</span>
             </div>
           </div>
         {/if}

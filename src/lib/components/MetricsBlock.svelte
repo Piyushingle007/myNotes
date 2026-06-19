@@ -1,16 +1,15 @@
 <script lang="ts">
 	import { tick, untrack } from 'svelte';
+	import type { Writable } from 'svelte/store';
 	import { appState } from '../stores/appState.svelte';
 
 	interface Props {
-		blockState: {
-			node: any;
-			getPos: () => number | null | undefined;
-			editor: any;
-		};
+		nodeStore: Writable<any>;
+		getPos: () => number | null | undefined;
+		editor: any;
 		updateAttributes: (attrs: any) => void;
 	}
-	let { blockState, updateAttributes }: Props = $props();
+	let { nodeStore, getPos, editor, updateAttributes }: Props = $props();
 
 	// Local reactive state for rows
 	let rows: Array<{ id: string; checked: boolean; label: string }> = $state([]);
@@ -176,7 +175,7 @@
 
 	function handleInsertDate(event: MouseEvent, rowId: string) {
 		event.preventDefault();
-		const el = document.querySelector(`.metrics-row-wrapper-${blockState.node.attrs.id || ''} [data-row-id="${rowId}"]`) as HTMLElement | null;
+		const el = document.querySelector(`.metrics-row-wrapper-${$nodeStore.attrs.id || ''} [data-row-id="${rowId}"]`) as HTMLElement | null;
 		if (el) {
 			el.focus();
 			const todayStr = new Date().toISOString().split('T')[0];
@@ -225,7 +224,7 @@
 
 	// Sync local rows from node attributes and perform legacy migrations
 	$effect(() => {
-		const dataStr = blockState.node.attrs.data || '[]';
+		const dataStr = $nodeStore.attrs.data || '[]';
 		try {
 			const parsed = JSON.parse(dataStr);
 			const migrated = parsed.map((r: any) => {
@@ -254,28 +253,61 @@
 		}
 	});
 
-	// Get settings from node attributes
-	let excludeChecked = $derived(
-		blockState.node.attrs.excludeChecked === 'true' || blockState.node.attrs.excludeChecked === true
-	);
-	let showIncome = $derived(
-		blockState.node.attrs.showIncome === 'true' || blockState.node.attrs.showIncome === true
-	);
-	let showExpenses = $derived(
-		blockState.node.attrs.showExpenses === 'true' || blockState.node.attrs.showExpenses === true
-	);
-	let showMin = $derived(
-		blockState.node.attrs.showMin === 'true' || blockState.node.attrs.showMin === true
-	);
-	let showMax = $derived(
-		blockState.node.attrs.showMax === 'true' || blockState.node.attrs.showMax === true
-	);
-	let showMedian = $derived(
-		blockState.node.attrs.showMedian === 'true' || blockState.node.attrs.showMedian === true
-	);
+	// Get settings from node attributes via reactive synchronization
+	let excludeChecked = $derived($nodeStore.attrs.excludeChecked === 'true' || $nodeStore.attrs.excludeChecked === true);
+	let showIncome = $derived($nodeStore.attrs.showIncome === 'true' || $nodeStore.attrs.showIncome === true);
+	let showInflows = $derived($nodeStore.attrs.showInflows === 'true' || $nodeStore.attrs.showInflows === true);
+	let showExpenses = $derived($nodeStore.attrs.showExpenses === 'true' || $nodeStore.attrs.showExpenses === true);
+	let showMin = $derived($nodeStore.attrs.showMin === 'true' || $nodeStore.attrs.showMin === true);
+	let showMax = $derived($nodeStore.attrs.showMax === 'true' || $nodeStore.attrs.showMax === true);
+	let showMedian = $derived($nodeStore.attrs.showMedian === 'true' || $nodeStore.attrs.showMedian === true);
+	
+	let incomeVal = $derived(parseFloat($nodeStore.attrs.income || '0') || 0);
+
+	let showSavings = $derived.by(() => {
+		const rawSavings = $nodeStore.attrs.showSavings;
+		if (rawSavings === 'true' || rawSavings === true) {
+			return true;
+		} else if (rawSavings === 'false' || rawSavings === false) {
+			return false;
+		} else {
+			return incomeVal > 0;
+		}
+	});
+
+	let isIncomeFocused = $state(false);
+	let localIncomeStr = $state('0');
+
+	$effect(() => {
+		if (!isIncomeFocused) {
+			localIncomeStr = incomeVal.toLocaleString();
+		}
+	});
+
+	function handleIncomeFocus() {
+		isIncomeFocused = true;
+		localIncomeStr = incomeVal === 0 ? '' : String(incomeVal);
+	}
+
+	function handleIncomeBlur() {
+		isIncomeFocused = false;
+		let clean = localIncomeStr.replace(/[^0-9.-]/g, '');
+		let parsed = parseFloat(clean);
+		if (isNaN(parsed)) {
+			parsed = 0;
+		}
+		updateAttributes({ income: parsed });
+		localIncomeStr = parsed.toLocaleString();
+	}
+
+	function handleIncomeKeyDown(event: KeyboardEvent) {
+		if (event.key === 'Enter') {
+			(event.target as HTMLInputElement).blur();
+		}
+	}
 
 	let title = $derived(
-		blockState.node.attrs.title || 'Metrics List'
+		$nodeStore.attrs.title || 'Metrics List'
 	);
 
 	let localTitle = $state('Metrics List');
@@ -312,14 +344,15 @@
 				min: 0,
 				max: 0,
 				median: 0,
-				income: 0,
+				income: incomeVal,
+				inflows: 0,
 				expenses: 0,
 				net: 0
 			};
 		}
 
 		let sum = 0;
-		let income = 0;
+		let inflows = 0;
 		let expenses = 0;
 		let min = vals[0];
 		let max = vals[0];
@@ -327,7 +360,7 @@
 		vals.forEach(v => {
 			sum += v;
 			if (v > 0) {
-				income += v;
+				inflows += v;
 			} else if (v < 0) {
 				expenses += Math.abs(v);
 			}
@@ -350,11 +383,16 @@
 			min,
 			max,
 			median,
-			income,
+			income: incomeVal,
+			inflows,
 			expenses,
 			net
 		};
 	});
+
+	let savingsVal = $derived(
+		incomeVal + stats.net
+	);
 
 	function saveRows() {
 		updateAttributes({ data: JSON.stringify(rows) });
@@ -370,7 +408,7 @@
 		saveRows();
 
 		tick().then(() => {
-			const labelInputs = document.querySelectorAll(`.metrics-row-wrapper-${blockState.node.attrs.id || ''} .row-label-input`);
+			const labelInputs = document.querySelectorAll(`.metrics-row-wrapper-${$nodeStore.attrs.id || ''} .row-label-input`);
 			const lastInput = labelInputs[labelInputs.length - 1] as HTMLInputElement | null;
 			lastInput?.focus();
 		});
@@ -393,7 +431,7 @@
 			saveRows();
 
 			tick().then(() => {
-				const labelInputs = document.querySelectorAll(`.metrics-row-wrapper-${blockState.node.attrs.id || ''} .row-label-input`);
+				const labelInputs = document.querySelectorAll(`.metrics-row-wrapper-${$nodeStore.attrs.id || ''} .row-label-input`);
 				const nextInput = labelInputs[index + 1] as HTMLInputElement | null;
 				nextInput?.focus();
 			});
@@ -403,7 +441,7 @@
 				deleteRow(index);
 
 				tick().then(() => {
-					const labelInputs = document.querySelectorAll(`.metrics-row-wrapper-${blockState.node.attrs.id || ''} .row-label-input`);
+					const labelInputs = document.querySelectorAll(`.metrics-row-wrapper-${$nodeStore.attrs.id || ''} .row-label-input`);
 					const targetIndex = index - 1 >= 0 ? index - 1 : 0;
 					
 					if (rows.length > 0) {
@@ -416,15 +454,26 @@
 	}
 
 	function toggleSettingsMenu(e: MouseEvent) {
+		e.preventDefault();
 		e.stopPropagation();
 		showSettings = !showSettings;
 	}
 
 	$effect(() => {
 		if (showSettings) {
-			const close = () => { showSettings = false; };
-			window.addEventListener('click', close);
-			return () => window.removeEventListener('click', close);
+			const close = (event: MouseEvent) => {
+				const target = event.target as HTMLElement | null;
+				if (target && !target.closest('.settings-dropdown-menu') && !target.closest('.settings-trigger-btn')) {
+					showSettings = false;
+				}
+			};
+			const timer = setTimeout(() => {
+				window.addEventListener('click', close);
+			}, 0);
+			return () => {
+				clearTimeout(timer);
+				window.removeEventListener('click', close);
+			};
 		}
 	});
 
@@ -500,7 +549,7 @@
 </script>
 
 <div
-	class="metrics-card-wrapper metrics-row-wrapper-{blockState.node.attrs.id || ''}"
+	class="metrics-card-wrapper metrics-row-wrapper-{$nodeStore.attrs.id || ''}"
 	class:readonly={appState.isReadOnly}
 	onkeydown={handleKeyboardAndClipboard}
 	onkeyup={handleKeyboardAndClipboard}
@@ -529,7 +578,12 @@
 		/>
 		{#if !appState.isReadOnly}
 			<div class="settings-trigger-wrapper">
-				<button class="settings-trigger-btn" onclick={toggleSettingsMenu} title="Metrics settings">
+				<button 
+					class="settings-trigger-btn" 
+					onmousedown={(e) => { e.preventDefault(); e.stopPropagation(); }} 
+					onclick={toggleSettingsMenu} 
+					title="Metrics settings"
+				>
 					<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 						<circle cx="12" cy="12" r="3"/>
 						<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
@@ -568,6 +622,18 @@
 						<label class="settings-option flex-row">
 							<input
 								type="checkbox"
+								checked={showInflows}
+								onchange={(e) => {
+									const checked = (e.target as HTMLInputElement).checked;
+									updateAttributes({ showInflows: checked });
+								}}
+							/>
+							<span>Inflows</span>
+						</label>
+
+						<label class="settings-option flex-row">
+							<input
+								type="checkbox"
 								checked={showExpenses}
 								onchange={(e) => {
 									const checked = (e.target as HTMLInputElement).checked;
@@ -575,6 +641,18 @@
 								}}
 							/>
 							<span>Expenses</span>
+						</label>
+
+						<label class="settings-option flex-row">
+							<input
+								type="checkbox"
+								checked={showSavings}
+								onchange={(e) => {
+									const checked = (e.target as HTMLInputElement).checked;
+									updateAttributes({ showSavings: checked });
+								}}
+							/>
+							<span>Savings</span>
 						</label>
 
 						<label class="settings-option flex-row">
@@ -615,6 +693,31 @@
 					</div>
 				{/if}
 			</div>
+		{/if}
+	</div>
+	
+	<!-- Income Row -->
+	<div class="metrics-income-row flex-row">
+		<span class="income-label">Income</span>
+		<span class="income-currency">₹</span>
+		{#if !appState.isReadOnly}
+			<input
+				type="text"
+				class="income-input-field"
+				class:negative={incomeVal < 0}
+				bind:value={localIncomeStr}
+				onfocus={handleIncomeFocus}
+				onblur={handleIncomeBlur}
+				onkeydown={handleIncomeKeyDown}
+				placeholder="0"
+			/>
+		{:else}
+			<span class="income-value-readonly" class:negative={incomeVal < 0}>
+				{incomeVal.toLocaleString()}
+			</span>
+		{/if}
+		{#if incomeVal < 0}
+			<span class="income-warning-icon" title="Negative income is unusual">⚠️</span>
 		{/if}
 	</div>
 
@@ -753,6 +856,22 @@
 		{/if}
 	</div>
 
+	<!-- Savings Hero Panel -->
+	{#if showSavings}
+		<div class="metrics-savings-panel" class:positive={savingsVal > 0} class:negative={savingsVal < 0} class:neutral={savingsVal === 0}>
+			<div class="savings-inner flex-row">
+				<div class="savings-info">
+					<span class="savings-label">Remaining Budget</span>
+					<span class="savings-title">{savingsVal > 0 ? 'Safe to Spend' : (savingsVal < 0 ? 'Overspent' : 'Balanced')}</span>
+				</div>
+				<div class="savings-value flex-row">
+					<span class="savings-currency">₹</span>
+					<span class="savings-amount">{savingsVal.toLocaleString()}</span>
+				</div>
+			</div>
+		</div>
+	{/if}
+
 	<!-- Statistics Footer -->
 	<div class="metrics-card-footer">
 		<div class="stats-grid grid-layout">
@@ -763,30 +882,36 @@
 			{#if showIncome}
 				<div class="stat-badge flex-col">
 					<span class="badge-label">Income</span>
-					<span class="badge-value positive">{stats.income}</span>
+					<span class="badge-value positive">{stats.income.toLocaleString()}</span>
+				</div>
+			{/if}
+			{#if showInflows}
+				<div class="stat-badge flex-col">
+					<span class="badge-label">Inflows</span>
+					<span class="badge-value positive">{stats.inflows.toLocaleString()}</span>
 				</div>
 			{/if}
 			{#if showExpenses}
 				<div class="stat-badge flex-col">
 					<span class="badge-label">Expenses</span>
-					<span class="badge-value negative">{stats.expenses}</span>
+					<span class="badge-value negative">{stats.expenses.toLocaleString()}</span>
 				</div>
 			{/if}
 			<div class="stat-badge flex-col">
 				<span class="badge-label">Net Total</span>
 				<span class="badge-value" class:positive={stats.net > 0} class:negative={stats.net < 0}>
-					{stats.net}
+					{stats.net.toLocaleString()}
 				</span>
 			</div>
 			<div class="stat-badge flex-col">
 				<span class="badge-label">Average</span>
-				<span class="badge-value">{stats.average.toFixed(2).replace(/\.00$/, '')}</span>
+				<span class="badge-value">{stats.average.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}</span>
 			</div>
 			{#if showMin}
 				<div class="stat-badge flex-col">
 					<span class="badge-label">Min</span>
 					<span class="badge-value" class:positive={stats.min > 0} class:negative={stats.min < 0}>
-						{stats.min}
+						{stats.min.toLocaleString()}
 					</span>
 				</div>
 			{/if}
@@ -794,7 +919,7 @@
 				<div class="stat-badge flex-col">
 					<span class="badge-label">Max</span>
 					<span class="badge-value" class:positive={stats.max > 0} class:negative={stats.max < 0}>
-						{stats.max}
+						{stats.max.toLocaleString()}
 					</span>
 				</div>
 			{/if}
@@ -802,7 +927,7 @@
 				<div class="stat-badge flex-col">
 					<span class="badge-label">Median</span>
 					<span class="badge-value" class:positive={stats.median > 0} class:negative={stats.median < 0}>
-						{stats.median}
+						{stats.median.toLocaleString()}
 					</span>
 				</div>
 			{/if}
@@ -1215,6 +1340,74 @@
 		background: var(--accent) !important;
 		color: #000000 !important;
 	}
+	.metrics-income-row {
+		display: flex;
+		align-items: center;
+		padding: 12px 16px;
+		background: color-mix(in srgb, var(--border-color) 10%, var(--bg-surface));
+		gap: 6px;
+		font-size: 13px;
+		border-bottom: 1px dashed var(--border-color, #2a2d35);
+	}
+
+	.income-label {
+		font-weight: 600;
+		color: var(--text-secondary, #a1a1aa);
+		margin-right: auto;
+	}
+
+	.income-currency {
+		color: var(--text-tertiary, #71717a);
+		font-weight: 500;
+	}
+
+	.income-input-field {
+		background: transparent;
+		border: 1px solid transparent;
+		border-radius: 4px;
+		font-size: 14px;
+		font-weight: 700;
+		color: var(--text-primary, #fff);
+		outline: none;
+		padding: 2px 6px;
+		width: 100px;
+		text-align: right;
+		font-family: var(--font-mono, monospace);
+		transition: border-color 0.15s, background-color 0.15s;
+	}
+
+	.income-input-field:focus {
+		background: var(--bg-hover, rgba(255,255,255,0.05));
+		border-color: var(--border-color, #2a2d35);
+	}
+
+	.income-input-field.negative,
+	.income-value-readonly.negative {
+		color: var(--semantic-error, #ff4d4d);
+	}
+
+	.income-value-readonly {
+		font-size: 14px;
+		font-weight: 700;
+		color: var(--text-primary, #fff);
+		padding: 2px 6px;
+		font-family: var(--font-mono, monospace);
+		text-align: right;
+		display: inline-block;
+		min-width: 100px;
+	}
+
+	.income-warning-icon {
+		color: var(--semantic-warning, #eab308);
+		cursor: help;
+		font-size: 12px;
+	}
+
+	.metrics-card-divider {
+		height: 1px;
+		background: transparent;
+		margin-bottom: 8px;
+	}
 
 	@media (max-width: 600px) {
 		.metrics-card-header {
@@ -1255,5 +1448,99 @@
 		.badge-value {
 			font-size: 11px;
 		}
+	}
+
+	.metrics-savings-panel {
+		padding: 16px;
+		margin: 8px 16px 16px 16px;
+		border-radius: 8px;
+		border: 1px solid var(--border-color, #2a2d35);
+		transition: all 0.2s ease-in-out;
+		background: color-mix(in srgb, var(--border-color) 5%, var(--bg-surface));
+	}
+
+	.metrics-savings-panel.positive {
+		background: linear-gradient(135deg, rgba(34, 197, 94, 0.08) 0%, rgba(34, 197, 94, 0.02) 100%);
+		border-color: rgba(34, 197, 94, 0.2);
+	}
+
+	.metrics-savings-panel.negative {
+		background: linear-gradient(135deg, rgba(239, 68, 68, 0.08) 0%, rgba(239, 68, 68, 0.02) 100%);
+		border-color: rgba(239, 68, 68, 0.2);
+	}
+
+	.metrics-savings-panel.neutral {
+		background: linear-gradient(135deg, rgba(161, 161, 170, 0.08) 0%, rgba(161, 161, 170, 0.02) 100%);
+		border-color: rgba(161, 161, 170, 0.2);
+	}
+
+	.savings-inner {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		width: 100%;
+	}
+
+	.savings-info {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+	}
+
+	.savings-label {
+		font-size: 10px;
+		font-weight: 700;
+		letter-spacing: 0.05em;
+		color: var(--text-tertiary, #71717a);
+		text-transform: uppercase;
+	}
+
+	.savings-title {
+		font-size: 14px;
+		font-weight: 700;
+		color: var(--text-primary, #fff);
+	}
+
+	.metrics-savings-panel.positive .savings-title {
+		color: #4ade80;
+	}
+
+	.metrics-savings-panel.negative .savings-title {
+		color: #f87171;
+	}
+
+	.metrics-savings-panel.neutral .savings-title {
+		color: var(--text-secondary, #a1a1aa);
+	}
+
+	.savings-value {
+		display: flex;
+		align-items: baseline;
+		gap: 4px;
+		font-family: var(--font-mono, monospace);
+	}
+
+	.savings-currency {
+		font-size: 16px;
+		font-weight: 500;
+		color: var(--text-secondary, #a1a1aa);
+	}
+
+	.savings-amount {
+		font-size: 24px;
+		font-weight: 800;
+		letter-spacing: -0.02em;
+	}
+
+	.metrics-savings-panel.positive .savings-amount {
+		color: #4ade80;
+	}
+
+	.metrics-savings-panel.negative .savings-amount {
+		color: #f87171;
+	}
+
+	.metrics-savings-panel.neutral .savings-amount {
+		color: var(--text-primary, #fff);
 	}
 </style>
