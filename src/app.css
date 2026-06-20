@@ -1,3 +1,5 @@
+@import "./tokens.css";
+
 /* Design Reference Color Tokens - Default Theme: Steel Minimalist */
 :root, :root.theme-steel {
   --bg-base: #111317;
@@ -18,6 +20,7 @@
   --semantic-error: #f3727f;
   --semantic-warning: #ffa42b;
   --semantic-info: #539df5;
+  --semantic-success: #10b981;
   
   --border-color: #252930;
   --border-highlight: #3d4450;
@@ -36,6 +39,7 @@
   --radius-subtle: 4px;
   --radius-standard: 6px;
   --radius-comfortable: 8px;
+  --radius-large: 12px;
   --radius-pill: 500px;
   --radius-full-pill: 9999px;
   --radius-circle: 50%;
@@ -798,5 +802,65 @@ a {
     margin: 0 !important;
     overflow: visible !important;
     height: auto !important;
+  }
+}
+
+/* Accessibility / Screen Reader Helper */
+.sr-only {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border-width: 0 !important;
+}
+
+/* Skeleton Pulse Animation Helper */
+.skeleton-pulse {
+  background: linear-gradient(
+    90deg,
+    var(--bg-mid-dark, rgba(255, 255, 255, 0.05)) 25%,
+    color-mix(in srgb, var(--bg-mid-dark, rgba(255, 255, 255, 0.05)) 82%, var(--text-primary, #ffffff)) 50%,
+    var(--bg-mid-dark, rgba(255, 255, 255, 0.05)) 75%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-loading-keyframes 1.5s infinite linear;
+}
+
+/* Skeleton Block Helper */
+.skeleton-block {
+  background-color: var(--bg-mid-dark, rgba(255, 255, 255, 0.05));
+  border-radius: var(--radius-subtle, 4px);
+  height: 12px;
+}
+
+@keyframes skeleton-loading-keyframes {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* Reduced Motion Preference Accessibility Reset */
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-delay: -1ms !important;
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    background-attachment: initial !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0s !important;
+    transition-delay: 0s !important;
+    transition: none !important;
+    animation: none !important;
+  }
+  
+  .skeleton-pulse {
+    background: var(--bg-mid-dark, rgba(255, 255, 255, 0.05)) !important;
   }
 }

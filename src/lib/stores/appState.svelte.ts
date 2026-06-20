@@ -20,6 +20,10 @@ export interface Toast {
   title?: string;
   loading?: boolean;
   duration?: number;
+  action?: {
+    label: string;
+    callback: () => void | Promise<void>;
+  };
 }
 
 export function parseHtmlMetadata(html: string): { meta: any; content: string } {
@@ -143,6 +147,7 @@ class AppState {
   // Reactive states
   vaultName = $state<string | null>(null);
   vaultReady = $state<boolean>(false);
+  loadingNotes = $state<boolean>(false);
   tagDb = null as TagDatabase | null;
   tags = $state<Tag[]>([]);
   calcTagDb = null as CalcTagDatabase | null;
@@ -181,12 +186,33 @@ class AppState {
   confirmButtonText = $state<string>('Delete');
   confirmOnConfirm = $state<(() => void) | null>(null);
 
+  // Custom Prompt Modal State
+  showPromptModal = $state<boolean>(false);
+  promptTitle = $state<string>('');
+  promptMessage = $state<string>('');
+  promptValue = $state<string>('');
+  promptPlaceholder = $state<string>('');
+  promptOnConfirm = $state<((val: string) => void | Promise<void>) | null>(null);
+
   // Layout States
   sidebarWidth = $state<number>(Number(localStorage.getItem('mynotes_sidebar_width')) || 260);
   sidebarCollapsed = $state<boolean>(localStorage.getItem('mynotes_sidebar_collapsed') === 'true');
   notelistWidth = $state<number>(Number(localStorage.getItem('mynotes_notelist_width')) || 340);
   notelistCollapsed = $state<boolean>(localStorage.getItem('mynotes_notelist_collapsed') === 'true');
   editorCollapsed = $state<boolean>(localStorage.getItem('mynotes_editor_collapsed') === 'true');
+
+  // Sorting preferences
+  sortField = $state<'title' | 'modified' | 'notebook'>(
+    (localStorage.getItem('mynotes_sort_field') as 'title' | 'modified' | 'notebook') || 'modified'
+  );
+  sortDirection = $state<'asc' | 'desc'>(
+    (localStorage.getItem('mynotes_sort_direction') as 'asc' | 'desc') || 'desc'
+  );
+
+  // UI Density: 'comfortable' or 'compact'
+  uiDensity = $state<'comfortable' | 'compact'>(
+    (localStorage.getItem('mynotes_ui_density') as 'comfortable' | 'compact') || 'comfortable'
+  );
 
   // Diagram Editor Preference: 'native' (built-in), 'drawio' (embed diagrams.net), or 'mermaid'
   diagramEditorType = $state<'native' | 'drawio' | 'mermaid'>((localStorage.getItem('mynotes_diagram_editor') as 'native' | 'drawio' | 'mermaid') || 'mermaid');
@@ -201,20 +227,72 @@ class AppState {
     localStorage.setItem('mynotes_editor_source_mode', String(val));
   }
 
+  setSort(field: 'title' | 'modified' | 'notebook') {
+    if (this.sortField === field) {
+      this.sortDirection = this.sortDirection === 'asc' ? 'desc' : 'asc';
+    } else {
+      this.sortField = field;
+      if (field === 'title' || field === 'notebook') {
+        this.sortDirection = 'asc';
+      } else {
+        this.sortDirection = 'desc';
+      }
+    }
+    localStorage.setItem('mynotes_sort_field', this.sortField);
+    localStorage.setItem('mynotes_sort_direction', this.sortDirection);
+  }
+
+  toggleUiDensity() {
+    this.uiDensity = this.uiDensity === 'comfortable' ? 'compact' : 'comfortable';
+    localStorage.setItem('mynotes_ui_density', this.uiDensity);
+  }
+
   toggleReadMode() {
     this.isReadOnly = !this.isReadOnly;
   }
 
+  showCommandPalette = $state<boolean>(false);
+
   themes = [
-    { id: 'steel', name: 'Steel Minimalist 🛡️', bg: '#111317', accent: '#00adb5' },
-    { id: 'nordic', name: 'Nordic Frost 🏔️', bg: '#0f141c', accent: '#58a6ff' },
-    { id: 'dracula', name: 'Dracula Vampire 🧛', bg: '#1e1f29', accent: '#ff79c6' },
-    { id: 'synthwave', name: 'Synthwave 1984 🎸', bg: '#170621', accent: '#ff007f' },
-    { id: 'cyberpunk', name: 'Cyberpunk Neon ⚡', bg: '#0b0813', accent: '#00ffff' },
-    { id: 'black', name: 'Amoled Black 🌌', bg: '#000000', accent: '#ffffff' },
-    { id: 'paper', name: 'Paper Lite 📝', bg: '#fcfbf9', accent: '#2b2a27' },
-    { id: 'sakura', name: 'Sakura Breeze 🌸', bg: '#fff0f3', accent: '#ff758f' },
-    { id: 'matcha', name: 'Matcha Latte 🍵', bg: '#f7f4eb', accent: '#606c38' }
+    // Light themes
+    { id: 'paper', name: 'Paper Lite 📝', bg: '#fcfbf9', accent: '#2b2a27', category: 'light' },
+    { id: 'sakura', name: 'Sakura Breeze 🌸', bg: '#fff0f3', accent: '#ff758f', category: 'light' },
+    { id: 'mint', name: 'Minty Fresh 🍵', bg: '#f0fdf4', accent: '#16a34a', category: 'light' },
+    { id: 'lavender', name: 'Lavender Dream 🪻', bg: '#faf5ff', accent: '#9333ea', category: 'light' },
+    { id: 'cottoncandy', name: 'Cotton Candy 🍬', bg: '#fff5f7', accent: '#ec4899', category: 'light' },
+    { id: 'matcha', name: 'Matcha Latte 🍵', bg: '#f7f4eb', accent: '#606c38', category: 'light' },
+    { id: 'barbie', name: 'Barbie World 🎀', bg: '#fff0f6', accent: '#ff007f', category: 'light' },
+    { id: 'sundae', name: 'Ice Cream Sundae 🍦', bg: '#fefefa', accent: '#fb7185', category: 'light' },
+
+    // Dark themes
+    { id: 'steel', name: 'Steel Minimalist 🛡️', bg: '#111317', accent: '#00adb5', category: 'dark' },
+    { id: 'nordic', name: 'Nordic Frost 🏔️', bg: '#0f141c', accent: '#58a6ff', category: 'dark' },
+    { id: 'dracula', name: 'Dracula Vampire 🧛', bg: '#1e1f29', accent: '#ff79c6', category: 'dark' },
+    { id: 'sepia', name: 'Sepia Warmth 🍂', bg: '#1b1712', accent: '#d97706', category: 'dark' },
+    { id: 'emerald', name: 'Emerald Forest 🌲', bg: '#0a0f0d', accent: '#10b981', category: 'dark' },
+    { id: 'black', name: 'Amoled Black 🌌', bg: '#000000', accent: '#ffffff', category: 'dark' },
+    { id: 'dark', name: 'Standard Dark 🎵', bg: '#121212', accent: '#1ed760', category: 'dark' },
+    { id: 'cherry', name: 'Midnight Cherry 🍒', bg: '#0a0404', accent: '#ff2a2a', category: 'dark' },
+    { id: 'space', name: 'Aether Space 🪐', bg: '#080b12', accent: '#8b5cf6', category: 'dark' },
+    { id: 'abyss', name: 'Ocean Abyss 🌊', bg: '#050c0f', accent: '#14b8a6', category: 'dark' },
+    { id: 'gold', name: 'Golden Obsidian 🪙', bg: '#0d0d0d', accent: '#d4af37', category: 'dark' },
+    { id: 'solarized', name: 'Solarized Dark ☀️', bg: '#002b36', accent: '#2aa198', category: 'dark' },
+    { id: 'norddeep', name: 'Nord Deep ❄️', bg: '#1e222a', accent: '#88c0d0', category: 'dark' },
+    { id: 'slate', name: 'Monochrome Slate 🧱', bg: '#18181b', accent: '#fafafa', category: 'dark' },
+
+    // Vivid/Neon/Colorful themes
+    { id: 'cyberpunk', name: 'Cyberpunk Neon ⚡', bg: '#0b0813', accent: '#00ffff', category: 'vivid' },
+    { id: 'synthwave', name: 'Synthwave 1984 🎸', bg: '#170621', accent: '#ff007f', category: 'vivid' },
+    { id: 'prism', name: 'Prism Rainbow 🌈', bg: '#101014', accent: '#a78bfa', category: 'vivid' },
+    { id: 'solarflare', name: 'Solar Flare 💥', bg: '#140c06', accent: '#f97316', category: 'vivid' },
+    { id: 'sunset', name: 'Sunset Horizon 🌅', bg: '#120c17', accent: '#f43f5e', category: 'vivid' },
+    { id: 'toxic', name: 'Toxic Glow 🧪', bg: '#0e100f', accent: '#39ff14', category: 'vivid' },
+    { id: 'matrix', name: 'Retro Terminal 📟', bg: '#051a05', accent: '#33ff33', category: 'vivid' },
+    { id: 'aurora', name: 'Northern Lights 🌌', bg: '#030f12', accent: '#34d399', category: 'vivid' },
+    { id: 'bubblegum', name: 'Bubblegum Pop 🧼', bg: '#0f0914', accent: '#f472b6', category: 'vivid' },
+    { id: 'volcano', name: 'Volcanic Ash 🌋', bg: '#111111', accent: '#ff4500', category: 'vivid' },
+    { id: 'glitch', name: 'Glitch Matrix 💾', bg: '#000000', accent: '#00ff66', category: 'vivid' },
+    { id: 'vaporwave', name: 'Retro Vaporwave 👾', bg: '#1c0a35', accent: '#00ffff', category: 'vivid' }
   ];
 
   // Google Drive Sync Reactive States
@@ -223,6 +301,8 @@ class AppState {
   googleConnected = $state<boolean>(false);
   googleUserEmail = $state<string | null>(null);
   syncStatus = $state<'idle' | 'syncing' | 'error'>('idle');
+  syncErrorMessage = $state<string | null>(null);
+  saveError = $state<string | null>(null);
   lastSyncedTime = $state<number | null>(localStorage.getItem('mynotes_last_synced') ? Number(localStorage.getItem('mynotes_last_synced')) : null);
   syncEnabled = $state<boolean>(localStorage.getItem('mynotes_sync_enabled') === 'true');
   editorViewMode = $state<'edit' | 'split' | 'preview'>((localStorage.getItem('mynotes_editor_view_mode') as any) || 'edit');
@@ -236,29 +316,30 @@ class AppState {
   moveCopyNotePath = $state<string | null>(null);
   moveCopyNoteName = $state<string>('');
 
-  showToast(message: string, type: 'success' | 'info' | 'error' | 'warning' = 'info', duration = 4000, title?: string, loading = false): string {
+  showToast(
+    message: string,
+    type: 'success' | 'info' | 'error' | 'warning' = 'info',
+    duration = 4000,
+    title?: string,
+    loading = false,
+    action?: { label: string; callback: () => void | Promise<void> }
+  ): string {
     const id = Math.random().toString(36).substring(2, 9);
-    const newToast: Toast = { id, message, type, title, loading, duration };
-    this.toasts = [...this.toasts, newToast];
+    const newToast: Toast = { id, message, type, title, loading, duration, action };
 
-    if (duration > 0 && !loading) {
-      setTimeout(() => {
-        this.dismissToast(id);
-      }, duration);
+    // Enforce max stack limit of 5 toasts
+    if (this.toasts.length >= 5) {
+      this.dismissToast(this.toasts[0].id);
     }
+
+    this.toasts = [...this.toasts, newToast];
     return id;
   }
 
   updateToast(id: string, updates: Partial<Omit<Toast, 'id'>>) {
     this.toasts = this.toasts.map(t => {
       if (t.id === id) {
-        const updated = { ...t, ...updates };
-        if (t.loading && !updated.loading && updated.duration && updated.duration > 0) {
-          setTimeout(() => {
-            this.dismissToast(id);
-          }, updated.duration);
-        }
-        return updated;
+        return { ...t, ...updates };
       }
       return t;
     });
@@ -510,8 +591,25 @@ class AppState {
       }
     }
 
-    // Sort by modified date descending
-    return [...list].sort((a, b) => b.modified - a.modified);
+    // Sort dynamically
+    return [...list].sort((a, b) => {
+      let comparison = 0;
+      if (this.sortField === 'title') {
+        comparison = a.name.localeCompare(b.name);
+      } else if (this.sortField === 'notebook') {
+        const getNotebook = (p: string) => {
+          const parts = p.split('/');
+          return parts.length > 1 ? parts.slice(0, -1).join('/') : '';
+        };
+        comparison = getNotebook(a.path).localeCompare(getNotebook(b.path));
+        if (comparison === 0) {
+          comparison = a.name.localeCompare(b.name);
+        }
+      } else {
+        comparison = a.modified - b.modified;
+      }
+      return this.sortDirection === 'asc' ? comparison : -comparison;
+    });
   }
 
   get linesCountInActiveNotebook() {
@@ -975,6 +1073,7 @@ class AppState {
       this.lastSyncedTime = Date.now();
       localStorage.setItem('mynotes_last_synced', String(this.lastSyncedTime));
       this.syncStatus = 'idle';
+      this.syncErrorMessage = null;
       console.log('--- SYNC CYCLE COMPLETED SUCCESSFULLY ---');
 
       if (remoteDeletionsCount > 0 || remoteDeletionsFailedCount > 0) {
@@ -987,6 +1086,7 @@ class AppState {
     } catch (e: any) {
       console.error('--- SYNC CYCLE FAILED ---', e);
       this.syncStatus = 'error';
+      this.syncErrorMessage = e.message || String(e);
       if (e.message === 'UNAUTHORIZED' || (e.message && e.message.includes('401'))) {
         this.googleConnected = false;
         this.googleUserEmail = null;
@@ -1108,66 +1208,71 @@ class AppState {
   }
 
   async refreshNotes() {
-    const list = await this.storage.listNotes();
-    this.notes = list;
-    
-    // Reindex search
-    this.searchIndex.removeAll();
-    const searchDocs = list.map(note => ({
-      path: note.path,
-      title: note.name,
-      content: note.content.replace(/<[^>]+>/g, ' ')
-    }));
-    this.searchIndex.addAll(searchDocs);
+    this.loadingNotes = true;
+    try {
+      const list = await this.storage.listNotes();
+      this.notes = list;
+      
+      // Reindex search
+      this.searchIndex.removeAll();
+      const searchDocs = list.map(note => ({
+        path: note.path,
+        title: note.name,
+        content: note.content.replace(/<[^>]+>/g, ' ')
+      }));
+      this.searchIndex.addAll(searchDocs);
 
-    // Sync favorites based on note metadata
-    const pinnedPaths: string[] = [];
-    for (const note of list) {
-      if (note.content) {
-        try {
-          const parsed = parseHtmlMetadata(note.content);
-          if (parsed.meta.pinned) {
-            pinnedPaths.push(note.path);
+      // Sync favorites based on note metadata
+      const pinnedPaths: string[] = [];
+      for (const note of list) {
+        if (note.content) {
+          try {
+            const parsed = parseHtmlMetadata(note.content);
+            if (parsed.meta.pinned) {
+              pinnedPaths.push(note.path);
+            }
+          } catch (e) {
+            console.error(`Failed to parse HTML metadata for note: ${note.path}`, e);
           }
-        } catch (e) {
-          console.error(`Failed to parse HTML metadata for note: ${note.path}`, e);
         }
       }
-    }
-    const localFavs = JSON.parse(localStorage.getItem('mynotes_favorites') || '[]') as string[];
-    const mergedFavs = Array.from(new Set([
-      ...localFavs.filter((p: string) => list.some((n: NoteFile) => n.path === p)),
-      ...pinnedPaths
-    ]));
-    this.favorites = mergedFavs;
-    localStorage.setItem('mynotes_favorites', JSON.stringify(mergedFavs));
+      const localFavs = JSON.parse(localStorage.getItem('mynotes_favorites') || '[]') as string[];
+      const mergedFavs = Array.from(new Set([
+        ...localFavs.filter((p: string) => list.some((n: NoteFile) => n.path === p)),
+        ...pinnedPaths
+      ]));
+      this.favorites = mergedFavs;
+      localStorage.setItem('mynotes_favorites', JSON.stringify(mergedFavs));
 
-    // Sync tag database
-    if (this.tagDb) {
-      try {
-        await this.syncTagDatabase(list);
-      } catch (e) {
-        console.error('[MyNotes] Failed to sync tag database in refreshNotes:', e);
+      // Sync tag database
+      if (this.tagDb) {
+        try {
+          await this.syncTagDatabase(list);
+        } catch (e) {
+          console.error('[MyNotes] Failed to sync tag database in refreshNotes:', e);
+        }
       }
-    }
 
-    // Auto prune empty tags if enabled
-    if (this.tagDb && this.autoPruneTags) {
-      try {
-        await this.pruneUnusedTags();
-      } catch (e) {
-        console.error('[MyNotes] Failed to auto-prune empty tags in refreshNotes:', e);
+      // Auto prune empty tags if enabled
+      if (this.tagDb && this.autoPruneTags) {
+        try {
+          await this.pruneUnusedTags();
+        } catch (e) {
+          console.error('[MyNotes] Failed to auto-prune empty tags in refreshNotes:', e);
+        }
       }
-    }
 
-    // Sync and refresh budget categories
-    if (this.calcTagDb) {
-      try {
-        await this.syncCalcTags(list);
-      } catch (e) {
-        console.error('[MyNotes] Failed to sync budget categories in refreshNotes:', e);
+      // Sync and refresh budget categories
+      if (this.calcTagDb) {
+        try {
+          await this.syncCalcTags(list);
+        } catch (e) {
+          console.error('[MyNotes] Failed to sync budget categories in refreshNotes:', e);
+        }
+        await this.refreshCalcTags();
       }
-      await this.refreshCalcTags();
+    } finally {
+      this.loadingNotes = false;
     }
   }
 
@@ -1317,6 +1422,26 @@ class AppState {
   closeConfirmation() {
     this.showConfirmModal = false;
     this.confirmOnConfirm = null;
+  }
+
+  showPrompt(options: {
+    title: string;
+    message: string;
+    value?: string;
+    placeholder?: string;
+    onConfirm: (value: string) => void | Promise<void>;
+  }) {
+    this.promptTitle = options.title;
+    this.promptMessage = options.message;
+    this.promptValue = options.value || '';
+    this.promptPlaceholder = options.placeholder || '';
+    this.promptOnConfirm = options.onConfirm;
+    this.showPromptModal = true;
+  }
+
+  closePrompt() {
+    this.showPromptModal = false;
+    this.promptOnConfirm = null;
   }
 
   async bulkAddTag(tagName: string): Promise<void> {
@@ -1817,24 +1942,31 @@ class AppState {
       this.notes[noteIdx].modified = Date.now();
     }
     
-    await this.storage.writeNote(this.activeNotePath, this.activeNoteContent);
-    this.editorDirty = false;
-    await this.refreshNotes();
+    try {
+      await this.storage.writeNote(this.activeNotePath, this.activeNoteContent);
+      this.saveError = null;
+      this.editorDirty = false;
+      await this.refreshNotes();
 
-    // Trigger auto background sync
-    console.log('Checking sync pre-requisites: syncEnabled:', this.syncEnabled, 'googleConnected:', this.googleConnected);
-    if (this.syncEnabled && this.googleConnected) {
-      if (immediateSync) {
-        console.log('Immediate sync requested. Clearing any active debounce timer...');
-        if (this.syncDebounceTimer) {
-          clearTimeout(this.syncDebounceTimer);
-          this.syncDebounceTimer = null;
+      // Trigger auto background sync
+      console.log('Checking sync pre-requisites: syncEnabled:', this.syncEnabled, 'googleConnected:', this.googleConnected);
+      if (this.syncEnabled && this.googleConnected) {
+        if (immediateSync) {
+          console.log('Immediate sync requested. Clearing any active debounce timer...');
+          if (this.syncDebounceTimer) {
+            clearTimeout(this.syncDebounceTimer);
+            this.syncDebounceTimer = null;
+          }
+          await this.syncNotes();
+        } else {
+          console.log('Triggering debounced sync...');
+          this.triggerDebouncedSync();
         }
-        await this.syncNotes();
-      } else {
-        console.log('Triggering debounced sync...');
-        this.triggerDebouncedSync();
       }
+    } catch (e: any) {
+      console.error('Save active note failed:', e);
+      this.saveError = e.message || String(e);
+      throw e;
     }
   }
 

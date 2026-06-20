@@ -43,6 +43,7 @@
 	import MermaidEditor from './MermaidEditor.svelte';
 	import MetricsBlock from './MetricsBlock.svelte';
 	import { renderDiagramSVG, decodeDiagram } from '../utils/diagram';
+	import ErrorBanner from './ErrorBanner.svelte';
 
 	let resolvedAssetsMap = new Map<string, string>(); // relative path -> blob URL
 
@@ -663,7 +664,7 @@
 	let loadedPath = '';
 	let pendingContent = $state<string | null>(null);
 	let ignoreNextUpdate = false;
-	let isLoadingNote = false;
+	let isLoadingNote = $state(false);
 	let fixingBlobsPromise: Promise<void> = Promise.resolve();
 	let hasPendingBlobs = false;
 	let lastSourceMode = $sourceMode;
@@ -3300,10 +3301,62 @@
 				container.innerHTML = '';
 				container.classList.remove('mermaid-render-loading');
 				container.classList.add('mermaid-render-error');
-				const text = document.createElement('div');
-				text.textContent = msg;
-				container.appendChild(text);
-				addRetryButton(container, container.getAttribute('data-mermaid-source') || '');
+				
+				// Card container
+				const card = document.createElement('div');
+				card.className = 'diagram-error-card flex-col';
+				card.setAttribute('role', 'alert');
+				card.setAttribute('aria-live', 'assertive');
+
+				// Header
+				const header = document.createElement('div');
+				header.className = 'error-card-header flex-row';
+				header.style.display = 'flex';
+				header.style.alignItems = 'center';
+				header.style.gap = 'var(--spacing-xs)';
+				header.style.color = 'var(--semantic-error)';
+				
+				// Exclamation triangle SVG icon
+				header.innerHTML = `
+					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+						<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+						<line x1="12" y1="9" x2="12" y2="13"></line>
+						<line x1="12" y1="17" x2="12.01" y2="17"></line>
+					</svg>
+					<span class="error-card-title" style="font-size: var(--font-size-xs); font-weight: 700; color: var(--text-primary);">Diagram Render Failed</span>
+				`;
+
+				// Message
+				const message = document.createElement('span');
+				message.className = 'error-card-message';
+				message.style.fontSize = 'var(--font-size-xs)';
+				message.style.lineHeight = 'var(--line-height-normal)';
+				message.style.color = 'var(--text-secondary)';
+				message.style.wordBreak = 'break-word';
+				message.textContent = msg;
+
+				card.appendChild(header);
+				card.appendChild(message);
+
+				// Actions
+				const actions = document.createElement('div');
+				actions.className = 'error-card-actions flex-row';
+				actions.style.marginTop = 'var(--spacing-3xs)';
+				
+				const retryBtn = document.createElement('button');
+				retryBtn.type = 'button';
+				retryBtn.className = 'mermaid-render-btn mermaid-render-btn-small';
+				retryBtn.textContent = '↻ Retry';
+				retryBtn.onclick = (e) => {
+					e.preventDefault();
+					e.stopPropagation();
+					renderInto(container, container.getAttribute('data-mermaid-source') || '');
+				};
+				
+				actions.appendChild(retryBtn);
+				card.appendChild(actions);
+
+				container.appendChild(card);
 			}
 
 			function addRetryButton(container: HTMLElement, source: string) {
@@ -4837,6 +4890,21 @@
 			pendingContent = content;
 			isLoadingNote = false;
 		}
+	}
+
+	function triggerCreateNote() {
+		appState.showPrompt({
+			title: 'New Note',
+			message: 'Enter title for the new note:',
+			value: 'Untitled Note',
+			placeholder: 'Note title...',
+			onConfirm: (title) => {
+				const trimmed = title.trim();
+				if (trimmed) {
+					appState.createNote(trimmed, appState.activeNotebook);
+				}
+			}
+		});
 	}
 
 	function stripTitleH1(md: string): string {
@@ -7243,19 +7311,92 @@
 	});
 </script>
 
-<div class="editor-container" class:mobile={isMobile} class:readonly={$readOnly}>
+<div class="editor-container" class:mobile={isMobile} class:readonly={$readOnly} style="position: relative;">
+	{#if isLoadingNote}
+		<div class="editor-skeleton flex-col" style="position: absolute; inset: 0; background: var(--bg-editor, var(--bg-base)); z-index: 10; padding: var(--spacing-md); gap: var(--spacing-md); width: 100%; height: 100%; box-sizing: border-box;">
+			<!-- Toolbar Skeleton -->
+			<div class="skeleton-toolbar flex-row" style="display: flex; gap: var(--spacing-sm); padding: var(--spacing-xs) var(--spacing-sm); background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-standard); width: 100%; height: 40px; align-items: center; box-sizing: border-box;">
+				<div class="skeleton-btn-group flex-row" style="display: flex; gap: var(--spacing-2xs);">
+					<div class="skeleton-block skeleton-pulse" style="width: 28px; height: 28px; border-radius: 4px;"></div>
+					<div class="skeleton-block skeleton-pulse" style="width: 28px; height: 28px; border-radius: 4px;"></div>
+					<div class="skeleton-block skeleton-pulse" style="width: 28px; height: 28px; border-radius: 4px;"></div>
+				</div>
+				<div style="width: 1px; height: 16px; background-color: var(--border-color);"></div>
+				<div class="skeleton-btn-group flex-row" style="display: flex; gap: var(--spacing-2xs);">
+					<div class="skeleton-block skeleton-pulse" style="width: 48px; height: 28px; border-radius: 4px;"></div>
+					<div class="skeleton-block skeleton-pulse" style="width: 28px; height: 28px; border-radius: 4px;"></div>
+				</div>
+				<div style="width: 1px; height: 16px; background-color: var(--border-color);"></div>
+				<div class="skeleton-btn-group flex-row" style="display: flex; gap: var(--spacing-2xs);">
+					<div class="skeleton-block skeleton-pulse" style="width: 28px; height: 28px; border-radius: 4px;"></div>
+					<div class="skeleton-block skeleton-pulse" style="width: 28px; height: 28px; border-radius: 4px;"></div>
+				</div>
+			</div>
+			<!-- Body Skeleton -->
+			<div class="skeleton-body flex-col" style="display: flex; flex-direction: column; gap: var(--spacing-md); padding: var(--spacing-lg) var(--spacing-md) 0 var(--spacing-md); flex-grow: 1;">
+				<div class="skeleton-block skeleton-pulse" style="width: 40%; height: 28px; border-radius: 6px; margin-bottom: var(--spacing-sm);"></div>
+				<div class="skeleton-block skeleton-pulse" style="width: 90%; height: 14px; border-radius: 4px;"></div>
+				<div class="skeleton-block skeleton-pulse" style="width: 85%; height: 14px; border-radius: 4px;"></div>
+				<div class="skeleton-block skeleton-pulse" style="width: 95%; height: 14px; border-radius: 4px;"></div>
+				<div class="skeleton-block skeleton-pulse" style="width: 60%; height: 14px; border-radius: 4px; margin-bottom: var(--spacing-md);"></div>
+				
+				<div class="skeleton-block skeleton-pulse" style="width: 80%; height: 14px; border-radius: 4px;"></div>
+				<div class="skeleton-block skeleton-pulse" style="width: 85%; height: 14px; border-radius: 4px;"></div>
+				<div class="skeleton-block skeleton-pulse" style="width: 30%; height: 14px; border-radius: 4px;"></div>
+			</div>
+		</div>
+	{/if}
+
 	{#if !$activeNote}
-		<div class="empty-editor">
-			<div class="empty-icon">
-				<svg width="48" height="48" viewBox="0 0 48 48" fill="none">
-					<rect x="8" y="6" width="32" height="36" rx="4" stroke="var(--text-tertiary)" stroke-width="2" fill="none" />
-					<path d="M16 16h16M16 22h12M16 28h16M16 34h8" stroke="var(--text-tertiary)" stroke-width="1.5" stroke-linecap="round" />
+		<div class="empty-editor flex-col">
+			<!-- Glow backdrop -->
+			<div class="empty-glow"></div>
+			
+			<div class="empty-illustration-wrapper">
+				<!-- Elegant, outline-only visual illustration representing writing/documentation -->
+				<svg class="empty-visual-icon" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">
+					<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+					<polyline points="14 2 14 8 20 8"></polyline>
+					<line x1="16" y1="13" x2="8" y2="13"></line>
+					<line x1="16" y1="17" x2="8" y2="17"></line>
+					<polyline points="10 9 9 9 8 9"></polyline>
 				</svg>
 			</div>
-			<p>Select a note or create a new one</p>
-			<div class="shortcuts-hint">
-				<span><kbd>{modKey}</kbd>+<kbd>N</kbd> New note</span>
-				<span><kbd>{modKey}</kbd>+<kbd>P</kbd> Quick open</span>
+
+			<h2 class="empty-editor-title">MyNotes Workspace</h2>
+			<p class="empty-editor-subtitle">Select an existing document from the library, search using the command palette, or create a new file to get started.</p>
+
+			<div class="empty-actions flex-row" style="gap: var(--spacing-sm); margin-top: var(--spacing-xs);">
+				<button class="btn-pill btn-pill-primary flex-row" onclick={triggerCreateNote} style="gap: var(--spacing-2xs); padding: var(--spacing-xs) var(--spacing-md); cursor: pointer; border: none;">
+					<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+					<span>Create Note</span>
+				</button>
+				<button class="btn-pill btn-pill-outline flex-row" onclick={() => appState.showCommandPalette = true} style="gap: var(--spacing-2xs); padding: var(--spacing-xs) var(--spacing-md); cursor: pointer;">
+					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+					<span>Search Notes</span>
+				</button>
+			</div>
+
+			<div class="shortcuts-card flex-col">
+				<span class="shortcuts-title">Keyboard Shortcuts</span>
+				<div class="shortcuts-list flex-col">
+					<div class="shortcut-row flex-row">
+						<span class="shortcut-label">Create new note</span>
+						<div class="shortcut-keys"><kbd>{modKey}</kbd> + <kbd>N</kbd></div>
+					</div>
+					<div class="shortcut-row flex-row">
+						<span class="shortcut-label">Open search palette</span>
+						<div class="shortcut-keys"><kbd>{modKey}</kbd> + <kbd>P</kbd></div>
+					</div>
+					<div class="shortcut-row flex-row">
+						<span class="shortcut-label">Focus search input</span>
+						<div class="shortcut-keys"><kbd>{modKey}</kbd> + <kbd>K</kbd></div>
+					</div>
+					<div class="shortcut-row flex-row">
+						<span class="shortcut-label">Cycle active panels</span>
+						<div class="shortcut-keys"><kbd>F6</kbd></div>
+					</div>
+				</div>
 			</div>
 		</div>
 	{:else}
@@ -7274,6 +7415,20 @@
 					<span class="viewer-banner-toast">{viewerToast}</span>
 				{/if}
 			</div>
+		{/if}
+		{#if !$viewerNote}
+			{#if appState.saveError}
+				<div style="padding: var(--spacing-sm) var(--spacing-md) 0 var(--spacing-md);">
+					<ErrorBanner
+						title="Save Error"
+						message={appState.saveError}
+						severity="error"
+						retryAction={() => appState.saveActiveNote(true)}
+						retryLabel="Retry Save"
+						dismissAction={() => appState.saveError = null}
+					/>
+				</div>
+			{/if}
 		{/if}
 		{#if !$viewerNote && !isMobile}
 		<div class="editor-toolbar" class:mobile={isMobile}>
@@ -9821,37 +9976,157 @@
 	}
 
 	.empty-editor {
+		position: relative;
 		display: flex;
 		flex-direction: column;
 		align-items: center;
 		justify-content: center;
 		height: 100%;
-		color: var(--text-tertiary);
-		gap: 12px;
+		width: 100%;
+		padding: var(--spacing-xl) var(--spacing-lg);
+		box-sizing: border-box;
+		color: var(--text-secondary);
+		gap: var(--spacing-md);
+		overflow-y: auto;
+		text-align: center;
 	}
 
-	.empty-icon {
-		opacity: 0.5;
+	.empty-glow {
+		position: absolute;
+		width: 250px;
+		height: 250px;
+		border-radius: 50%;
+		background: radial-gradient(circle, color-mix(in srgb, var(--accent) 15%, transparent) 0%, transparent 70%);
+		top: 30%;
+		left: 50%;
+		transform: translate(-50%, -50%);
+		pointer-events: none;
+		z-index: 0;
 	}
 
-	.empty-editor p {
-		font-size: 14px;
-	}
-
-	.shortcuts-hint {
+	.empty-illustration-wrapper {
+		position: relative;
 		display: flex;
-		gap: 16px;
-		font-size: 12px;
-		margin-top: 8px;
+		align-items: center;
+		justify-content: center;
+		width: 100px;
+		height: 100px;
+		border-radius: 50%;
+		background: color-mix(in srgb, var(--text-primary) 3%, transparent);
+		border: 1px solid color-mix(in srgb, var(--text-primary) 5%, transparent);
+		margin-bottom: var(--spacing-xs);
+		z-index: 1;
+		transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.3s;
 	}
 
-	.shortcuts-hint kbd {
-		background: var(--bg-tertiary);
+	.empty-illustration-wrapper:hover {
+		transform: scale(1.05) translateY(-4px);
+		border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+		box-shadow: 0 8px 24px color-mix(in srgb, var(--accent) 8%, transparent);
+	}
+
+	.empty-visual-icon {
+		filter: drop-shadow(0 4px 12px color-mix(in srgb, var(--accent) 20%, transparent));
+		animation: empty-float 4s ease-in-out infinite;
+	}
+
+	@keyframes empty-float {
+		0%, 100% {
+			transform: translateY(0);
+		}
+		50% {
+			transform: translateY(-6px);
+		}
+	}
+
+	.empty-editor-title {
+		font-size: var(--font-size-xl);
+		font-weight: 800;
+		color: var(--text-primary);
+		margin: 0;
+		letter-spacing: -0.5px;
+		z-index: 1;
+	}
+
+	.empty-editor-subtitle {
+		font-size: var(--font-size-sm);
+		color: var(--text-tertiary);
+		max-width: 480px;
+		line-height: 1.6;
+		margin: 0 0 var(--spacing-xs) 0;
+		z-index: 1;
+	}
+
+	.empty-actions {
+		display: flex;
+		gap: var(--spacing-sm);
+		z-index: 1;
+	}
+
+	.shortcuts-card {
+		display: flex;
+		flex-direction: column;
+		background: color-mix(in srgb, var(--bg-surface) 60%, transparent);
 		border: 1px solid var(--border-color);
-		border-radius: 3px;
-		padding: 1px 5px;
-		font-size: 11px;
-		font-family: inherit;
+		backdrop-filter: blur(8px);
+		border-radius: var(--radius-comfortable, 8px);
+		padding: var(--spacing-md);
+		width: 100%;
+		max-width: 320px;
+		margin-top: var(--spacing-lg);
+		gap: var(--spacing-xs);
+		box-shadow: var(--shadow-subtle, 0 4px 12px rgba(0,0,0,0.1));
+		z-index: 1;
+		transition: border-color 0.2s;
+	}
+
+	.shortcuts-card:hover {
+		border-color: color-mix(in srgb, var(--text-primary) 12%, transparent);
+	}
+
+	.shortcuts-title {
+		font-size: var(--font-size-xs);
+		font-weight: 700;
+		color: var(--text-secondary);
+		text-transform: uppercase;
+		letter-spacing: 0.5px;
+		text-align: left;
+	}
+
+	.shortcuts-list {
+		display: flex;
+		flex-direction: column;
+		gap: var(--spacing-xs);
+	}
+
+	.shortcut-row {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		gap: var(--spacing-md);
+	}
+
+	.shortcut-label {
+		font-size: var(--font-size-xs);
+		color: var(--text-tertiary);
+		text-align: left;
+	}
+
+	.shortcut-keys {
+		display: flex;
+		gap: var(--spacing-3xs);
+		align-items: center;
+	}
+
+	.shortcut-keys kbd {
+		background: var(--bg-mid-dark, rgba(255, 255, 255, 0.05));
+		border: 1px solid var(--border-color);
+		border-radius: var(--radius-subtle, 4px);
+		padding: var(--spacing-3xs) var(--spacing-2xs);
+		font-size: 10px;
+		font-family: var(--font-mono, monospace);
+		color: var(--text-secondary);
+		box-shadow: 0 1px 0 var(--border-color);
 	}
 
 	.editor-toolbar {
@@ -12872,8 +13147,20 @@
 		font-size: 13px;
 	}
 	:global(.tiptap .mermaid-render-error) {
-		color: var(--text-secondary);
-		font-size: 13px;
+		width: 100%;
+		box-sizing: border-box;
+	}
+	:global(.tiptap .diagram-error-card) {
+		display: flex;
+		flex-direction: column;
+		background: color-mix(in srgb, var(--semantic-error) 8%, var(--bg-surface));
+		border: 1px solid color-mix(in srgb, var(--semantic-error) 15%, var(--border-color));
+		border-radius: var(--radius-standard);
+		padding: var(--spacing-sm) var(--spacing-md);
+		gap: var(--spacing-xs);
+		box-sizing: border-box;
+		align-items: flex-start;
+		margin: var(--spacing-xs) 0;
 	}
 	:global(.tiptap .mermaid-render-btn) {
 		appearance: none;

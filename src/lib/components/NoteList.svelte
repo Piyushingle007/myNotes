@@ -3,13 +3,9 @@
   import { FileText, Plus, Trash2, Edit2, Search, Clock, CalendarDays, X, Menu, FolderInput, CheckSquare } from 'lucide-svelte';
   import { fly } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
+  import ErrorBanner from './ErrorBanner.svelte';
 
-  let searchInput = $state('');
-  
-  // Set query store reactively when typing
-  $effect(() => {
-    appState.searchQuery = searchInput;
-  });
+
 
   function formatModified(timestamp: number): string {
     const diff = Date.now() - timestamp;
@@ -28,9 +24,18 @@
   }
 
   function handleCreateNote() {
-    const title = prompt('Enter note title:', 'Untitled Note');
-    if (title === null) return; // Cancelled
-    appState.createNote(title, appState.activeNotebook);
+    appState.showPrompt({
+      title: 'New Note',
+      message: 'Enter title for the new note:',
+      value: 'Untitled Note',
+      placeholder: 'Note title...',
+      onConfirm: (title) => {
+        const trimmed = title.trim();
+        if (trimmed) {
+          appState.createNote(trimmed, appState.activeNotebook);
+        }
+      }
+    });
   }
 
   function handleDeleteNote(path: string, event: Event) {
@@ -47,18 +52,23 @@
 
   async function handleRenameNote(path: string, currentName: string, event: Event) {
     event.stopPropagation();
-    const newTitle = prompt('Rename note title & file name:', currentName);
-    if (!newTitle) return;
-    const trimmed = newTitle.trim();
-    if (!trimmed || trimmed === currentName) return;
-    
-    try {
-      await appState.renameNote(path, trimmed);
-      appState.showToast('Note renamed successfully', 'success');
-    } catch (err) {
-      console.error('Failed to rename note:', err);
-      appState.showToast('Failed to rename note', 'error');
-    }
+    appState.showPrompt({
+      title: 'Rename Note',
+      message: 'Enter new title & file name:',
+      value: currentName,
+      placeholder: 'Note name...',
+      onConfirm: async (newTitle) => {
+        const trimmed = newTitle.trim();
+        if (!trimmed || trimmed === currentName) return;
+        try {
+          await appState.renameNote(path, trimmed);
+          appState.showToast('Note renamed successfully', 'success');
+        } catch (err) {
+          console.error('Failed to rename note:', err);
+          appState.showToast('Failed to rename note', 'error');
+        }
+      }
+    });
   }
   function handleMoveCopyNote(path: string, currentName: string, event: Event) {
     event.stopPropagation();
@@ -69,7 +79,7 @@
   function clearFilters() {
     appState.activeNotebook = null;
     appState.selectedTag = null;
-    searchInput = '';
+    appState.searchQuery = '';
   }
 
   // ST-011: Bulk Tag Picker State
@@ -201,46 +211,24 @@
 </script>
 
 <div 
-  class="note-list flex-col" 
+  id="notelist-panel"
+  class="note-list flex-col density-{appState.uiDensity}" 
   class:collapsed={appState.notelistCollapsed}
   style="width: {appState.notelistCollapsed ? 0 : appState.notelistWidth}px;"
+  tabindex={appState.notelistCollapsed ? -1 : 0}
 >
   <!-- Top Playlist Header -->
   <div class="list-header flex-col" style="position: relative;">
     <div class="flex-row" style="justify-content: space-between; align-items: center; width: 100%;">
-      <div class="flex-row" style="gap: 8px; align-items: center;">
-        {#if appState.sidebarCollapsed}
-          <button 
-            onclick={() => appState.setSidebarCollapsed(false)} 
-            title="Expand Sidebar"
-            aria-label="Expand sidebar"
-            style="background: transparent; border: none; color: var(--text-secondary); cursor: pointer; padding: 4px; border-radius: 4px; display: flex; align-items: center; justify-content: center; transition: all 0.2s;"
-            onmouseover={(e) => e.currentTarget.style.color = 'var(--text-primary)'}
-            onmouseout={(e) => e.currentTarget.style.color = 'var(--text-secondary)'}
-          >
-            <Menu size={16} />
-          </button>
+      <div class="meta-label">
+        {#if appState.vaultName}
+          DIRECTORY: {appState.vaultName.toUpperCase()}
+        {:else}
+          NOTEBOOK
         {/if}
-        <div class="meta-label">
-          {#if appState.vaultName}
-            DIRECTORY: {appState.vaultName.toUpperCase()}
-          {:else}
-            NOTEBOOK
-          {/if}
-        </div>
       </div>
-      <button 
-        class="close-panel-btn flex-row" 
-        onclick={() => appState.setNotelistCollapsed(true)} 
-        aria-label="Collapse note list"
-        style="background: transparent; border: none; color: var(--text-secondary); cursor: pointer; padding: 4px; border-radius: 50%; display: flex; align-items: center; justify-content: center; transition: background-color 0.2s;"
-        onmouseover={(e) => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.08)'}
-        onmouseout={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-      >
-        <X size={16} />
-      </button>
     </div>
-    <div class="flex-row" style="align-items: center; gap: 8px; max-width: 100%;">
+    <div class="flex-row" style="align-items: center; gap: var(--spacing-xs); max-width: 100%;">
       <h1 class="list-title">
         {#if appState.selectedTag}
           Tagged: {appState.selectedTag}
@@ -252,36 +240,29 @@
           All Notes
         {/if}
       </h1>
-      {#if appState.selectedTag}
-        <button 
-          onclick={clearFilters}
-          title="Clear tag filter"
-          aria-label="Clear tag filter"
-          style="background: transparent; border: none; color: var(--text-secondary); cursor: pointer; padding: 4px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; flex-shrink: 0; transition: background-color 0.2s, color 0.2s;"
-          onmouseover={(e) => { e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.08)'; e.currentTarget.style.color = 'var(--text-primary)'; }}
-          onmouseout={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
-        >
-          <X size={16} />
-        </button>
-      {/if}
     </div>
     
     <div class="header-actions flex-row">
       <span class="count-indicator">
         {appState.filteredNotes.length} notes
-        {#if appState.activeNotebook || appState.selectedTag}
-          <button class="clear-btn" onclick={clearFilters}>• Clear Filter</button>
-        {/if}
         {#if appState.googleConnected && appState.syncEnabled}
           • ☁️ {appState.customDriveFolderName || 'MyNotes'}
         {/if}
       </span>
       
-      <div class="flex-row" style="gap: 8px; align-items: center;">
+      <div class="flex-row" style="gap: var(--spacing-xs); align-items: center;">
+        <button 
+          class="btn-pill btn-pill-outline" 
+          onclick={() => appState.toggleUiDensity()}
+          title="Toggle density (Comfortable / Compact)"
+          style="font-size: var(--font-size-xs); padding: var(--spacing-xs) var(--spacing-sm); height: 32px;"
+        >
+          {appState.uiDensity === 'comfortable' ? 'Comfortable' : 'Compact'}
+        </button>
         {#if appState.editorCollapsed}
           <button 
             class="btn-pill btn-pill-outline" 
-            style="font-size: 11px; padding: 6px 12px; height: 32px;" 
+            style="font-size: var(--font-size-xs); padding: var(--spacing-xs) var(--spacing-sm); height: 32px;" 
             onclick={() => appState.setEditorCollapsed(false)}
           >
             Show Editor
@@ -290,7 +271,7 @@
         <button 
           class="btn-pill btn-pill-outline" 
           class:active={appState.selectMode}
-          style="font-size: 11px; padding: 6px 12px; height: 32px; gap: 4px; display: inline-flex; align-items: center;" 
+          style="font-size: var(--font-size-xs); padding: var(--spacing-xs) var(--spacing-sm); height: 32px; gap: var(--spacing-2xs); display: inline-flex; align-items: center;" 
           onclick={() => appState.toggleSelectMode()}
           title="Toggle Select Mode"
         >
@@ -303,144 +284,308 @@
         </button>
       </div>
     </div>
+
+    <!-- Active Filter Chips Bar (UI-D-009) -->
+    {#if appState.activeNotebook || appState.selectedTag || appState.searchQuery}
+      <div class="filter-chips-bar flex-row">
+        {#if appState.activeNotebook}
+          <div class="active-filter-chip flex-row">
+            <span>Folder: {appState.activeNotebook}</span>
+            <button 
+              class="filter-chip-remove flex-row" 
+              onclick={() => appState.activeNotebook = null}
+              aria-label="Remove folder filter"
+            >
+              <X size={11} />
+            </button>
+          </div>
+        {/if}
+
+        {#if appState.selectedTag}
+          <div class="active-filter-chip flex-row">
+            <span>Tag: #{appState.selectedTag}</span>
+            <button 
+              class="filter-chip-remove flex-row" 
+              onclick={() => appState.selectedTag = null}
+              aria-label="Remove tag filter"
+            >
+              <X size={11} />
+            </button>
+          </div>
+        {/if}
+
+        {#if appState.searchQuery}
+          <div class="active-filter-chip flex-row">
+            <span>Search: "{appState.searchQuery}"</span>
+            <button 
+              class="filter-chip-remove flex-row" 
+              onclick={() => appState.searchQuery = ''}
+              aria-label="Remove search filter"
+            >
+              <X size={11} />
+            </button>
+          </div>
+        {/if}
+
+        {#if (appState.activeNotebook ? 1 : 0) + (appState.selectedTag ? 1 : 0) + (appState.searchQuery ? 1 : 0) > 1}
+          <button class="filter-clear-all" onclick={clearFilters}>
+            Clear All
+          </button>
+        {/if}
+      </div>
+    {/if}
   </div>
 
-  <!-- Search Filter -->
-  <div class="search-container flex-row">
-    <div class="search-wrapper">
-      <Search size={16} class="search-icon" />
-      <input 
-        type="text" 
-        placeholder="Search notes..." 
-        bind:value={searchInput}
-        class="search-input"
+  {#if appState.googleConnected && appState.syncEnabled && appState.syncStatus === 'error'}
+    <div style="padding: 0 var(--spacing-md) var(--spacing-sm);">
+      <ErrorBanner
+        title="Sync Error"
+        message={appState.syncErrorMessage || "Failed to synchronize notes with Google Drive."}
+        severity="error"
+        retryAction={() => appState.syncNotes()}
+        retryLabel="Retry Sync"
+        dismissAction={() => appState.syncStatus = 'idle'}
       />
     </div>
-  </div>
+  {/if}
 
   <!-- Note Playlist Headers -->
   <div class="playlist-columns flex-row">
-    <span class="col-index">#</span>
-    <span class="col-title">TITLE</span>
-    <span class="col-modified flex-row"><Clock size={14} style="margin-right: 4px;" /> MODIFIED</span>
+    {#if appState.selectMode}
+      <span class="col-index" style="display: flex; align-items: center; justify-content: center;">
+        <input 
+          type="checkbox"
+          checked={appState.selectedNotes.size > 0 && appState.selectedNotes.size === appState.filteredNotes.length}
+          aria-label="Select all notes"
+          onclick={(e) => {
+            e.stopPropagation();
+            if (appState.selectedNotes.size === appState.filteredNotes.length) {
+              appState.selectedNotes.clear();
+            } else {
+              appState.selectAllNotes(appState.filteredNotes.map(n => n.path));
+            }
+          }}
+          style="cursor: pointer; width: 14px; height: 14px;"
+        />
+      </span>
+    {:else}
+      <span class="col-index">#</span>
+    {/if}
+    
+    <button 
+      class="col-title flex-row sort-header-btn" 
+      class:active={appState.sortField === 'title'}
+      onclick={() => appState.setSort('title')}
+      aria-label="Sort by title"
+      style="background: none; border: none; font: inherit; color: inherit; text-align: left; cursor: pointer; padding: 0;"
+    >
+      <span>TITLE</span>
+      {#if appState.sortField === 'title'}
+        <span class="sort-arrow">{appState.sortDirection === 'asc' ? '↑' : '↓'}</span>
+      {/if}
+    </button>
+
+    <button 
+      class="col-notebook flex-row sort-header-btn" 
+      class:active={appState.sortField === 'notebook'}
+      onclick={() => appState.setSort('notebook')}
+      aria-label="Sort by notebook path"
+      style="background: none; border: none; font: inherit; color: inherit; text-align: left; cursor: pointer; padding: 0;"
+    >
+      <span>NOTEBOOK</span>
+      {#if appState.sortField === 'notebook'}
+        <span class="sort-arrow">{appState.sortDirection === 'asc' ? '↑' : '↓'}</span>
+      {/if}
+    </button>
+    
+    <button 
+      class="col-modified flex-row sort-header-btn" 
+      class:active={appState.sortField === 'modified'}
+      onclick={() => appState.setSort('modified')}
+      aria-label="Sort by modified time"
+      style="background: none; border: none; font: inherit; color: inherit; text-align: left; cursor: pointer; padding: 0;"
+    >
+      <span>MODIFIED</span>
+      {#if appState.sortField === 'modified'}
+        <span class="sort-arrow">{appState.sortDirection === 'asc' ? '↑' : '↓'}</span>
+      {/if}
+    </button>
+    
     <span class="col-actions"></span>
   </div>
 
   <!-- Notes Grid -->
   <div class="playlist-rows">
-    {#each appState.filteredNotes as note, index}
-      <div 
-        class="note-row flex-row"
-        class:active={appState.activeNotePath === note.path}
-        class:selected={appState.selectedNotes.has(note.path)}
-        style="--index: {index};"
-        role="button"
-        tabindex="0"
-        onclick={(e) => {
-          if (appState.selectMode) {
-            e.stopPropagation();
-            appState.toggleNoteSelection(note.path);
-          } else {
-            appState.selectNote(note.path);
-          }
-        }}
-        onkeydown={(e) => {
-          if (e.key === 'Enter') {
+    {#if appState.loadingNotes}
+      {#each Array(5) as _, idx}
+        <div class="note-row flex-row skeleton-row" style="--index: {idx}; pointer-events: none;">
+          {#if appState.selectMode}
+            <div class="selection-checkbox-wrapper">
+              <div class="selection-checkbox skeleton-pulse" style="border: none; width: 16px; height: 16px; border-radius: 4px;"></div>
+            </div>
+          {:else}
+            <div class="col-index"><div class="skeleton-block index skeleton-pulse"></div></div>
+          {/if}
+          <div class="col-title flex-row" style="align-items: center; width: 100%;">
+            <div class="track-icon"><div class="skeleton-block icon skeleton-pulse"></div></div>
+            <div class="track-info flex-col" style="flex-grow: 1; gap: var(--spacing-3xs);">
+              <div class="skeleton-block title skeleton-pulse"></div>
+            </div>
+          </div>
+          <div class="col-notebook"><div class="skeleton-block notebook skeleton-pulse"></div></div>
+          <div class="col-modified"><div class="skeleton-block modified skeleton-pulse"></div></div>
+          <div class="col-actions"></div>
+        </div>
+      {/each}
+    {:else}
+      {#each appState.filteredNotes as note, index}
+        <div 
+          class="note-row flex-row"
+          class:active={appState.activeNotePath === note.path}
+          class:selected={appState.selectedNotes.has(note.path)}
+          style="--index: {index};"
+          role="button"
+          tabindex="0"
+          onclick={(e) => {
             if (appState.selectMode) {
+              e.stopPropagation();
               appState.toggleNoteSelection(note.path);
             } else {
               appState.selectNote(note.path);
             }
-          }
-        }}
-      >
-        {#if appState.selectMode}
-          <div class="selection-checkbox-wrapper">
-            <!-- svelte-ignore a11y_click_events_have_key_events -->
-            <!-- svelte-ignore a11y_no_static_element_interactions -->
-            <div 
-              class="selection-checkbox" 
-              class:checked={appState.selectedNotes.has(note.path)}
-              onclick={(e) => { e.stopPropagation(); appState.toggleNoteSelection(note.path); }}
-            >
-              {#if appState.selectedNotes.has(note.path)}
-                ✓
-              {/if}
+          }}
+          onkeydown={(e) => {
+            if (e.key === 'Enter') {
+              if (appState.selectMode) {
+                appState.toggleNoteSelection(note.path);
+              } else {
+                appState.selectNote(note.path);
+              }
+            }
+          }}
+        >
+          {#if appState.selectMode}
+            <div class="selection-checkbox-wrapper">
+              <!-- svelte-ignore a11y_click_events_have_key_events -->
+              <!-- svelte-ignore a11y_no_static_element_interactions -->
+              <div 
+                class="selection-checkbox" 
+                class:checked={appState.selectedNotes.has(note.path)}
+                role="checkbox"
+                aria-checked={appState.selectedNotes.has(note.path)}
+                tabindex="0"
+                aria-label="Select note {note.name}"
+                onclick={(e) => { e.stopPropagation(); appState.toggleNoteSelection(note.path); }}
+                onkeydown={(e) => {
+                  if (e.key === ' ' || e.key === 'Enter') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    appState.toggleNoteSelection(note.path);
+                  }
+                }}
+              >
+                {#if appState.selectedNotes.has(note.path)}
+                  ✓
+                {/if}
+              </div>
+            </div>
+          {:else}
+            <div class="col-index font-mono">{index + 1}</div>
+          {/if}
+          
+          <div class="col-title flex-row">
+            <div class="track-icon">
+              <FileText size={18} />
+            </div>
+            <div class="track-info flex-col">
+              <span class="track-name">{note.name}</span>
             </div>
           </div>
-        {:else}
-          <div class="col-index font-mono">{index + 1}</div>
-        {/if}
-        
-        <div class="col-title flex-row">
-          <div class="track-icon">
-            <FileText size={18} />
-          </div>
-          <div class="track-info flex-col">
-            <span class="track-name">{note.name}</span>
+
+          <div class="col-notebook text-secondary">
             {#if note.path.includes('/')}
-              <span class="track-folder">{note.path.split('/').slice(0, -1).join(' / ')}</span>
+              <span class="notebook-path">{note.path.split('/').slice(0, -1).join(' / ')}</span>
+            {:else}
+              <span class="notebook-path" style="opacity: 0.3;">—</span>
+            {/if}
+          </div>
+
+          <div class="col-modified text-secondary">
+            {formatModified(note.modified)}
+          </div>
+
+          <div class="col-actions flex-row" style="gap: var(--spacing-xs); align-items: center; justify-content: flex-end;">
+            {#if !appState.selectMode}
+              <button 
+                class="row-move-btn" 
+                onclick={(e) => handleMoveCopyNote(note.path, note.name, e)}
+                aria-label="Move or copy note"
+                title="Move or copy note"
+              >
+                <FolderInput size={16} />
+              </button>
+              <button 
+                class="row-edit-btn" 
+                onclick={(e) => handleRenameNote(note.path, note.name, e)}
+                aria-label="Rename note"
+                title="Rename note"
+              >
+                <Edit2 size={16} />
+              </button>
+              <button 
+                class="row-delete-btn" 
+                onclick={(e) => handleDeleteNote(note.path, e)}
+                aria-label="Delete note"
+                title="Delete note"
+              >
+                <Trash2 size={16} />
+              </button>
             {/if}
           </div>
         </div>
-
-        <div class="col-modified text-secondary">
-          {formatModified(note.modified)}
-        </div>
-
-        <div class="col-actions flex-row" style="gap: 6px; align-items: center;">
-          {#if !appState.selectMode}
-            <button 
-              class="row-move-btn" 
-              onclick={(e) => handleMoveCopyNote(note.path, note.name, e)}
-              aria-label="Move or copy note"
-              title="Move or copy note"
-            >
-              <FolderInput size={16} />
+      {:else}
+        <div class="empty-state flex-col">
+          {#if appState.selectedTag}
+            <div class="empty-illustration">
+              <svg class="empty-visual-icon" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path><line x1="7" y1="7" x2="7.01" y2="7"></line></svg>
+            </div>
+            <span class="empty-title">No notes tagged with #{appState.selectedTag}</span>
+            <span class="empty-subtitle">Create a new note or tag an existing one to see it here.</span>
+            <button class="btn-pill btn-pill-primary flex-row" onclick={handleCreateNote} style="gap: var(--spacing-2xs); padding: var(--spacing-xs) var(--spacing-md); cursor: pointer; border: none; margin-top: var(--spacing-2xs);">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+              <span>Add Note</span>
             </button>
-            <button 
-              class="row-edit-btn" 
-              onclick={(e) => handleRenameNote(note.path, note.name, e)}
-              aria-label="Rename note"
-              title="Rename note"
-            >
-              <Edit2 size={16} />
+          {:else if appState.activeNotebook}
+            <div class="empty-illustration">
+              <svg class="empty-visual-icon" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+            </div>
+            <span class="empty-title">This notebook is empty</span>
+            <span class="empty-subtitle">Click "Add Note" to create a note in this notebook.</span>
+            <button class="btn-pill btn-pill-primary flex-row" onclick={handleCreateNote} style="gap: var(--spacing-2xs); padding: var(--spacing-xs) var(--spacing-md); cursor: pointer; border: none; margin-top: var(--spacing-2xs);">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+              <span>Add Note</span>
             </button>
-            <button 
-              class="row-delete-btn" 
-              onclick={(e) => handleDeleteNote(note.path, e)}
-              aria-label="Delete note"
-              title="Delete note"
-            >
-              <Trash2 size={16} />
+          {:else}
+            <div class="empty-illustration">
+              <svg class="empty-visual-icon" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+            </div>
+            <span class="empty-title">Your library is empty</span>
+            <span class="empty-subtitle">Click "Add Note" to write your first note.</span>
+            <button class="btn-pill btn-pill-primary flex-row" onclick={handleCreateNote} style="gap: var(--spacing-2xs); padding: var(--spacing-xs) var(--spacing-md); cursor: pointer; border: none; margin-top: var(--spacing-2xs);">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+              <span>Add Note</span>
             </button>
           {/if}
         </div>
-      </div>
-    {:else}
-      <div class="empty-state flex-col">
-        {#if appState.selectedTag}
-          <span class="empty-icon">🏷️</span>
-          <span class="empty-title">No notes tagged with #{appState.selectedTag}</span>
-          <span class="empty-subtitle">Create a new note or tag an existing one to see it here.</span>
-        {:else if appState.activeNotebook}
-          <span class="empty-icon">📂</span>
-          <span class="empty-title">This notebook is empty</span>
-          <span class="empty-subtitle">Click "Add Note" to create a note in this notebook.</span>
-        {:else}
-          <span class="empty-icon">📄</span>
-          <span class="empty-title">Your library is empty</span>
-          <span class="empty-subtitle">Click "Add Note" to write your first note.</span>
-        {/if}
-      </div>
-    {/each}
+      {/each}
+    {/if}
   </div>
 
   <!-- ST-011: Bulk Action Bar -->
   {#if appState.selectMode}
     <div class="bulk-action-bar flex-row" transition:fly={{ y: 50, duration: 250, easing: cubicOut }}>
       <span class="selected-count">{appState.selectedNotes.size} selected</span>
-      <div class="bulk-actions flex-row" style="gap: 8px;">
+      <div class="bulk-actions flex-row" style="gap: var(--spacing-xs);">
         <button 
           class="btn-pill btn-pill-outline" 
           onclick={() => appState.selectAllNotes(appState.filteredNotes.map(n => n.path))}
@@ -476,7 +621,7 @@
           class="btn-pill btn-pill-outline delete-btn" 
           disabled={appState.selectedNotes.size === 0}
           onclick={handleBulkDelete}
-          style="color: var(--semantic-error, #ff4d4d); border-color: rgba(255, 77, 77, 0.2);"
+          style="color: var(--semantic-error); border-color: color-mix(in srgb, var(--semantic-error) 20%, transparent);"
           title="Delete selected notes"
         >
           Delete
@@ -502,38 +647,38 @@
     ></div>
     <div class="bulk-tag-picker-popover" style="left: {bulkNotebookPickerPos.x}px; top: {bulkNotebookPickerPos.y}px;">
       <div class="picker-header flex-row" style="justify-content: space-between; align-items: center; width: 100%;">
-        <span style="font-size: 11px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px;">
+        <span style="font-size: var(--font-size-xs); font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px;">
           Move to Notebook
         </span>
         <button 
           class="icon-circle-btn flex-row" 
           onclick={closeBulkNotebookPicker}
           aria-label="Close"
-          style="width: 20px; height: 20px; min-width: 20px; border: none; background: rgba(255, 255, 255, 0.08);"
+          style="width: 20px; height: 20px; min-width: 20px; border: none; background: color-mix(in srgb, var(--text-primary) 8%, transparent);"
         >
           <X size={10} />
         </button>
       </div>
 
-      <div class="picker-list flex-col" style="max-height: 180px; overflow-y: auto; width: 100%; gap: 4px; margin-top: 8px;">
+      <div class="picker-list flex-col" style="max-height: 180px; overflow-y: auto; width: 100%; gap: var(--spacing-2xs); margin-top: var(--spacing-xs);">
         <button 
           class="picker-item flex-row" 
           onclick={() => handleBulkMove(null)}
-          style="background: transparent; border: none; padding: 6px 8px; border-radius: 4px; color: var(--text-primary); cursor: pointer; text-align: left; justify-content: flex-start; font-size: 12px; width: 100%;"
-          onmouseover={(e) => e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.06)'}
+          style="background: transparent; border: none; padding: var(--spacing-xs) var(--spacing-xs); border-radius: 4px; color: var(--text-primary); cursor: pointer; text-align: left; justify-content: flex-start; font-size: var(--font-size-xs); width: 100%;"
+          onmouseover={(e) => e.currentTarget.style.backgroundColor = 'color-mix(in srgb, var(--text-primary) 6%, transparent)'}
           onmouseout={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
         >
-          <span style="margin-right: 6px;">📂</span> [Root Folder]
+          <span style="margin-right: var(--spacing-xs);">📂</span> [Root Folder]
         </button>
         {#each appState.notebooks as notebook}
           <button 
             class="picker-item flex-row" 
             onclick={() => handleBulkMove(notebook)}
-            style="background: transparent; border: none; padding: 6px 8px; border-radius: 4px; color: var(--text-primary); cursor: pointer; text-align: left; justify-content: flex-start; font-size: 12px; width: 100%;"
-            onmouseover={(e) => e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.06)'}
+            style="background: transparent; border: none; padding: var(--spacing-xs) var(--spacing-xs); border-radius: 4px; color: var(--text-primary); cursor: pointer; text-align: left; justify-content: flex-start; font-size: var(--font-size-xs); width: 100%;"
+            onmouseover={(e) => e.currentTarget.style.backgroundColor = 'color-mix(in srgb, var(--text-primary) 6%, transparent)'}
             onmouseout={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
           >
-            <span style="margin-right: 6px;">📂</span> {notebook}
+            <span style="margin-right: var(--spacing-xs);">📂</span> {notebook}
           </button>
         {/each}
       </div>
@@ -550,7 +695,7 @@
     ></div>
     <div class="bulk-tag-picker-popover" style="left: {bulkPickerPos.x}px; top: {bulkPickerPos.y}px;">
       <div class="picker-header flex-row" style="justify-content: space-between; align-items: center; width: 100%;">
-        <span style="font-size: 11px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px;">
+        <span style="font-size: var(--font-size-xs); font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px;">
           {bulkTagPickerMode === 'tag' ? 'Apply Tag' : 'Remove Tag'}
         </span>
         <button 
@@ -567,35 +712,35 @@
           placeholder="Search tags..." 
           bind:value={bulkTagSearch}
           autofocus
-          style="width: 100%; padding: 6px 10px; background-color: var(--bg-mid-dark); border: 1px solid rgba(255,255,255,0.08); border-radius: 4px; color: var(--text-primary); font-size: 12px; outline: none;"
+          style="width: 100%; padding: var(--spacing-xs) var(--spacing-sm); background-color: var(--bg-mid-dark); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-primary); font-size: var(--font-size-xs); outline: none;"
         />
       </div>
-      <div class="picker-list flex-col" style="max-height: 180px; overflow-y: auto; margin-top: 8px; gap: 4px;">
+      <div class="picker-list flex-col" style="max-height: 180px; overflow-y: auto; margin-top: var(--spacing-xs); gap: var(--spacing-2xs);">
         {#each filteredTagsForPicker as tag}
           {@const tagColor = appState.tagColorMap.get(tag.normalizedName || tag.name.toLowerCase())}
           <button 
             class="picker-item flex-row" 
             onclick={() => handleBulkAction(tag.name)}
-            style="width: 100%; padding: 6px 8px; border: none; background: none; color: var(--text-primary); text-align: left; cursor: pointer; border-radius: 4px; gap: 8px; align-items: center;"
-            onmouseover={(e) => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.04)'}
+            style="width: 100%; padding: var(--spacing-xs) var(--spacing-xs); border: none; background: none; color: var(--text-primary); text-align: left; cursor: pointer; border-radius: 4px; gap: var(--spacing-xs); align-items: center;"
+            onmouseover={(e) => e.currentTarget.style.backgroundColor = 'color-mix(in srgb, var(--text-primary) 4%, transparent)'}
             onmouseout={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
           >
             <span class="picker-tag-dot" style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background-color: {tagColor || 'var(--text-secondary)'};"></span>
-            <span style="font-size: 12px; font-weight: 600;">#{tag.name}</span>
+            <span style="font-size: var(--font-size-xs); font-weight: 600;">#{tag.name}</span>
           </button>
         {:else}
-          <div style="font-size: 11px; color: var(--text-secondary); padding: 8px; text-align: center;">No matching tags</div>
+          <div style="font-size: var(--font-size-xs); color: var(--text-secondary); padding: var(--spacing-xs); text-align: center;">No matching tags</div>
         {/each}
         
         {#if bulkTagPickerMode === 'tag' && bulkTagSearch.trim() && !filteredTagsForPicker.some(t => t.name.toLowerCase() === bulkTagSearch.toLowerCase().trim())}
           <button 
             class="picker-item create-item flex-row" 
             onclick={() => handleBulkCreateAndAdd(bulkTagSearch)}
-            style="width: 100%; padding: 6px 8px; border: none; background: rgba(255,255,255,0.04); color: var(--accent); text-align: left; cursor: pointer; border-radius: 4px; gap: 8px; align-items: center; margin-top: 4px;"
-            onmouseover={(e) => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.08)'}
-            onmouseout={(e) => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.04)'}
+            style="width: 100%; padding: var(--spacing-xs) var(--spacing-xs); border: none; background: color-mix(in srgb, var(--text-primary) 4%, transparent); color: var(--accent); text-align: left; cursor: pointer; border-radius: 4px; gap: var(--spacing-xs); align-items: center; margin-top: var(--spacing-2xs);"
+            onmouseover={(e) => e.currentTarget.style.backgroundColor = 'color-mix(in srgb, var(--text-primary) 8%, transparent)'}
+            onmouseout={(e) => e.currentTarget.style.backgroundColor = 'color-mix(in srgb, var(--text-primary) 4%, transparent)'}
           >
-            <span style="font-size: 12px; font-weight: 700;">+ Create & Apply "{bulkTagSearch.trim()}"</span>
+            <span style="font-size: var(--font-size-xs); font-weight: 700;">+ Create & Apply "{bulkTagSearch.trim()}"</span>
           </button>
         {/if}
       </div>
@@ -607,7 +752,7 @@
   .note-list {
     background-color: var(--bg-base);
     height: 100%;
-    padding: 20px 12px 12px;
+    padding: var(--spacing-lg) var(--spacing-sm) var(--spacing-sm);
     border-right: 1px solid var(--border-color);
     overflow: hidden;
     flex-shrink: 0;
@@ -633,20 +778,20 @@
   }
 
   .list-header {
-    gap: 4px;
-    margin-bottom: 16px;
-    padding: 0 4px;
+    gap: var(--spacing-2xs);
+    margin-bottom: var(--spacing-md);
+    padding: 0 var(--spacing-2xs);
   }
 
   .meta-label {
-    font-size: 10px;
+    font-size: var(--font-size-xs);
     font-weight: 700;
     color: var(--text-secondary);
     letter-spacing: 0.8px;
   }
 
   .list-title {
-    font-size: 28px;
+    font-size: var(--font-size-2xl);
     font-weight: 850;
     color: var(--text-primary);
     white-space: nowrap;
@@ -657,20 +802,20 @@
 
   .header-actions {
     justify-content: space-between;
-    margin-top: 8px;
+    margin-top: var(--spacing-xs);
   }
 
   .count-indicator {
-    font-size: 12px;
+    font-size: var(--font-size-xs);
     color: var(--text-secondary);
     font-weight: 500;
   }
 
   .clear-btn {
-    font-size: 12px;
+    font-size: var(--font-size-xs);
     color: var(--accent);
     font-weight: 600;
-    margin-left: 6px;
+    margin-left: var(--spacing-xs);
     transition: opacity 0.2s;
   }
 
@@ -679,13 +824,13 @@
   }
 
   .add-note-btn {
-    font-size: 11px;
-    padding: 6px 12px;
+    font-size: var(--font-size-xs);
+    padding: var(--spacing-xs) var(--spacing-sm);
   }
 
   .search-container {
-    padding: 0 4px;
-    margin-bottom: 16px;
+    padding: 0 var(--spacing-2xs);
+    margin-bottom: var(--spacing-md);
   }
 
   .search-wrapper {
@@ -707,8 +852,8 @@
     background-color: var(--bg-surface);
     border: 1px solid transparent;
     border-radius: var(--radius-pill);
-    padding: 8px 12px 8px 38px;
-    font-size: 13px;
+    padding: var(--spacing-xs) var(--spacing-sm) var(--spacing-xs) 38px;
+    font-size: var(--font-size-sm);
     color: var(--text-primary);
     transition: all 0.2s;
   }
@@ -722,38 +867,76 @@
     border-color: var(--border-highlight);
   }
 
+  .note-list.density-comfortable {
+    --row-padding-y: var(--spacing-xs);
+  }
+
+  .note-list.density-compact {
+    --row-padding-y: var(--spacing-2xs);
+  }
+
   .playlist-columns {
     border-bottom: 1px solid var(--border-color);
-    padding: 0 12px 8px;
-    font-size: 10px;
-    font-weight: 700;
+    padding: var(--spacing-xs) var(--spacing-sm);
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-bold);
     color: var(--text-secondary);
     letter-spacing: 0.8px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: var(--spacing-sm);
+  }
+
+  .sort-header-btn {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-3xs);
+    transition: color var(--motion-duration-fast) var(--motion-ease-standard);
+  }
+  .sort-header-btn:hover {
+    color: var(--text-primary);
+  }
+  .sort-arrow {
+    font-size: var(--font-size-xs);
+    font-weight: bold;
+    color: var(--accent);
   }
 
   .col-index {
     width: 24px;
-    text-align: right;
-    margin-right: 12px;
+    text-align: center;
     flex-shrink: 0;
   }
 
   .col-title {
-    flex-grow: 1;
+    flex: 1.8;
+    min-width: 0;
     overflow: hidden;
-    gap: 12px;
+    gap: var(--spacing-xs);
+  }
+
+  .col-notebook {
+    flex: 1.2;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--font-size-xs);
   }
 
   .col-modified {
-    width: 70px;
-    text-align: right;
+    width: 85px;
     flex-shrink: 0;
-    justify-content: flex-end;
+    text-align: left;
+    white-space: nowrap;
   }
 
   .col-actions {
-    width: 28px;
+    width: 80px;
     flex-shrink: 0;
+    text-align: right;
+    justify-content: flex-end;
   }
 
   .playlist-rows {
@@ -761,28 +944,34 @@
     flex-grow: 1;
     display: flex;
     flex-direction: column;
-    padding-top: 8px;
-    gap: 2px;
+    padding-top: var(--spacing-xs);
+    gap: var(--spacing-3xs);
   }
 
   .note-row {
-    padding: 8px 12px;
+    padding: var(--row-padding-y, var(--spacing-xs)) var(--spacing-sm);
     border-radius: var(--radius-standard);
     width: 100%;
     text-align: left;
-    transition: background-color 0.2s, transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease;
-    animation: list-item-fade-in 0.32s cubic-bezier(0.16, 1, 0.3, 1) calc(var(--index, 0) * 0.04s) both;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: var(--spacing-sm);
+    transition: background-color var(--motion-duration-fast) var(--motion-ease-standard), 
+                transform var(--motion-duration-fast) var(--motion-ease-standard), 
+                box-shadow var(--motion-duration-fast) var(--motion-ease-standard);
+    animation: list-item-fade-in var(--motion-duration-slow) var(--motion-ease-out) calc(var(--index, 0) * 0.04s) both;
     will-change: transform, opacity;
   }
 
   .note-row:hover {
-    background-color: rgba(255, 255, 255, 0.05);
+    background-color: color-mix(in srgb, var(--text-primary) 5%, transparent);
     transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2), 0 0 0 1px rgba(255, 255, 255, 0.04);
+    box-shadow: var(--elevation-3), 0 0 0 1px color-mix(in srgb, var(--text-primary) 4%, transparent);
   }
 
   .note-row.active {
-    background-color: rgba(255, 255, 255, 0.1);
+    background-color: color-mix(in srgb, var(--text-primary) 10%, transparent);
     box-shadow: inset 3px 0 0 0 var(--accent);
   }
 
@@ -811,6 +1000,8 @@
     justify-content: center;
     color: var(--text-secondary);
     flex-shrink: 0;
+    transition: background-color var(--motion-duration-fast) var(--motion-ease-standard),
+                color var(--motion-duration-fast) var(--motion-ease-standard);
   }
 
   .note-row:hover .track-icon {
@@ -820,10 +1011,11 @@
 
   .track-info {
     overflow: hidden;
+    min-width: 0;
   }
 
   .track-name {
-    font-size: 13px;
+    font-size: var(--font-size-sm);
     font-weight: 600;
     color: var(--text-primary);
     white-space: nowrap;
@@ -831,25 +1023,21 @@
     text-overflow: ellipsis;
   }
 
-  .track-folder {
-    font-size: 10px;
-    color: var(--text-secondary);
-    margin-top: 2px;
+  .notebook-path {
+    font-size: var(--font-size-xs);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
 
-  .col-modified {
-    font-size: 12px;
-    white-space: nowrap;
-  }
-
   .row-delete-btn, .row-edit-btn, .row-move-btn {
-    opacity: 0;
+    opacity: 0.4;
     color: var(--text-secondary);
-    transition: opacity 0.2s, color 0.2s, transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.2s;
-    padding: 4px;
+    transition: opacity var(--motion-duration-fast) var(--motion-ease-standard), 
+                color var(--motion-duration-fast) var(--motion-ease-standard), 
+                transform var(--motion-duration-fast) var(--motion-ease-standard), 
+                background-color var(--motion-duration-fast) var(--motion-ease-standard);
+    padding: var(--spacing-2xs);
     border-radius: 4px;
     display: flex;
     align-items: center;
@@ -861,53 +1049,85 @@
 
   .note-row:hover .row-delete-btn,
   .note-row:hover .row-edit-btn,
-  .note-row:hover .row-move-btn {
+  .note-row:hover .row-move-btn,
+  .note-row:focus-within .row-delete-btn,
+  .note-row:focus-within .row-edit-btn,
+  .note-row:focus-within .row-move-btn {
     opacity: 1;
   }
 
   .row-delete-btn:hover {
     color: var(--semantic-error);
-    background-color: rgba(255, 255, 255, 0.05);
+    background-color: color-mix(in srgb, var(--text-primary) 5%, transparent);
     transform: scale(1.15) rotate(5deg);
   }
 
   .row-edit-btn:hover {
     color: var(--accent);
-    background-color: rgba(255, 255, 255, 0.05);
+    background-color: color-mix(in srgb, var(--text-primary) 5%, transparent);
     transform: scale(1.15) rotate(-5deg);
   }
 
   .row-move-btn:hover {
     color: var(--accent);
-    background-color: rgba(255, 255, 255, 0.05);
+    background-color: color-mix(in srgb, var(--text-primary) 5%, transparent);
     transform: scale(1.15) translateY(-2px);
   }
 
   .empty-state {
+    display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
     flex-grow: 1;
-    padding: 40px 16px;
+    padding: var(--spacing-xl) var(--spacing-md);
     text-align: center;
-    gap: 8px;
+    gap: var(--spacing-sm);
+    animation: note-empty-fade 0.3s ease-out;
   }
 
-  .empty-icon {
-    font-size: 40px;
-    margin-bottom: 8px;
-    opacity: 0.5;
+  @keyframes note-empty-fade {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .empty-illustration {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--text-primary) 3%, transparent);
+    border: 1px solid color-mix(in srgb, var(--text-primary) 5%, transparent);
+    margin-bottom: var(--spacing-2xs);
+    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.3s;
+  }
+
+  .empty-illustration:hover {
+    transform: scale(1.06) rotate(3deg);
+    border-color: color-mix(in srgb, var(--accent) 25%, transparent);
+  }
+
+  .empty-visual-icon {
+    filter: drop-shadow(0 4px 8px color-mix(in srgb, var(--accent) 15%, transparent));
   }
 
   .empty-title {
-    font-size: 16px;
+    font-size: var(--font-size-base);
     font-weight: 700;
     color: var(--text-primary);
+    margin: 0;
+    letter-spacing: -0.2px;
   }
 
   .empty-subtitle {
-    font-size: 12px;
-    color: var(--text-secondary);
-    max-width: 200px;
+    font-size: var(--font-size-xs);
+    color: var(--text-tertiary);
+    max-width: 240px;
+    line-height: 1.5;
+    margin: 0;
   }
 
   @media (max-width: 768px) {
@@ -917,7 +1137,7 @@
   }
 
   .note-row.selected {
-    background-color: rgba(255, 255, 255, 0.08);
+    background-color: color-mix(in srgb, var(--text-primary) 8%, transparent);
     box-shadow: inset 3px 0 0 0 var(--accent);
   }
 
@@ -927,7 +1147,7 @@
 
   .selection-checkbox-wrapper {
     width: 24px;
-    margin-right: 12px;
+    margin-right: var(--spacing-sm);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -948,7 +1168,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 10px;
+    font-size: var(--font-size-xs);
     font-weight: bold;
     color: white;
     cursor: pointer;
@@ -966,18 +1186,18 @@
     bottom: 16px;
     left: 16px;
     right: 16px;
-    background: #1e1e1e;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05);
+    background: var(--bg-surface);
+    border: 1px solid var(--border-color);
+    box-shadow: var(--shadow-heavy), 0 0 0 1px color-mix(in srgb, var(--text-primary) 5%, transparent);
     border-radius: 12px;
-    padding: 12px 16px;
+    padding: var(--spacing-sm) var(--spacing-md);
     justify-content: space-between;
     align-items: center;
     z-index: 100;
   }
 
   .selected-count {
-    font-size: 13px;
+    font-size: var(--font-size-sm);
     font-weight: 700;
     color: var(--text-primary);
   }
@@ -995,11 +1215,11 @@
   .bulk-tag-picker-popover {
     position: fixed;
     z-index: 9999;
-    background: #1e1e1e;
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: var(--bg-surface);
+    border: 1px solid var(--border-color);
     border-radius: 10px;
-    padding: 12px;
-    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05);
+    padding: var(--spacing-sm);
+    box-shadow: var(--shadow-heavy), 0 0 0 1px color-mix(in srgb, var(--text-primary) 5%, transparent);
     min-width: 200px;
     backdrop-filter: blur(20px);
     animation: pickerFadeIn 0.15s ease-out;
@@ -1011,12 +1231,99 @@
   }
 
   .picker-header {
-    margin-bottom: 8px;
-    padding-bottom: 6px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    margin-bottom: var(--spacing-xs);
+    padding-bottom: var(--spacing-xs);
+    border-bottom: 1px solid var(--border-color);
   }
 
   .picker-item {
     transition: background-color 0.15s ease, color 0.15s ease;
+  }
+
+  /* Filter Chips styling (UI-D-009) */
+  .filter-chips-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-2xs);
+    align-items: center;
+    margin-top: var(--spacing-xs);
+    width: 100%;
+  }
+
+  .active-filter-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--spacing-2xs);
+    padding: var(--spacing-3xs) var(--spacing-xs);
+    border-radius: var(--radius-pill);
+    background-color: color-mix(in srgb, var(--accent) 8%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent) 15%, transparent);
+    color: var(--accent);
+    font-size: var(--font-size-xs);
+    font-weight: 500;
+  }
+
+  .filter-chip-remove {
+    background: none;
+    border: none;
+    color: var(--accent);
+    cursor: pointer;
+    padding: var(--spacing-3xs);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    transition: background-color 0.15s;
+  }
+
+  .filter-chip-remove:hover {
+    background-color: color-mix(in srgb, var(--accent) 20%, transparent);
+    color: var(--text-primary);
+  }
+
+  .filter-clear-all {
+    font-size: var(--font-size-xs);
+    color: var(--text-secondary);
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-weight: 600;
+    padding: var(--spacing-3xs) var(--spacing-xs);
+    border-radius: var(--radius-subtle);
+    transition: color 0.15s, background-color 0.15s;
+  }
+
+  .filter-clear-all:hover {
+    color: var(--text-primary);
+    background-color: color-mix(in srgb, var(--text-primary) 5%, transparent);
+  }
+
+  /* NoteList Loading Skeleton Styles */
+  .skeleton-block {
+    background-color: var(--bg-mid-dark, rgba(255, 255, 255, 0.05));
+    border-radius: var(--radius-subtle);
+    height: 12px;
+  }
+  .skeleton-block.index {
+    width: 14px;
+    height: 12px;
+    margin: 0 auto;
+  }
+  .skeleton-block.icon {
+    width: 18px;
+    height: 18px;
+    border-radius: var(--radius-subtle);
+  }
+  .skeleton-block.title {
+    width: 60%;
+    height: 14px;
+  }
+  .skeleton-block.notebook {
+    width: 40%;
+    height: 12px;
+  }
+  .skeleton-block.modified {
+    width: 50px;
+    height: 12px;
   }
 </style>

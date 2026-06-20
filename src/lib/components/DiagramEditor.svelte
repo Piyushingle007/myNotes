@@ -367,8 +367,8 @@
 			<!-- Mobile-only Cancel button -->
 			<button type="button" class="dg-btn mobile-only" onclick={onCancel}>Cancel</button>
 
-			<div class="header-left-title flex-row" style="display: flex; align-items: center; gap: 6px;">
-				<span class="diagram-title" style="display: flex; align-items: center; gap: 6px;">
+			<div class="header-left-title flex-row" style="display: flex; align-items: center; gap: var(--spacing-xs);">
+				<span class="diagram-title" style="display: flex; align-items: center; gap: var(--spacing-xs);">
 					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><path d="M10 6.5h4a3 3 0 0 1 3 3V14"/></svg>
 					<span>Shape Editor</span>
 				</span>
@@ -385,7 +385,7 @@
 				{/if}
 			</div>
 
-			<div class="header-right-actions flex-row" style="display: flex; align-items: center; gap: 8px;">
+			<div class="header-right-actions flex-row" style="display: flex; align-items: center; gap: var(--spacing-xs);">
 				<!-- Desktop-only Cancel button -->
 				<button type="button" class="dg-btn desktop-only" onclick={onCancel}>Cancel</button>
 				<button class="dg-btn primary" onclick={handleSave}>Save</button>
@@ -612,11 +612,11 @@
 						</button>
 					</div>
 
-					<div class="drawer-content flex-col" style="display: flex; flex-direction: column; width: 100%; gap: 16px;">
+					<div class="drawer-content flex-col" style="display: flex; flex-direction: column; width: 100%; gap: var(--spacing-md);">
 						<!-- Stroke color -->
-						<div class="drawer-group flex-col" style="display: flex; flex-direction: column; width: 100%; gap: 6px;">
+						<div class="drawer-group flex-col" style="display: flex; flex-direction: column; width: 100%; gap: var(--spacing-xs);">
 							<span class="drawer-label">Stroke Color</span>
-							<div class="drawer-swatches" style="display: flex; gap: 6px; overflow-x: auto; width: 100%; -webkit-overflow-scrolling: touch; padding-bottom: 4px;">
+							<div class="drawer-swatches" style="display: flex; gap: var(--spacing-xs); overflow-x: auto; width: 100%; -webkit-overflow-scrolling: touch; padding-bottom: var(--spacing-2xs);">
 								{#each palette as c}
 									<button 
 										type="button"
@@ -632,9 +632,9 @@
 						</div>
 
 						<!-- Fill color -->
-						<div class="drawer-group flex-col" style="display: flex; flex-direction: column; width: 100%; gap: 6px;">
+						<div class="drawer-group flex-col" style="display: flex; flex-direction: column; width: 100%; gap: var(--spacing-xs);">
 							<span class="drawer-label">Fill Color</span>
-							<div class="drawer-swatches" style="display: flex; gap: 6px; overflow-x: auto; width: 100%; -webkit-overflow-scrolling: touch; padding-bottom: 4px;">
+							<div class="drawer-swatches" style="display: flex; gap: var(--spacing-xs); overflow-x: auto; width: 100%; -webkit-overflow-scrolling: touch; padding-bottom: var(--spacing-2xs);">
 								{#each fillPalette as c}
 									<button 
 										type="button"
@@ -650,9 +650,9 @@
 						</div>
 
 						<!-- Stroke width -->
-						<div class="drawer-group flex-col" style="display: flex; flex-direction: column; width: 100%; gap: 6px;">
+						<div class="drawer-group flex-col" style="display: flex; flex-direction: column; width: 100%; gap: var(--spacing-xs);">
 							<span class="drawer-label">Stroke Width</span>
-							<div class="drawer-widths" style="display: flex; gap: 8px; width: 100%;">
+							<div class="drawer-widths" style="display: flex; gap: var(--spacing-xs); width: 100%;">
 								{#each [1, 2, 4, 6] as w}
 									<button 
 										type="button"
@@ -670,13 +670,13 @@
 
 						{#if selectedShape}
 							<!-- Arrange layer order -->
-							<div class="drawer-group flex-col" style="display: flex; flex-direction: column; width: 100%; gap: 6px;">
+							<div class="drawer-group flex-col" style="display: flex; flex-direction: column; width: 100%; gap: var(--spacing-xs);">
 								<span class="drawer-label">Layer Arrange</span>
-								<div class="drawer-arrange" style="display: flex; gap: 12px; width: 100%;">
+								<div class="drawer-arrange" style="display: flex; gap: var(--spacing-sm); width: 100%;">
 									<button 
 										type="button"
 										class="dg-btn ghost" 
-										style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 10px;"
+										style="flex: 1; display: flex; align-items: center; justify-content: center; gap: var(--spacing-xs); padding: var(--spacing-sm);"
 										onclick={sendBackward}
 									>
 										Send Backward
@@ -684,7 +684,7 @@
 									<button 
 										type="button"
 										class="dg-btn ghost" 
-										style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 10px;"
+										style="flex: 1; display: flex; align-items: center; justify-content: center; gap: var(--spacing-xs); padding: var(--spacing-sm);"
 										onclick={bringForward}
 									>
 										Bring Forward
@@ -696,7 +696,7 @@
 							<button 
 								type="button"
 								class="dg-btn danger delete-shape-btn" 
-								style="width: 100%; margin-top: 16px; padding: 12px; display: flex; align-items: center; justify-content: center; border-radius: 8px; font-weight: 600;"
+								style="width: 100%; margin-top: var(--spacing-md); padding: var(--spacing-sm); display: flex; align-items: center; justify-content: center; border-radius: 8px; font-weight: 600;"
 								onclick={() => {
 									deleteSelected();
 									showMobileStyleDrawer = false;
@@ -723,11 +723,11 @@
 	.editor-host-switcher {
 		display: inline-flex;
 		align-items: center;
-		background: rgba(255, 255, 255, 0.05);
-		border: 1px solid rgba(255, 255, 255, 0.1);
+		background: color-mix(in srgb, var(--text-primary) 5%, transparent);
+		border: 1px solid var(--border-color);
 		border-radius: 6px;
-		padding: 2px;
-		gap: 2px;
+		padding: var(--spacing-3xs);
+		gap: var(--spacing-3xs);
 	}
 	.switcher-btn {
 		background: transparent;
@@ -735,14 +735,14 @@
 		color: #aaa;
 		font-size: 11px;
 		font-weight: 600;
-		padding: 4px 10px;
+		padding: var(--spacing-2xs) var(--spacing-sm);
 		border-radius: 4px;
 		cursor: pointer;
 		transition: all 0.15s ease;
 	}
 	.switcher-btn:hover {
 		color: #fff;
-		background: rgba(255, 255, 255, 0.05);
+		background: color-mix(in srgb, var(--text-primary) 5%, transparent);
 	}
 	.switcher-btn.active {
 		color: #fff;
@@ -756,33 +756,33 @@
 		position: fixed;
 		inset: 0;
 		z-index: 2000;
-		background: rgba(0, 0, 0, 0.6);
+		background: color-mix(in srgb, var(--bg-base) 60%, transparent);
 		backdrop-filter: blur(4px);
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		padding: 24px;
+		padding: var(--spacing-lg);
 	}
 
 	.diagram-modal {
-		background: var(--bg-surface, #16181d);
-		border: 1px solid var(--border-highlight, #2c313a);
+		background: var(--bg-surface);
+		border: 1px solid var(--border-highlight);
 		border-radius: 14px;
 		width: min(1100px, 96vw);
 		height: min(760px, 94vh);
 		display: flex;
 		flex-direction: column;
 		overflow: hidden;
-		box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+		box-shadow: var(--shadow-heavy);
 	}
 
 	.diagram-header {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		padding: 12px 16px;
-		border-bottom: 1px solid var(--border-color, #23262d);
-		gap: 16px;
+		padding: var(--spacing-sm) var(--spacing-md);
+		border-bottom: 1px solid var(--border-color);
+		gap: var(--spacing-md);
 	}
 
 	.header-switchers-wrapper {
@@ -792,22 +792,22 @@
 	.header-left-title {
 		display: flex;
 		align-items: center;
-		gap: 12px;
+		gap: var(--spacing-sm);
 	}
 
 	.header-right-actions {
 		display: flex;
 		align-items: center;
-		gap: 10px;
+		gap: var(--spacing-sm);
 	}
 
 	.diagram-title {
 		display: flex;
 		align-items: center;
-		gap: 8px;
+		gap: var(--spacing-xs);
 		font-weight: 700;
 		font-size: 14px;
-		color: var(--text-primary, #fff);
+		color: var(--text-primary);
 	}
 
 	.mobile-only {
@@ -827,45 +827,45 @@
 	.diagram-toolbar {
 		display: flex;
 		align-items: center;
-		gap: 10px;
-		padding: 8px 12px;
-		border-bottom: 1px solid var(--border-color, #23262d);
+		gap: var(--spacing-sm);
+		padding: var(--spacing-xs) var(--spacing-sm);
+		border-bottom: 1px solid var(--border-color);
 		flex-wrap: wrap;
-		background: var(--bg-base, #101216);
+		background: var(--bg-base);
 	}
 
-	.dg-tools { display: flex; gap: 2px; }
+	.dg-tools { display: flex; gap: var(--spacing-3xs); }
 
 	.dg-tool {
 		width: 32px; height: 32px;
 		display: flex; align-items: center; justify-content: center;
 		border-radius: 7px;
-		color: var(--text-secondary, #aeb4bf);
+		color: var(--text-secondary);
 		background: transparent;
 		border: 1px solid transparent;
 		cursor: pointer;
 		transition: all 0.15s;
 	}
-	.dg-tool:hover { background: var(--bg-mid-dark, #23262d); color: var(--text-primary, #fff); }
+	.dg-tool:hover { background: var(--bg-mid-dark); color: var(--text-primary); }
 	.dg-tool.active {
-		background: var(--accent-light, rgba(56,189,248,0.16));
-		color: var(--accent, #38bdf8);
-		border-color: var(--accent, #38bdf8);
+		background: var(--accent-light);
+		color: var(--accent);
+		border-color: var(--accent);
 	}
 
-	.dg-sep { width: 1px; align-self: stretch; background: var(--border-color, #23262d); margin: 2px 4px; }
+	.dg-sep { width: 1px; align-self: stretch; background: var(--border-color); margin: var(--spacing-3xs) var(--spacing-2xs); }
 	.dg-spacer { flex: 1; }
 
-	.dg-group { display: flex; align-items: center; gap: 6px; }
-	.dg-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-tertiary, #7c8290); font-weight: 700; }
+	.dg-group { display: flex; align-items: center; gap: var(--spacing-xs); }
+	.dg-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-tertiary); font-weight: 700; }
 
-	.dg-swatches { display: flex; align-items: center; gap: 3px; }
+	.dg-swatches { display: flex; align-items: center; gap: var(--spacing-3xs); }
 	.dg-swatch {
 		width: 18px; height: 18px; border-radius: 5px;
-		border: 1.5px solid rgba(255,255,255,0.15);
+		border: 1.5px solid color-mix(in srgb, var(--text-primary) 15%, transparent);
 		cursor: pointer; padding: 0;
 	}
-	.dg-swatch.sel { outline: 2px solid var(--accent, #38bdf8); outline-offset: 1px; }
+	.dg-swatch.sel { outline: 2px solid var(--accent); outline-offset: 1px; }
 	.dg-swatch.none {
 		background: repeating-conic-gradient(#555 0% 25%, #888 0% 50%) 50% / 8px 8px;
 	}
@@ -876,30 +876,30 @@
 
 	.dg-w {
 		width: 26px; height: 26px; display: flex; align-items: center; justify-content: center;
-		border-radius: 6px; background: transparent; border: 1px solid var(--border-color, #23262d);
+		border-radius: 6px; background: transparent; border: 1px solid var(--border-color);
 		cursor: pointer;
 	}
-	.dg-w span { display: block; width: 14px; background: var(--text-secondary, #aeb4bf); border-radius: 2px; }
-	.dg-w.active { border-color: var(--accent, #38bdf8); }
-	.dg-w.active span { background: var(--accent, #38bdf8); }
+	.dg-w span { display: block; width: 14px; background: var(--text-secondary); border-radius: 2px; }
+	.dg-w.active { border-color: var(--accent); }
+	.dg-w.active span { background: var(--accent); }
 
 	.dg-btn {
-		padding: 7px 14px; border-radius: 8px; font-size: 13px; font-weight: 600;
-		background: var(--bg-mid-dark, #23262d); color: var(--text-primary, #fff);
-		border: 1px solid var(--border-color, #23262d); cursor: pointer; transition: all 0.15s;
+		padding: 7px var(--spacing-md); border-radius: 8px; font-size: 13px; font-weight: 600;
+		background: var(--bg-mid-dark); color: var(--text-primary);
+		border: 1px solid var(--border-color); cursor: pointer; transition: all 0.15s;
 	}
-	.dg-btn:hover { background: var(--bg-card-hover, #2d333b); }
-	.dg-btn.primary { background: var(--accent, #38bdf8); color: #001018; border-color: transparent; }
+	.dg-btn:hover { background: var(--bg-card-hover); }
+	.dg-btn.primary { background: var(--accent); color: #001018; border-color: transparent; }
 	.dg-btn.primary:hover { filter: brightness(1.08); }
 	.dg-btn.ghost { background: transparent; }
-	.dg-btn.danger { color: var(--semantic-error, #ef4444); border-color: var(--semantic-error, #ef4444); background: transparent; }
-	.dg-btn.danger:hover { background: rgba(239,68,68,0.12); }
+	.dg-btn.danger { color: var(--semantic-error); border-color: var(--semantic-error); background: transparent; }
+	.dg-btn.danger:hover { background: color-mix(in srgb, var(--semantic-error) 12%, transparent); }
 
 	.diagram-canvas-wrap {
 		flex: 1;
 		overflow: auto;
 		background: #e5e7eb;
-		padding: 24px;
+		padding: var(--spacing-lg);
 		display: flex;
 		justify-content: center;
 		align-items: flex-start;
@@ -925,7 +925,7 @@
 		color: #1f2937;
 		font-family: system-ui, -apple-system, sans-serif;
 		line-height: 1.3;
-		padding: 2px 4px;
+		padding: var(--spacing-3xs) var(--spacing-2xs);
 		resize: none;
 		outline: none;
 		overflow: hidden;
@@ -935,12 +935,12 @@
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
-		padding: 8px 16px;
-		border-top: 1px solid var(--border-color, #23262d);
-		gap: 12px;
+		padding: var(--spacing-xs) var(--spacing-md);
+		border-top: 1px solid var(--border-color);
+		gap: var(--spacing-sm);
 	}
 
-	.dg-hint { font-size: 11px; color: var(--text-tertiary, #7c8290); }
+	.dg-hint { font-size: 11px; color: var(--text-tertiary); }
 
 	.dg-mobile-only {
 		display: none !important;
@@ -963,17 +963,17 @@
 			display: grid !important;
 			grid-template-columns: auto 1fr auto !important;
 			grid-template-rows: auto auto !important;
-			padding: 10px 12px !important;
-			gap: 10px 8px !important;
-			background: var(--bg-surface, #16181d);
-			border-bottom: 1px solid var(--border-color, #23262d);
+			padding: var(--spacing-sm) var(--spacing-sm) !important;
+			gap: var(--spacing-sm) var(--spacing-xs) !important;
+			background: var(--bg-surface);
+			border-bottom: 1px solid var(--border-color);
 		}
 
 		.dg-btn.mobile-only {
 			grid-column: 1;
 			grid-row: 1;
 			justify-self: start;
-			padding: 6px 12px;
+			padding: var(--spacing-xs) var(--spacing-sm);
 			font-size: 13px;
 		}
 
@@ -981,13 +981,13 @@
 			grid-column: 2;
 			grid-row: 1;
 			justify-self: center;
-			gap: 6px;
+			gap: var(--spacing-xs);
 		}
 
 		.diagram-title {
 			display: flex !important;
 			align-items: center;
-			gap: 6px;
+			gap: var(--spacing-xs);
 			font-size: 14px !important;
 			font-weight: 700;
 		}
@@ -996,7 +996,7 @@
 			grid-column: 3;
 			grid-row: 1;
 			justify-self: end;
-			gap: 6px;
+			gap: var(--spacing-xs);
 		}
 
 		.header-switchers-wrapper {
@@ -1013,12 +1013,12 @@
 		}
 
 		.switcher-btn {
-			padding: 4px 8px;
+			padding: var(--spacing-2xs) var(--spacing-xs);
 			font-size: 10px;
 		}
 
 		.dg-btn.primary {
-			padding: 6px 12px;
+			padding: var(--spacing-xs) var(--spacing-sm);
 			font-size: 13px;
 		}
 
@@ -1026,8 +1026,8 @@
 			justify-content: space-between !important;
 			flex-wrap: nowrap !important;
 			overflow-x: auto;
-			padding: 6px 8px;
-			gap: 8px;
+			padding: var(--spacing-xs) var(--spacing-xs);
+			gap: var(--spacing-xs);
 		}
 
 		.dg-tools-wrapper {
@@ -1043,25 +1043,25 @@
 
 		.dg-tools {
 			flex-wrap: nowrap;
-			gap: 4px;
+			gap: var(--spacing-2xs);
 		}
 
 		.style-toggle-btn {
 			flex-shrink: 0;
-			background: rgba(255, 255, 255, 0.05);
-			border: 1px solid rgba(255, 255, 255, 0.1);
-			color: var(--accent, #38bdf8);
+			background: color-mix(in srgb, var(--text-primary) 5%, transparent);
+			border: 1px solid var(--border-color);
+			color: var(--accent);
 		}
 		.style-toggle-btn.active {
-			background: var(--accent-light, rgba(56,189,248,0.16));
-			border-color: var(--accent, #38bdf8);
+			background: var(--accent-light);
+			border-color: var(--accent);
 		}
 
 		/* Drawer styles */
 		.drawer-backdrop {
 			position: absolute;
 			inset: 0;
-			background: rgba(0, 0, 0, 0.6);
+			background: color-mix(in srgb, var(--bg-base) 60%, transparent);
 			backdrop-filter: blur(4px);
 			-webkit-backdrop-filter: blur(4px);
 			z-index: 1000;
@@ -1072,12 +1072,12 @@
 
 		.drawer-sheet {
 			width: 100%;
-			background: var(--bg-surface, #16181d);
-			border-top: 1px solid var(--border-highlight, #2c313a);
+			background: var(--bg-surface);
+			border-top: 1px solid var(--border-highlight);
 			border-radius: 16px 16px 0 0;
-			padding: 20px;
-			gap: 16px;
-			box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.55);
+			padding: var(--spacing-lg);
+			gap: var(--spacing-md);
+			box-shadow: var(--shadow-heavy);
 			max-height: 75vh;
 			overflow-y: auto;
 			box-sizing: border-box;
@@ -1086,25 +1086,25 @@
 		.drawer-header {
 			justify-content: space-between;
 			align-items: center;
-			border-bottom: 1px solid var(--border-color, #23262d);
-			padding-bottom: 12px;
+			border-bottom: 1px solid var(--border-color);
+			padding-bottom: var(--spacing-sm);
 			width: 100%;
 		}
 
 		.drawer-title {
 			font-weight: 700;
 			font-size: 15px;
-			color: var(--text-primary, #fff);
+			color: var(--text-primary);
 		}
 
 		.drawer-content {
 			width: 100%;
-			gap: 16px;
+			gap: var(--spacing-md);
 		}
 
 		.drawer-group {
 			width: 100%;
-			gap: 8px;
+			gap: var(--spacing-xs);
 			align-items: flex-start;
 		}
 
@@ -1112,17 +1112,17 @@
 			font-size: 10px;
 			text-transform: uppercase;
 			letter-spacing: 0.5px;
-			color: var(--text-tertiary, #7c8290);
+			color: var(--text-tertiary);
 			font-weight: 700;
-			margin-bottom: 2px;
+			margin-bottom: var(--spacing-3xs);
 		}
 
 		.drawer-swatches {
 			width: 100%;
 			overflow-x: auto;
 			display: flex;
-			gap: 6px;
-			padding-bottom: 4px;
+			gap: var(--spacing-xs);
+			padding-bottom: var(--spacing-2xs);
 			flex-wrap: nowrap;
 			-webkit-overflow-scrolling: touch;
 		}
@@ -1133,7 +1133,7 @@
 		.drawer-widths {
 			width: 100%;
 			display: flex;
-			gap: 8px;
+			gap: var(--spacing-xs);
 		}
 
 		.drawer-sheet .dg-swatch {
@@ -1156,7 +1156,7 @@
 		
 		.done-btn {
 			height: 32px;
-			padding: 0 16px;
+			padding: 0 var(--spacing-md);
 			display: flex;
 			align-items: center;
 			justify-content: center;

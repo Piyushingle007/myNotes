@@ -1,7 +1,7 @@
 <script lang="ts">
   import { appState, generateHtmlNote, parseHtmlMetadata } from '../stores/appState.svelte';
   import type { Tag } from '../storage/TagSchema';
-  import { Folder, Plus, Trash2, Calendar, Settings, Library, Palette, FolderOpen, X, ChevronRight, FileText, Download, Cloud, RefreshCw, CloudOff, Tag as TagIcon, Edit2 } from 'lucide-svelte';
+  import { Folder, Plus, Trash2, Calendar, Settings, Library, Palette, FolderOpen, X, ChevronRight, FileText, Download, Cloud, RefreshCw, CloudOff, Tag as TagIcon, Edit2, Star } from 'lucide-svelte';
   import GoogleLogo from './GoogleLogo.svelte';
 
   let newNotebookName = $state('');
@@ -118,7 +118,27 @@
     });
   }
 
-  let tagsCollapsed = $state(false);
+  let favoritesCollapsed = $state(localStorage.getItem('mynotes_sidebar_favorites_collapsed') === 'true');
+  let notebooksCollapsed = $state(localStorage.getItem('mynotes_sidebar_notebooks_collapsed') === 'true');
+  let tagsCollapsed = $state(localStorage.getItem('mynotes_sidebar_tags_collapsed') === 'true');
+  let dailyCollapsed = $state(localStorage.getItem('mynotes_sidebar_daily_collapsed') === 'true');
+
+  function toggleFavorites() {
+    favoritesCollapsed = !favoritesCollapsed;
+    localStorage.setItem('mynotes_sidebar_favorites_collapsed', String(favoritesCollapsed));
+  }
+  function toggleNotebooks() {
+    notebooksCollapsed = !notebooksCollapsed;
+    localStorage.setItem('mynotes_sidebar_notebooks_collapsed', String(notebooksCollapsed));
+  }
+  function toggleTags() {
+    tagsCollapsed = !tagsCollapsed;
+    localStorage.setItem('mynotes_sidebar_tags_collapsed', String(tagsCollapsed));
+  }
+  function toggleDaily() {
+    dailyCollapsed = !dailyCollapsed;
+    localStorage.setItem('mynotes_sidebar_daily_collapsed', String(dailyCollapsed));
+  }
 
   const sortedTags = $derived(
     [...appState.tags].sort((a: Tag, b: Tag) => a.name.localeCompare(b.name))
@@ -164,31 +184,51 @@
 
   async function handleRenameTag(tagName: string, event: Event) {
     event.stopPropagation();
-    const newName = prompt(`Rename tag "${tagName}" to:`, tagName);
-    if (!newName) return;
-    const trimmed = newName.trim();
-    if (!trimmed || trimmed === tagName) return;
-    
-    // Check if newName already exists
-    const normalizedNew = trimmed.toLowerCase();
-    const alreadyExists = appState.tags.some(t => (t.normalizedName || t.name.toLowerCase()) === normalizedNew);
-    
-    if (alreadyExists) {
-      if (!confirm(`Tag "${trimmed}" already exists. Do you want to merge "${tagName}" into "${trimmed}"?`)) {
-        return;
+    appState.showPrompt({
+      title: 'Rename Tag',
+      message: `Rename tag "${tagName}" to:`,
+      value: tagName,
+      placeholder: 'Tag name...',
+      onConfirm: async (newName) => {
+        const trimmed = newName.trim();
+        if (!trimmed || trimmed === tagName) return;
+        
+        const normalizedNew = trimmed.toLowerCase();
+        const alreadyExists = appState.tags.some(t => (t.normalizedName || t.name.toLowerCase()) === normalizedNew);
+        
+        if (alreadyExists) {
+          appState.showConfirmation({
+            title: 'Merge Tags',
+            message: `Tag "${trimmed}" already exists. Do you want to merge "${tagName}" into "${trimmed}"?`,
+            confirmText: 'Merge',
+            onConfirm: async () => {
+              try {
+                await appState.renameTag(tagName, trimmed);
+                if (appState.selectedTag === tagName) {
+                  appState.selectedTag = trimmed;
+                }
+                appState.showToast(`Tags merged successfully!`, 'success');
+              } catch (e) {
+                console.error(e);
+                appState.showToast(`Failed to merge tags.`, 'error');
+              }
+            }
+          });
+          return;
+        }
+        
+        try {
+          await appState.renameTag(tagName, trimmed);
+          if (appState.selectedTag === tagName) {
+            appState.selectedTag = trimmed;
+          }
+          appState.showToast(`Tag renamed successfully!`, 'success');
+        } catch (e) {
+          console.error(e);
+          appState.showToast(`Failed to rename tag.`, 'error');
+        }
       }
-    }
-    
-    try {
-      await appState.renameTag(tagName, trimmed);
-      if (appState.selectedTag === tagName) {
-        appState.selectedTag = trimmed;
-      }
-      appState.showToast(`Tag renamed successfully!`, 'success');
-    } catch (e) {
-      console.error(e);
-      appState.showToast(`Failed to rename tag.`, 'error');
-    }
+    });
   }
 
   // ST-010: Tag Color Picker
@@ -238,151 +278,155 @@
 </script>
 
 <div 
+  id="sidebar-panel"
   class="sidebar flex-col" 
   class:collapsed={appState.sidebarCollapsed}
   style="width: {appState.sidebarCollapsed ? 0 : appState.sidebarWidth}px;"
+  tabindex={appState.sidebarCollapsed ? -1 : 0}
 >
-  <!-- Logo Section -->
-  <div class="logo-section flex-row" style="justify-content: space-between; width: 100%;">
-    <div class="flex-row" style="gap: 12px;">
-      <GoogleLogo size={24} />
-      <span class="logo-text">MyNotes</span>
-    </div>
-    <div class="flex-row" style="gap: 8px; align-items: center;">
-      {#if appState.notelistCollapsed}
-        <button 
-          onclick={() => appState.setNotelistCollapsed(false)} 
-          title="Expand Note List"
-          aria-label="Expand note list"
-          style="background: transparent; border: none; color: var(--text-secondary); cursor: pointer; padding: 4px; border-radius: 4px; display: flex; align-items: center; justify-content: center; transition: all 0.2s;"
-          onmouseover={(e) => e.currentTarget.style.color = 'var(--text-primary)'}
-          onmouseout={(e) => e.currentTarget.style.color = 'var(--text-secondary)'}
-        >
-          <FileText size={16} />
-        </button>
-      {/if}
-      {#if appState.editorCollapsed}
-        <button 
-          onclick={() => appState.setEditorCollapsed(false)} 
-          title="Expand Editor"
-          aria-label="Expand editor"
-          style="background: transparent; border: none; color: var(--text-secondary); cursor: pointer; padding: 4px; border-radius: 4px; display: flex; align-items: center; justify-content: center; transition: all 0.2s;"
-          onmouseover={(e) => e.currentTarget.style.color = 'var(--text-primary)'}
-          onmouseout={(e) => e.currentTarget.style.color = 'var(--text-secondary)'}
-        >
-          <ChevronRight size={16} />
-        </button>
-      {/if}
-      <button 
-        class="close-panel-btn flex-row" 
-        onclick={() => appState.setSidebarCollapsed(true)} 
-        aria-label="Collapse sidebar"
-        style="background: transparent; border: none; color: var(--text-secondary); cursor: pointer; padding: 4px; border-radius: 50%; display: flex; align-items: center; justify-content: center; transition: background-color 0.2s;"
-        onmouseover={(e) => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.08)'}
-        onmouseout={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-      >
-        <X size={16} />
-      </button>
-    </div>
-  </div>
+  <!-- Collapsible Section Lists -->
 
   <!-- Favorites Section -->
-  <div class="section-container flex-col starred-container" style="flex: 0.6; margin-bottom: 12px; max-height: 200px;">
-    <div class="section-header flex-row">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" class="sec-icon" style="color: var(--accent); margin-right: 8px;"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>
-      <span class="section-title">Favorites</span>
+  <div class="section-container flex-col starred-container" style="flex: 0.6; margin-bottom: var(--spacing-sm); max-height: 200px;">
+    <div 
+      class="section-header flex-row"
+      role="button"
+      tabindex="0"
+      onclick={toggleFavorites}
+      onkeydown={(e) => e.key === 'Enter' && toggleFavorites()}
+      style="cursor: pointer; justify-content: space-between; width: 100%;"
+    >
+      <div class="flex-row" style="flex-grow: 1;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" class="sec-icon" style="color: var(--accent); margin-right: var(--spacing-xs);"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>
+        <span class="section-title">Favorites</span>
+      </div>
+      <div class="section-header-arrow" class:collapsed={favoritesCollapsed} style="display: flex; align-items: center; color: var(--text-secondary);">
+        <ChevronRight size={16} />
+      </div>
     </div>
     
-    <div class="list-scroll">
-      {#each appState.notes.filter(n => appState.favorites.includes(n.path)) as note}
-        <div 
-          class="nav-item flex-row" 
-          class:active={appState.activeNotePath === note.path}
-          role="button"
-          tabindex="0"
-          onclick={() => { appState.selectNote(note.path); appState.activeTab = 'home'; }}
-          onkeydown={(e) => e.key === 'Enter' && (appState.selectNote(note.path), appState.activeTab = 'home')}
-          style="padding: 6px 8px; gap: 8px;"
-        >
-          <div class="playlist-art" style="width: 28px; height: 28px; font-size: 14px;">⭐</div>
-          <div class="nav-text flex-col">
-            <span class="title" style="font-size: 12px;">{note.name}</span>
+    {#if !favoritesCollapsed}
+      <div class="list-scroll">
+        {#each appState.notes.filter(n => appState.favorites.includes(n.path)) as note}
+          <div 
+            class="nav-item flex-row" 
+            class:active={appState.activeNotePath === note.path}
+            role="button"
+            tabindex="0"
+            onclick={() => { appState.selectNote(note.path); appState.activeTab = 'home'; }}
+            onkeydown={(e) => e.key === 'Enter' && (appState.selectNote(note.path), appState.activeTab = 'home')}
+            style="padding: var(--spacing-xs) var(--spacing-xs); gap: var(--spacing-xs);"
+          >
+            <div class="playlist-art" style="width: 28px; height: 28px; font-size: var(--font-size-sm);">⭐</div>
+            <div class="nav-text flex-col">
+              <span class="title" style="font-size: var(--font-size-xs);">{note.name}</span>
+            </div>
           </div>
-        </div>
-      {:else}
-        <span class="empty-text">No favorite notes</span>
-      {/each}
-    </div>
+        {:else}
+          <div class="empty-sidebar-section">
+            <Star size={14} class="empty-icon" />
+            <span>No favorite notes</span>
+          </div>
+        {/each}
+      </div>
+    {/if}
   </div>
 
 
   <!-- Main Library Section -->
   <div class="section-container flex-col">
-    <div class="section-header flex-row">
-      <Library size={18} class="sec-icon" />
-      <span class="section-title">Notebooks</span>
-      <button class="add-btn flex-row" onclick={() => showCreateInput = !showCreateInput} aria-label="Add notebook">
-        <Plus size={16} />
-      </button>
-    </div>
-
-    {#if showCreateInput}
-      <form onsubmit={handleCreateNotebook} class="create-form">
-        <input 
-          type="text" 
-          placeholder="New Notebook..." 
-          bind:value={newNotebookName}
-          class="create-input"
-          required
-          autofocus
-        />
-      </form>
-    {/if}
-
-    <div class="list-scroll">
+    <div 
+      class="section-header flex-row"
+      style="justify-content: space-between; width: 100%;"
+    >
       <div 
-        class="nav-item flex-row" 
-        class:active={appState.activeNotebook === null && !appState.activeNotePath?.startsWith('Daily Notes/')}
+        class="flex-row" 
+        style="flex-grow: 1; cursor: pointer;"
+        onclick={toggleNotebooks}
         role="button"
         tabindex="0"
-        onclick={() => selectNotebook(null)}
-        onkeydown={(e) => e.key === 'Enter' && selectNotebook(null)}
+        onkeydown={(e) => e.key === 'Enter' && toggleNotebooks()}
       >
-        <div class="playlist-art">⭐</div>
-        <div class="nav-text flex-col">
-          <span class="title">All Notes</span>
-          <span class="subtitle">{appState.notes.length} notes</span>
-        </div>
+        <Library size={18} class="sec-icon" />
+        <span class="section-title">Notebooks</span>
       </div>
-
-      {#each appState.notebooks as notebook}
+      <div class="flex-row" style="gap: var(--spacing-xs); align-items: center; color: var(--text-secondary);">
+        <button class="add-btn flex-row" onclick={(e) => { e.stopPropagation(); showCreateInput = !showCreateInput; }} aria-label="Add notebook">
+          <Plus size={16} />
+        </button>
         <div 
-          class="nav-item flex-row" 
-          class:active={appState.activeNotebook === notebook}
+          class="section-header-arrow" 
+          class:collapsed={notebooksCollapsed} 
+          onclick={toggleNotebooks}
           role="button"
           tabindex="0"
-          onclick={() => selectNotebook(notebook)}
-          onkeydown={(e) => e.key === 'Enter' && selectNotebook(notebook)}
+          onkeydown={(e) => e.key === 'Enter' && toggleNotebooks()}
+          style="display: flex; align-items: center; cursor: pointer;"
         >
-          <div class="playlist-art">📂</div>
-          <div class="nav-text flex-col">
-            <span class="title">{notebook}</span>
-            <span class="subtitle">Notebook</span>
-          </div>
-          <button 
-            class="item-delete-btn" 
-            onclick={(e) => handleDeleteNotebook(notebook, e)}
-            aria-label="Delete notebook"
-          >
-            <Trash2 size={14} />
-          </button>
+          <ChevronRight size={16} />
         </div>
-      {/each}
+      </div>
     </div>
+
+    {#if !notebooksCollapsed}
+      {#if showCreateInput}
+        <form onsubmit={handleCreateNotebook} class="create-form">
+          <input 
+            type="text" 
+            placeholder="New Notebook..." 
+            bind:value={newNotebookName}
+            class="create-input"
+            required
+            autofocus
+          />
+        </form>
+      {/if}
+
+      <div class="list-scroll">
+        <div 
+          class="nav-item flex-row" 
+          class:active={appState.activeNotebook === null && !appState.activeNotePath?.startsWith('Daily Notes/')}
+          role="button"
+          tabindex="0"
+          onclick={() => selectNotebook(null)}
+          onkeydown={(e) => e.key === 'Enter' && selectNotebook(null)}
+        >
+          <div class="playlist-art">⭐</div>
+          <div class="nav-text flex-col">
+            <span class="title">All Notes</span>
+            <span class="subtitle">{appState.notes.length} notes</span>
+          </div>
+        </div>
+
+        {#each appState.notebooks as notebook}
+          <div 
+            class="nav-item flex-row" 
+            class:active={appState.activeNotebook === notebook}
+            role="button"
+            tabindex="0"
+            onclick={() => selectNotebook(notebook)}
+            onkeydown={(e) => e.key === 'Enter' && selectNotebook(notebook)}
+          >
+            <div class="playlist-art">📂</div>
+            <div class="nav-text flex-col">
+              <span class="title">{notebook}</span>
+              <span class="subtitle">Notebook</span>
+            </div>
+            <button 
+              class="item-delete-btn" 
+              onclick={(e) => handleDeleteNotebook(notebook, e)}
+              aria-label="Delete notebook"
+            >
+              <Trash2 size={14} />
+            </button>
+          </div>
+        {/each}
+      </div>
+    {/if}
   </div>
 
   <!-- Tags Section -->
-  <div class="section-container flex-col tags-container" style="flex: 0.8; margin-bottom: 12px;">
+  <div class="section-container flex-col tags-container" style="flex: 0.8; margin-bottom: var(--spacing-sm);">
     <div 
       class="section-header flex-row" 
       role="button"
@@ -412,11 +456,11 @@
             tabindex="0"
             onclick={() => handleTagClick(tag.name)}
             onkeydown={(e) => e.key === 'Enter' && handleTagClick(tag.name)}
-            style="padding: 6px 8px; gap: 8px; cursor: pointer;"
+            style="padding: var(--spacing-xs) var(--spacing-xs); gap: var(--spacing-xs); cursor: pointer;"
           >
-            <div class="playlist-art" style="width: 28px; height: 28px; font-size: 14px; background-color: {tagColor ? tagColor + '33' : '#282828'}; color: {tagColor || 'inherit'};">#</div>
+            <div class="playlist-art" style="width: 28px; height: 28px; font-size: var(--font-size-sm); background-color: {tagColor ? tagColor + '33' : 'var(--bg-mid-dark)'}; color: {tagColor || 'inherit'};">#</div>
             <div class="nav-text flex-col">
-              <span class="title" style="font-size: 12px; font-weight: 600;">{tag.name}</span>
+              <span class="title" style="font-size: var(--font-size-xs); font-weight: 600;">{tag.name}</span>
             </div>
             <span class="tag-count-badge" style={tagColor ? `background-color: ${tagColor}33; color: ${tagColor}` : ''}>{count}</span>
             <button 
@@ -445,7 +489,10 @@
             </button>
           </div>
         {:else}
-          <span class="empty-text">No tags found</span>
+          <div class="empty-sidebar-section">
+            <TagIcon size={14} class="empty-icon" />
+            <span>No tags found</span>
+          </div>
         {/each}
       </div>
     {/if}
@@ -461,7 +508,7 @@
     ></div>
     <div class="color-picker-popover" style="left: {colorPickerPos.x}px; top: {colorPickerPos.y}px;">
       <div class="color-picker-header">
-        <span style="font-size: 11px; font-weight: 600; color: var(--text-secondary);">Tag Color</span>
+        <span style="font-size: var(--font-size-xs); font-weight: 600; color: var(--text-secondary);">Tag Color</span>
       </div>
       <div class="color-picker-grid">
         {#each TAG_COLOR_PALETTE as color}
@@ -477,19 +524,19 @@
           </button>
         {/each}
       </div>
-      <div class="custom-hex-container flex-row" style="margin: 8px 0; gap: 6px; align-items: center; border-top: 1px dashed rgba(255, 255, 255, 0.08); padding-top: 8px; width: 100%;">
-        <div class="color-preview-circle" style="width: 14px; height: 14px; border-radius: 50%; background-color: {normalizedCustomHex || 'transparent'}; border: 1px solid rgba(255,255,255,0.2); flex-shrink: 0;"></div>
+      <div class="custom-hex-container flex-row" style="margin: var(--spacing-xs) 0; gap: var(--spacing-xs); align-items: center; border-top: 1px dashed color-mix(in srgb, var(--text-primary) 8%, transparent); padding-top: var(--spacing-xs); width: 100%;">
+        <div class="color-preview-circle" style="width: 14px; height: 14px; border-radius: 50%; background-color: {normalizedCustomHex || 'transparent'}; border: 1px solid color-mix(in srgb, var(--text-primary) 20%, transparent); flex-shrink: 0;"></div>
         <input 
           type="text" 
           placeholder="#HEX" 
           bind:value={customHexValue}
-          style="flex: 1; min-width: 50px; padding: 2px 6px; font-size: 10px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; color: var(--text-primary); outline: none;"
+          style="flex: 1; min-width: 50px; padding: var(--spacing-3xs) var(--spacing-xs); font-size: var(--font-size-xs); background: color-mix(in srgb, var(--text-primary) 6%, transparent); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-primary); outline: none;"
         />
         <button 
           type="button" 
           disabled={!isCustomHexValid}
           onclick={() => handleSetColor(colorPickerTag ?? '', normalizedCustomHex)}
-          style="padding: 2px 6px; font-size: 10px; cursor: pointer; opacity: {isCustomHexValid ? 1 : 0.5}; background: var(--accent); border: none; border-radius: 4px; color: #fff; font-weight: 600;"
+          style="padding: var(--spacing-3xs) var(--spacing-xs); font-size: var(--font-size-xs); cursor: pointer; opacity: {isCustomHexValid ? 1 : 0.5}; background: var(--accent); border: none; border-radius: 4px; color: var(--text-primary); font-weight: 600;"
         >
           Set
         </button>
@@ -503,52 +550,82 @@
 
   <!-- Daily Logs Section -->
   <div class="section-container flex-col daily-container">
-    <div class="section-header flex-row">
-      <Calendar size={18} class="sec-icon" />
-      <span class="section-title">Daily Logs</span>
-      <button class="add-btn flex-row" onclick={handleDesktopDailyNote} aria-label="Create/Open today's note">
-        <Plus size={16} />
-      </button>
-    </div>
-    
-    <div class="list-scroll">
-      {#each appState.notes.filter(n => n.path.startsWith('Daily Notes/')).sort((a, b) => (b.name || '').localeCompare(a.name || '')) as note}
+    <div 
+      class="section-header flex-row"
+      style="justify-content: space-between; width: 100%;"
+    >
+      <div 
+        class="flex-row" 
+        style="flex-grow: 1; cursor: pointer;"
+        onclick={toggleDaily}
+        role="button"
+        tabindex="0"
+        onkeydown={(e) => e.key === 'Enter' && toggleDaily()}
+      >
+        <Calendar size={18} class="sec-icon" />
+        <span class="section-title">Daily Logs</span>
+      </div>
+      <div class="flex-row" style="gap: var(--spacing-xs); align-items: center; color: var(--text-secondary);">
+        <button class="add-btn flex-row" onclick={(e) => { e.stopPropagation(); handleDesktopDailyNote(); }} aria-label="Create/Open today's note">
+          <Plus size={16} />
+        </button>
         <div 
-          class="nav-item flex-row" 
-          class:active={appState.activeNotePath === note.path}
+          class="section-header-arrow" 
+          class:collapsed={dailyCollapsed} 
+          onclick={toggleDaily}
           role="button"
           tabindex="0"
-          onclick={() => { appState.selectNote(note.path); appState.activeTab = 'home'; }}
-          onkeydown={(e) => e.key === 'Enter' && (appState.selectNote(note.path), appState.activeTab = 'home')}
-          style="padding: 6px 8px; gap: 8px;"
+          onkeydown={(e) => e.key === 'Enter' && toggleDaily()}
+          style="display: flex; align-items: center; cursor: pointer;"
         >
-          <div class="playlist-art" style="width: 28px; height: 28px; font-size: 14px;">🗓️</div>
-          <div class="nav-text flex-col">
-            <span class="title" style="font-size: 12px;">{note.name}</span>
-          </div>
-          <button 
-            class="item-delete-btn" 
-            onclick={(e) => { 
-              e.stopPropagation(); 
-              appState.showConfirmation({
-                title: 'Delete Daily Log',
-                message: 'Do you really want to delete this daily log? This action is permanent.',
-                confirmText: 'Delete',
-                onConfirm: async () => {
-                  await appState.deleteNote(note.path);
-                }
-              });
-            }}
-            aria-label="Delete daily note"
-            style="right: 4px;"
-          >
-            <Trash2 size={12} />
-          </button>
+          <ChevronRight size={16} />
         </div>
-      {:else}
-        <span class="empty-text">No daily logs found</span>
-      {/each}
+      </div>
     </div>
+    
+    {#if !dailyCollapsed}
+      <div class="list-scroll">
+        {#each appState.notes.filter(n => n.path.startsWith('Daily Notes/')).sort((a, b) => (b.name || '').localeCompare(a.name || '')) as note}
+          <div 
+            class="nav-item flex-row" 
+            class:active={appState.activeNotePath === note.path}
+            role="button"
+            tabindex="0"
+            onclick={() => { appState.selectNote(note.path); appState.activeTab = 'home'; }}
+            onkeydown={(e) => e.key === 'Enter' && (appState.selectNote(note.path), appState.activeTab = 'home')}
+            style="padding: var(--spacing-xs) var(--spacing-xs); gap: var(--spacing-xs);"
+          >
+            <div class="playlist-art" style="width: 28px; height: 28px; font-size: var(--font-size-sm);">🗓️</div>
+            <div class="nav-text flex-col">
+              <span class="title" style="font-size: var(--font-size-xs);">{note.name}</span>
+            </div>
+            <button 
+              class="item-delete-btn" 
+              onclick={(e) => { 
+                e.stopPropagation(); 
+                appState.showConfirmation({
+                  title: 'Delete Daily Log',
+                  message: 'Do you really want to delete this daily log? This action is permanent.',
+                  confirmText: 'Delete',
+                  onConfirm: async () => {
+                    await appState.deleteNote(note.path);
+                  }
+                });
+              }}
+              aria-label="Delete daily note"
+              style="right: 4px;"
+            >
+              <Trash2 size={12} />
+            </button>
+          </div>
+        {:else}
+          <div class="empty-sidebar-section">
+            <Calendar size={14} class="empty-icon" />
+            <span>No daily logs found</span>
+          </div>
+        {/each}
+      </div>
+    {/if}
   </div>
 
   <!-- Footer Actions -->
@@ -581,7 +658,7 @@
       onclick={() => { appState.showSettings = true; appState.settingsActiveTab = 'sync'; }}
       style="justify-content: space-between; width: 100%;"
     >
-      <div class="flex-row" style="gap: 12px;">
+      <div class="flex-row" style="gap: var(--spacing-sm);">
         {#if appState.googleConnected && appState.syncEnabled}
           <Cloud size={16} class={appState.syncStatus === 'syncing' ? 'pulse-icon' : ''} />
         {:else}
@@ -591,21 +668,21 @@
       </div>
       {#if appState.googleConnected && appState.syncEnabled}
         {#if appState.syncStatus === 'syncing'}
-          <span class="sync-badge syncing flex-row" style="gap: 4px; font-size: 10px; background: rgba(56, 189, 248, 0.15); color: var(--accent); padding: 2px 8px; border-radius: 9999px; font-weight: 700;">
+          <span class="sync-badge syncing flex-row" style="gap: var(--spacing-2xs); font-size: var(--font-size-xs); background: color-mix(in srgb, var(--accent) 15%, transparent); color: var(--accent); padding: var(--spacing-3xs) var(--spacing-xs); border-radius: 9999px; font-weight: 700;">
             <span class="sync-dot pulsing" style="width: 6px; height: 6px; background-color: var(--accent); border-radius: 50%; display: inline-block;"></span>
             Syncing
           </span>
         {:else if appState.syncStatus === 'error'}
-          <span class="sync-badge error flex-row" style="gap: 4px; font-size: 10px; background: rgba(239, 68, 68, 0.15); color: var(--semantic-error, #ff4444); padding: 2px 8px; border-radius: 9999px; font-weight: 700;">
+          <span class="sync-badge error flex-row" style="gap: var(--spacing-2xs); font-size: var(--font-size-xs); background: color-mix(in srgb, var(--semantic-error) 15%, transparent); color: var(--semantic-error); padding: var(--spacing-3xs) var(--spacing-xs); border-radius: 9999px; font-weight: 700;">
             Error
           </span>
         {:else}
-          <span class="sync-badge idle flex-row" style="gap: 4px; font-size: 10px; background: rgba(16, 185, 129, 0.15); color: #10b981; padding: 2px 8px; border-radius: 9999px; font-weight: 700;">
+          <span class="sync-badge idle flex-row" style="gap: var(--spacing-2xs); font-size: var(--font-size-xs); background: color-mix(in srgb, var(--semantic-success) 15%, transparent); color: var(--semantic-success); padding: var(--spacing-3xs) var(--spacing-xs); border-radius: 9999px; font-weight: 700;">
             Synced
           </span>
         {/if}
       {:else}
-        <span class="sync-badge offline flex-row" style="gap: 4px; font-size: 10px; background: rgba(255, 255, 255, 0.08); color: var(--text-tertiary); padding: 2px 8px; border-radius: 9999px; font-weight: 700;">
+        <span class="sync-badge offline flex-row" style="gap: var(--spacing-2xs); font-size: var(--font-size-xs); background: color-mix(in srgb, var(--text-primary) 8%, transparent); color: var(--text-tertiary); padding: var(--spacing-3xs) var(--spacing-xs); border-radius: 9999px; font-weight: 700;">
           Disabled
         </span>
       {/if}
@@ -615,7 +692,7 @@
       <span class="info-label">Active Directory</span>
       <span class="info-value">{appState.vaultName || 'Unknown'}</span>
       {#if appState.googleConnected && appState.syncEnabled}
-        <span class="info-label" style="margin-top: 6px;">Drive Sync Folder</span>
+        <span class="info-label" style="margin-top: var(--spacing-xs);">Drive Sync Folder</span>
         <span class="info-value">☁️ {appState.customDriveFolderName || 'MyNotes'}</span>
       {/if}
     </div>
@@ -624,10 +701,10 @@
 
 <style>
   .sidebar {
-    background-color: #000000;
+    background-color: var(--bg-base);
     height: 100%;
-    padding: 16px 8px;
-    gap: 12px;
+    padding: var(--spacing-md) var(--spacing-xs);
+    gap: var(--spacing-sm);
     border-right: 1px solid var(--border-color);
     overflow: hidden;
     flex-shrink: 0;
@@ -653,16 +730,16 @@
   }
 
   .logo-section {
-    padding: 8px 16px 16px;
-    gap: 12px;
+    padding: var(--spacing-xs) var(--spacing-md) var(--spacing-md);
+    gap: var(--spacing-sm);
   }
 
   .logo-icon {
-    font-size: 24px;
+    font-size: var(--font-size-xl);
   }
 
   .logo-text {
-    font-size: 20px;
+    font-size: var(--font-size-lg);
     font-weight: 800;
     letter-spacing: -0.5px;
   }
@@ -670,7 +747,7 @@
   .section-container {
     background-color: var(--bg-surface);
     border-radius: var(--radius-comfortable);
-    padding: 12px;
+    padding: var(--spacing-sm);
     flex: 1.2;
     overflow: hidden;
   }
@@ -685,17 +762,17 @@
 
   .section-header {
     justify-content: space-between;
-    padding: 4px 8px 12px;
+    padding: var(--spacing-2xs) var(--spacing-xs) var(--spacing-sm);
     color: var(--text-secondary);
   }
 
   .sec-icon {
-    margin-right: 8px;
+    margin-right: var(--spacing-xs);
   }
 
   .section-title {
     font-weight: 700;
-    font-size: 14px;
+    font-size: var(--font-size-sm);
     flex-grow: 1;
   }
 
@@ -714,16 +791,16 @@
   }
 
   .create-form {
-    padding: 0 8px 8px;
+    padding: 0 var(--spacing-xs) var(--spacing-xs);
   }
 
   .create-input {
     background-color: var(--bg-mid-dark);
     border: 1px solid var(--border-color);
-    padding: 8px 12px;
+    padding: var(--spacing-xs) var(--spacing-sm);
     width: 100%;
     border-radius: var(--radius-subtle);
-    font-size: 13px;
+    font-size: var(--font-size-sm);
     color: var(--text-primary);
   }
 
@@ -736,13 +813,13 @@
     flex-grow: 1;
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: var(--spacing-2xs);
   }
 
   .nav-item {
-    padding: 8px;
+    padding: var(--spacing-xs);
     border-radius: var(--radius-standard);
-    gap: 12px;
+    gap: var(--spacing-sm);
     text-align: left;
     width: 100%;
     position: relative;
@@ -759,19 +836,19 @@
   }
 
   .nav-item.active {
-    background-color: rgba(255, 255, 255, 0.08);
+    background-color: color-mix(in srgb, var(--text-primary) 8%, transparent);
     box-shadow: inset 3px 0 0 0 var(--accent);
   }
 
   .playlist-art {
     width: 44px;
     height: 44px;
-    background-color: #282828;
+    background-color: var(--bg-mid-dark);
     border-radius: var(--radius-subtle);
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 20px;
+    font-size: var(--font-size-lg);
     flex-shrink: 0;
   }
 
@@ -782,7 +859,7 @@
 
   .nav-text .title {
     font-weight: 600;
-    font-size: 13px;
+    font-size: var(--font-size-sm);
     color: var(--text-primary);
     white-space: nowrap;
     overflow: hidden;
@@ -790,49 +867,84 @@
   }
 
   .nav-text .subtitle {
-    font-size: 11px;
+    font-size: var(--font-size-xs);
     color: var(--text-secondary);
-    margin-top: 2px;
+    margin-top: var(--spacing-3xs);
   }
 
   .item-delete-btn {
     opacity: 0;
     transition: opacity 0.2s, color 0.2s;
     color: var(--text-secondary);
-    padding: 4px;
+    padding: var(--spacing-2xs);
     border-radius: 4px;
     position: absolute;
     right: 8px;
   }
 
-  .nav-item:hover .item-delete-btn {
+  .nav-item:hover .item-delete-btn,
+  .nav-item:focus-within .item-delete-btn {
     opacity: 1;
   }
 
   .item-delete-btn:hover {
     color: var(--semantic-error);
-    background-color: rgba(255, 255, 255, 0.05);
+    background-color: color-mix(in srgb, var(--text-primary) 5%, transparent);
   }
 
 
 
   .empty-text {
-    font-size: 11px;
+    font-size: var(--font-size-xs);
     color: var(--text-tertiary);
-    padding: 8px;
+    padding: var(--spacing-xs);
+  }
+
+  .empty-sidebar-section {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    font-size: var(--font-size-xs);
+    color: var(--text-tertiary);
+    padding: var(--spacing-xs) var(--spacing-sm);
+    background: var(--bg-secondary-translucent, rgba(255, 255, 255, 0.02));
+    border: 1px dashed var(--border-color);
+    border-radius: var(--radius-standard);
+    margin: var(--spacing-2xs) var(--spacing-xs);
+    transition: all var(--motion-duration-standard) var(--motion-ease-standard);
+    cursor: default;
+  }
+
+  .empty-sidebar-section :global(svg) {
+    color: var(--text-tertiary);
+    opacity: 0.6;
+    flex-shrink: 0;
+    transition: transform var(--motion-duration-standard) var(--motion-ease-standard), opacity var(--motion-duration-standard) var(--motion-ease-standard), color var(--motion-duration-standard) var(--motion-ease-standard);
+  }
+
+  .empty-sidebar-section:hover {
+    background: var(--bg-secondary-translucent-hover, rgba(255, 255, 255, 0.04));
+    color: var(--text-secondary);
+    border-color: var(--text-tertiary);
+  }
+
+  .empty-sidebar-section:hover :global(svg) {
+    opacity: 0.9;
+    color: var(--accent);
+    transform: scale(1.1) rotate(5deg);
   }
 
   .footer-actions {
-    gap: 8px;
-    padding: 8px;
+    gap: var(--spacing-xs);
+    padding: var(--spacing-xs);
     border-top: 1px solid var(--border-color);
   }
 
   .footer-btn {
-    padding: 8px 12px;
+    padding: var(--spacing-xs) var(--spacing-sm);
     border-radius: var(--radius-pill);
-    gap: 12px;
-    font-size: 12px;
+    gap: var(--spacing-sm);
+    font-size: var(--font-size-xs);
     font-weight: 600;
     color: var(--text-secondary);
     transition: background-color 0.2s, color 0.2s, transform 0.2s ease;
@@ -847,21 +959,21 @@
   }
 
   .vault-info {
-    padding: 12px 12px 4px;
-    gap: 2px;
+    padding: var(--spacing-sm) var(--spacing-sm) var(--spacing-2xs);
+    gap: var(--spacing-3xs);
     border-top: 1px dashed var(--border-color);
-    margin-top: 4px;
+    margin-top: var(--spacing-2xs);
   }
 
   .info-label {
-    font-size: 10px;
+    font-size: var(--font-size-xs);
     color: var(--text-tertiary);
     text-transform: uppercase;
     letter-spacing: 0.5px;
   }
 
   .info-value {
-    font-size: 12px;
+    font-size: var(--font-size-xs);
     font-weight: 600;
     color: var(--text-secondary);
     overflow: hidden;
@@ -901,11 +1013,11 @@
   }
 
   .tag-count-badge {
-    font-size: 10px;
+    font-size: var(--font-size-xs);
     font-weight: 700;
     color: var(--text-secondary);
     background-color: var(--bg-mid-dark);
-    padding: 2px 6px;
+    padding: var(--spacing-3xs) var(--spacing-xs);
     border-radius: 999px;
     transition: opacity 0.2s, background-color 0.2s, color 0.2s;
   }
@@ -918,7 +1030,7 @@
     opacity: 0;
     transition: opacity 0.2s, color 0.2s, background-color 0.2s;
     color: var(--text-secondary);
-    padding: 4px;
+    padding: var(--spacing-2xs);
     border-radius: 4px;
     position: absolute;
     background: none;
@@ -943,23 +1055,26 @@
 
   .nav-item:hover .tag-rename-btn,
   .nav-item:hover .tag-delete-btn,
-  .nav-item:hover .tag-color-btn {
+  .nav-item:hover .tag-color-btn,
+  .nav-item:focus-within .tag-rename-btn,
+  .nav-item:focus-within .tag-delete-btn,
+  .nav-item:focus-within .tag-color-btn {
     opacity: 1;
   }
 
   .tag-delete-btn:hover {
-    color: var(--semantic-error, #ff4444);
-    background-color: rgba(255, 255, 255, 0.05);
+    color: var(--semantic-error);
+    background-color: color-mix(in srgb, var(--text-primary) 5%, transparent);
   }
 
   .tag-rename-btn:hover {
     color: var(--accent);
-    background-color: rgba(255, 255, 255, 0.05);
+    background-color: color-mix(in srgb, var(--text-primary) 5%, transparent);
   }
 
   .tag-color-btn:hover {
     color: var(--accent);
-    background-color: rgba(255, 255, 255, 0.05);
+    background-color: color-mix(in srgb, var(--text-primary) 5%, transparent);
   }
 
   /* ST-010: Color Picker Popover */
@@ -975,11 +1090,11 @@
   .color-picker-popover {
     position: fixed;
     z-index: 9999;
-    background: #1e1e1e;
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: var(--bg-surface);
+    border: 1px solid var(--border-color);
     border-radius: 10px;
-    padding: 10px;
-    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05);
+    padding: var(--spacing-sm);
+    box-shadow: var(--shadow-heavy), 0 0 0 1px color-mix(in srgb, var(--text-primary) 5%, transparent);
     min-width: 160px;
     backdrop-filter: blur(20px);
     animation: colorPickerFadeIn 0.15s ease-out;
@@ -991,16 +1106,16 @@
   }
 
   .color-picker-header {
-    margin-bottom: 8px;
-    padding-bottom: 6px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    margin-bottom: var(--spacing-xs);
+    padding-bottom: var(--spacing-xs);
+    border-bottom: 1px solid var(--border-color);
   }
 
   .color-picker-grid {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
-    gap: 6px;
-    margin-bottom: 8px;
+    gap: var(--spacing-xs);
+    margin-bottom: var(--spacing-xs);
   }
 
   .color-swatch {
@@ -1017,38 +1132,38 @@
 
   .color-swatch:hover {
     transform: scale(1.15);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    box-shadow: var(--shadow-medium);
   }
 
   .color-swatch.active {
-    border-color: white;
-    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.2);
+    border-color: var(--text-primary);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--text-primary) 20%, transparent);
   }
 
   .swatch-check {
-    color: white;
+    color: var(--text-primary);
     font-size: 12px;
     font-weight: 700;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+    text-shadow: 0 1px 2px color-mix(in srgb, var(--bg-base) 50%, transparent);
   }
 
   .color-reset-btn {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--spacing-xs);
     width: 100%;
-    padding: 6px 8px;
+    padding: var(--spacing-xs) var(--spacing-xs);
     border: none;
-    background: rgba(255, 255, 255, 0.04);
+    background: color-mix(in srgb, var(--text-primary) 4%, transparent);
     color: var(--text-secondary);
-    font-size: 11px;
+    font-size: var(--font-size-xs);
     border-radius: 6px;
     cursor: pointer;
     transition: background 0.15s ease, color 0.15s ease;
   }
 
   .color-reset-btn:hover {
-    background: rgba(255, 255, 255, 0.08);
+    background: color-mix(in srgb, var(--text-primary) 8%, transparent);
     color: var(--text-primary);
   }
 
