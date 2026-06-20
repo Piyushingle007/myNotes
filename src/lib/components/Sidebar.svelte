@@ -55,7 +55,7 @@
       const bundle = JSON.parse(text);
       
       if (!bundle.title || !bundle.content) {
-        alert('Invalid .mynote file format. Missing title or content.');
+        appState.showToast('Invalid .mynote file format. Missing title or content.', 'error', 4000);
         return;
       }
       
@@ -92,7 +92,7 @@
       appState.showToast(`Imported note "${cleanTitle}" successfully!`, 'success');
     } catch (e) {
       console.error('Failed to import note:', e);
-      alert('Failed to parse and import note file.');
+      appState.showToast('Failed to parse and import note file.', 'error', 4000);
     } finally {
       input.value = '';
     }

@@ -9,15 +9,22 @@
   import Editor from './Editor.svelte';
   import AppHeader from './AppHeader.svelte';
   import { 
-    Home, Search, Library, Calendar, ChevronLeft, Plus, 
-    FileText, Tag as TagIcon, FolderPlus, Compass, ArrowRight, Settings,
+    Search, ChevronLeft, Plus,
+    FileText, FolderPlus, Compass, ArrowRight, Settings,
     X, Cloud, RefreshCw, LogOut, Palette, ChevronRight, Menu, Folder,
-    Trash2, FolderOpen, Edit3, BookOpen, FileDown, Download, FolderInput, Code
+    Trash2, FolderOpen, Edit3, BookOpen, FileDown, Download, FolderInput, Code,
+    Star, Calendar
   } from 'lucide-svelte';
   import ResizeHandle from './ResizeHandle.svelte';
   import Modal from './Modal.svelte';
   import ToastItem from './ToastItem.svelte';
   import SettingsModal from './SettingsModal.svelte';
+  import MobileSettings from './MobileSettings.svelte';
+  import MobileTabBar from './MobileTabBar.svelte';
+  import BottomSheet from './BottomSheet.svelte';
+  import MobileSearch from './MobileSearch.svelte';
+  import { mobileNav } from '../stores/mobileNav.svelte';
+  import { LONG_PRESS_MS, TOUCH_MOVE_TOLERANCE, edgeSwipeBack } from '../actions/touch';
 
   // Responsive state
   let isMobile = $state(false);
@@ -25,7 +32,42 @@
   let newMobileFolder = $state('');
   let showMobileFolderForm = $state(false);
   let showMobileMoreMenu = $state(false);
-  
+
+  // UI-M-012: track whether an editable field inside the mobile editor is focused
+  // so the header can surface a context-aware "Done" (dismiss keyboard) action.
+  let editorFocused = $state(false);
+
+  function handleEditorFocusIn(e: FocusEvent) {
+    const t = e.target as HTMLElement | null;
+    if (t && (t.isContentEditable || t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) {
+      editorFocused = true;
+    }
+  }
+
+  function handleEditorFocusOut() {
+    // Re-check after the focus settles so switching between editable fields
+    // doesn't flicker the Done button.
+    queueMicrotask(() => {
+      const a = document.activeElement as HTMLElement | null;
+      editorFocused = !!(a && (a.isContentEditable || a.tagName === 'INPUT' || a.tagName === 'TEXTAREA'));
+    });
+  }
+
+  // UI-M-012: "Done" dismisses the soft keyboard (and persists the note) without
+  // leaving the editor — the common mobile editing affordance.
+  function dismissMobileKeyboard() {
+    const el = document.activeElement as HTMLElement | null;
+    el?.blur();
+    editorFocused = false;
+    if (appState.editorDirty) void appState.saveActiveNote();
+  }
+
+  // UI-M-011: hardware/edge back closes the editor "More Actions" sheet first.
+  $effect(() => {
+    if (!showMobileMoreMenu) return;
+    return mobileNav.registerOverlay(() => (showMobileMoreMenu = false));
+  });
+
   // Custom Sync Folder and Theme Selectors
   let showFolderPicker = $state(false);
   let newDriveFolderName = $state('');
@@ -145,7 +187,7 @@
       const bundle = JSON.parse(text);
       
       if (!bundle.title || !bundle.content) {
-        alert('Invalid .mynote file format. Missing title or content.');
+        appState.showToast('Invalid .mynote file format. Missing title or content.', 'error', 4000);
         return;
       }
       
@@ -182,7 +224,7 @@
       appState.showToast(`Imported note "${cleanTitle}" successfully!`, 'success');
     } catch (e) {
       console.error('Failed to import note:', e);
-      alert('Failed to parse and import note file.');
+      appState.showToast('Failed to parse and import note file.', 'error', 4000);
     } finally {
       input.value = '';
     }
@@ -304,6 +346,97 @@
     });
   }
 
+  // ── UI-M-004: Favorites for the mobile Home dashboard ──
+  let favoriteNotes = $derived(
+    appState.favorites
+      .map((p) => appState.notes.find((n) => n.path === p))
+      .filter((n): n is (typeof appState.notes)[number] => !!n)
+  );
+
+  // ── UI-M-004: Pull-to-refresh on the mobile content scroll area ──
+  let mobileContentEl = $state<HTMLElement | null>(null);
+  let ptrStartY = 0;
+  let ptrActive = false;
+  let ptrDistance = $state(0);
+  let ptrRefreshing = $state(false);
+  const PTR_THRESHOLD = 64;
+  const PTR_MAX = 96;
+
+  function ptrTouchStart(e: TouchEvent) {
+    if (appState.selectMode || ptrRefreshing) { ptrActive = false; return; }
+    if (mobileContentEl && mobileContentEl.scrollTop <= 0) {
+      ptrStartY = e.touches[0].clientY;
+      ptrActive = true;
+    } else {
+      ptrActive = false;
+    }
+  }
+
+  function ptrTouchMove(e: TouchEvent) {
+    if (!ptrActive || ptrRefreshing) return;
+    const dy = e.touches[0].clientY - ptrStartY;
+    if (dy > 0 && mobileContentEl && mobileContentEl.scrollTop <= 0) {
+      // Apply resistance so the gesture feels weighted.
+      ptrDistance = Math.min(dy * 0.5, PTR_MAX);
+    } else {
+      ptrDistance = 0;
+      ptrActive = false;
+    }
+  }
+
+  async function ptrTouchEnd() {
+    if (!ptrActive) { ptrDistance = 0; return; }
+    ptrActive = false;
+    if (ptrDistance >= PTR_THRESHOLD && !ptrRefreshing) {
+      ptrRefreshing = true;
+      ptrDistance = 48;
+      try {
+        await appState.refreshNotes();
+        if (appState.googleConnected && appState.syncEnabled) {
+          await appState.syncNotes();
+        }
+      } catch (err) {
+        console.error('Pull-to-refresh failed:', err);
+      } finally {
+        ptrRefreshing = false;
+        ptrDistance = 0;
+      }
+    } else {
+      ptrDistance = 0;
+    }
+  }
+
+  // ── UI-M-003: Quick Create speed-dial sheet ──
+  let showQuickCreate = $state(false);
+
+  // ── UI-M-009: Full-screen mobile search overlay ──
+  let showMobileSearch = $state(false);
+  function quickCreateNote() {
+    showQuickCreate = false;
+    handleCreateNote(appState.activeNotebook);
+  }
+
+  function quickCreateDaily() {
+    showQuickCreate = false;
+    handleMobileDailyNote();
+  }
+
+  function quickCreateNotebook() {
+    showQuickCreate = false;
+    appState.showPrompt({
+      title: 'New Notebook',
+      message: 'Enter a name for the new notebook:',
+      value: '',
+      placeholder: 'Notebook name...',
+      onConfirm: async (name) => {
+        const trimmed = name.trim();
+        if (trimmed) {
+          await appState.createNotebook(trimmed);
+        }
+      }
+    });
+  }
+
   function confirmDeleteNote(path: string, clearActive: boolean = false) {
     appState.showConfirmation({
       title: 'Delete Note',
@@ -405,6 +538,31 @@
   let noteLongPressTimeout: any;
   let isNoteLongPressActive = false;
 
+  // UI-M-008: Horizontal swipe-action state for note rows
+  let noteSwipeEl: HTMLElement | null = null;
+  let noteSwipeDx = 0;
+  let noteSwipeHorizontal = false;
+  const NOTE_SWIPE_THRESHOLD = 80;
+
+  function resetNoteSwipe(animate: boolean) {
+    const el = noteSwipeEl;
+    if (!el) return;
+    if (animate) {
+      el.style.transition = 'transform 0.2s cubic-bezier(0.16, 1, 0.3, 1)';
+      el.style.transform = 'translateX(0)';
+      setTimeout(() => { el.style.transition = ''; el.style.transform = ''; }, 220);
+    } else {
+      el.style.transition = '';
+      el.style.transform = '';
+    }
+  }
+
+  function swipeToggleFavorite(path: string) {
+    const wasFav = appState.favorites.includes(path);
+    appState.toggleFavorite(path);
+    appState.showToast(wasFav ? 'Removed from Favorites' : 'Added to Favorites', 'info', 1500);
+  }
+
   function handleNoteTouchStart(notePath: string, event: TouchEvent) {
     if (event.touches.length > 0) {
       const touch = event.touches[0];
@@ -413,14 +571,17 @@
     }
     mobileTouchMoved = false;
     isNoteLongPressActive = false;
-    
+    noteSwipeEl = event.currentTarget as HTMLElement;
+    noteSwipeDx = 0;
+    noteSwipeHorizontal = false;
+
     noteLongPressTimeout = setTimeout(() => {
       isNoteLongPressActive = true;
       if (!appState.selectMode) {
         appState.toggleSelectMode();
       }
       appState.toggleNoteSelection(notePath);
-    }, 600);
+    }, LONG_PRESS_MS);
   }
 
   function handleNoteTouchEnd(notePath: string, event: TouchEvent) {
@@ -428,6 +589,22 @@
       clearTimeout(noteLongPressTimeout);
       noteLongPressTimeout = null;
     }
+    // UI-M-008: complete a horizontal swipe action (favorite / delete)
+    if (noteSwipeHorizontal && !appState.selectMode) {
+      event.preventDefault();
+      const dx = noteSwipeDx;
+      resetNoteSwipe(true);
+      noteSwipeHorizontal = false;
+      noteSwipeEl = null;
+      if (dx >= NOTE_SWIPE_THRESHOLD) {
+        swipeToggleFavorite(notePath);
+      } else if (dx <= -NOTE_SWIPE_THRESHOLD) {
+        confirmDeleteNote(notePath);
+      }
+      return;
+    }
+    noteSwipeHorizontal = false;
+    noteSwipeEl = null;
     if (isNoteLongPressActive) {
       event.preventDefault();
     } else {
@@ -445,17 +622,25 @@
   }
 
   function handleNoteTouchMove(event: TouchEvent) {
-    if (noteLongPressTimeout) {
-      clearTimeout(noteLongPressTimeout);
-      noteLongPressTimeout = null;
-    }
-    if (event.touches.length > 0) {
-      const touch = event.touches[0];
-      const dx = touch.clientX - mobileTouchStartX;
-      const dy = touch.clientY - mobileTouchStartY;
-      if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
-        mobileTouchMoved = true;
+    if (event.touches.length === 0) return;
+    const touch = event.touches[0];
+    const dx = touch.clientX - mobileTouchStartX;
+    const dy = touch.clientY - mobileTouchStartY;
+    if (Math.abs(dx) > TOUCH_MOVE_TOLERANCE || Math.abs(dy) > TOUCH_MOVE_TOLERANCE) {
+      mobileTouchMoved = true;
+      if (noteLongPressTimeout) {
+        clearTimeout(noteLongPressTimeout);
+        noteLongPressTimeout = null;
       }
+    }
+    // Decide gesture direction once past a small deadzone.
+    if (!noteSwipeHorizontal && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) {
+      noteSwipeHorizontal = Math.abs(dx) > Math.abs(dy);
+    }
+    if (noteSwipeHorizontal && !appState.selectMode && noteSwipeEl) {
+      noteSwipeDx = dx;
+      noteSwipeEl.style.transition = 'none';
+      noteSwipeEl.style.transform = `translateX(${dx}px)`;
     }
   }
 
@@ -579,7 +764,7 @@
     longPressTimeout = setTimeout(() => {
       isLongPressActive = true;
       handleMobileTagLongPress(tagName);
-    }, 600);
+    }, LONG_PRESS_MS);
   }
 
   function handleTagTouchEnd(tagName: string, event: TouchEvent) {
@@ -609,7 +794,7 @@
       const touch = event.touches[0];
       const dx = touch.clientX - mobileTouchStartX;
       const dy = touch.clientY - mobileTouchStartY;
-      if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
+      if (Math.abs(dx) > TOUCH_MOVE_TOLERANCE || Math.abs(dy) > TOUCH_MOVE_TOLERANCE) {
         mobileTouchMoved = true;
       }
     }
@@ -684,13 +869,17 @@
   <div class="mobile-app flex-col">
     {#if appState.activeNotePath}
       <!-- Fullscreen Editor Overlay for Mobile -->
-      <div class="mobile-editor-container flex-col">
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div
+        class="mobile-editor-container flex-col"
+        onfocusin={handleEditorFocusIn}
+        onfocusout={handleEditorFocusOut}
+      >
         <div class="mobile-editor-top flex-row" style="justify-content: space-between; width: 100%;">
           <button 
             class="back-btn flex-row" 
             onclick={() => {
-              if (appState.editorDirty) appState.saveActiveNote();
-              appState.activeNotePath = null;
+              void mobileNav.back();
               showMobileMoreMenu = false;
             }}
             aria-label="Back"
@@ -698,13 +887,17 @@
             <ChevronLeft size={24} />
           </button>
           
-          <!-- Note notebook / tag breadcrumb -->
-          <span class="mobile-note-breadcrumb flex-row" style="gap: var(--spacing-2xs); font-size: var(--font-size-xs); font-weight: 600; color: var(--text-secondary); max-width: 48%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+          <!-- UI-M-012: cleaner breadcrumb — notebook ▸ note title -->
+          <span class="mobile-note-breadcrumb flex-row">
             <Folder size={13} style="color: var(--accent); flex-shrink: 0;" />
-            {appState.activeNotePath.includes('/') ? appState.activeNotePath.split('/')[0] : 'All Notes'}
+            <span class="crumb-folder">{appState.activeNotePath.includes('/') ? appState.activeNotePath.split('/')[0] : 'All Notes'}</span>
+            {#if appState.activeNote?.name}
+              <ChevronRight size={12} style="color: var(--text-tertiary); flex-shrink: 0;" />
+              <span class="crumb-note">{appState.activeNote.name}</span>
+            {/if}
           </span>
           
-          <!-- Save Checkmark & More Actions Button -->
+          <!-- Save state, context-aware Done, and overflow -->
           <div class="flex-row" style="gap: var(--spacing-sm); align-items: center; position: relative;">
             {#if appState.editorDirty}
               <button 
@@ -719,52 +912,19 @@
               </button>
             {/if}
 
-            <!-- 1. Favorite Toggle Button -->
+            {#if editorFocused}
+              <!-- UI-M-012: "Done" dismisses the keyboard (and saves) -->
+              <button
+                class="mobile-done-btn"
+                onclick={dismissMobileKeyboard}
+                aria-label="Dismiss keyboard"
+              >
+                Done
+              </button>
+            {/if}
+
+            <!-- More Options Three-Dot Button (overflow) -->
             <button
-              class="mobile-action-btn flex-row"
-              class:active={appState.favorites.includes(appState.activeNotePath || '')}
-              onclick={() => appState.toggleFavorite(appState.activeNotePath || '')}
-              aria-label={appState.favorites.includes(appState.activeNotePath || '') ? 'Remove from Favorites' : 'Add to Favorites'}
-              style="background: none; border: none; color: {appState.favorites.includes(appState.activeNotePath || '') ? 'var(--accent)' : 'var(--text-secondary)'}; padding: var(--spacing-2xs); cursor: pointer; transition: color 0.15s;"
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill={appState.favorites.includes(appState.activeNotePath || '') ? 'currentColor' : 'none'} stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
-              </svg>
-            </button>
-
-            <!-- 2. Zen Focus Mode Toggle Button -->
-            {#if !appState.isReadOnly}
-              <button
-                class="mobile-action-btn flex-row"
-                class:active={appState.focusModeEnabled}
-                onclick={() => appState.setFocusMode(!appState.focusModeEnabled)}
-                aria-label="Toggle Focus Mode"
-                style="background: none; border: none; color: {appState.focusModeEnabled ? 'var(--accent)' : 'var(--text-secondary)'}; padding: var(--spacing-2xs); cursor: pointer; transition: color 0.15s;"
-              >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
-                </svg>
-              </button>
-            {/if}
-
-            <!-- 3. Typewriter Scroll Toggle Button -->
-            {#if !appState.isReadOnly}
-              <button
-                class="mobile-action-btn flex-row"
-                class:active={appState.typewriterScrollEnabled}
-                onclick={() => appState.setTypewriterScroll(!appState.typewriterScrollEnabled)}
-                aria-label="Toggle Typewriter Scroll"
-                style="background: none; border: none; color: {appState.typewriterScrollEnabled ? 'var(--accent)' : 'var(--text-secondary)'}; padding: var(--spacing-2xs); cursor: pointer; transition: color 0.15s;"
-                title="Typewriter Scroll"
-              >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <line x1="4" y1="12" x2="20" y2="12" stroke-dasharray="3,3"/><polyline points="8 7 12 3 16 7"/><polyline points="8 17 12 21 16 17"/>
-                </svg>
-              </button>
-            {/if}
-
-            <!-- 4. More Options Three-Dot Button -->
-            <button 
               class="mobile-more-btn flex-row" 
               onclick={() => showMobileMoreMenu = !showMobileMoreMenu}
               aria-label="More options"
@@ -792,6 +952,53 @@
             transition:fly={{ y: -6, duration: 150, easing: cubicOut }}
           >
             <div class="mobile-more-menu-content flex-col">
+              <!-- UI-M-012: quick toggles relocated from the header into the overflow -->
+              <button
+                class="menu-item flex-row"
+                onclick={() => {
+                  appState.toggleFavorite(appState.activeNotePath || '');
+                  showMobileMoreMenu = false;
+                }}
+              >
+                <Star
+                  size={15}
+                  class="menu-item-icon"
+                  fill={appState.favorites.includes(appState.activeNotePath || '') ? 'var(--accent)' : 'none'}
+                  color={appState.favorites.includes(appState.activeNotePath || '') ? 'var(--accent)' : 'currentColor'}
+                />
+                <span>{appState.favorites.includes(appState.activeNotePath || '') ? 'Remove from Favorites' : 'Add to Favorites'}</span>
+              </button>
+
+              {#if !appState.isReadOnly}
+                <button
+                  class="menu-item flex-row"
+                  onclick={() => {
+                    appState.setFocusMode(!appState.focusModeEnabled);
+                    showMobileMoreMenu = false;
+                  }}
+                >
+                  <svg width="15" height="15" class="menu-item-icon" viewBox="0 0 24 24" fill="none" stroke={appState.focusModeEnabled ? 'var(--accent)' : 'currentColor'} stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+                  </svg>
+                  <span>{appState.focusModeEnabled ? 'Disable Focus Mode' : 'Enable Focus Mode'}</span>
+                </button>
+
+                <button
+                  class="menu-item flex-row"
+                  onclick={() => {
+                    appState.setTypewriterScroll(!appState.typewriterScrollEnabled);
+                    showMobileMoreMenu = false;
+                  }}
+                >
+                  <svg width="15" height="15" class="menu-item-icon" viewBox="0 0 24 24" fill="none" stroke={appState.typewriterScrollEnabled ? 'var(--accent)' : 'currentColor'} stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="4" y1="12" x2="20" y2="12" stroke-dasharray="3,3"/><polyline points="8 7 12 3 16 7"/><polyline points="8 17 12 21 16 17"/>
+                  </svg>
+                  <span>{appState.typewriterScrollEnabled ? 'Disable Typewriter Scroll' : 'Enable Typewriter Scroll'}</span>
+                </button>
+              {/if}
+
+              <div class="menu-divider"></div>
+
               <!-- 1. Edit/Read Toggle -->
               <button
                 class="menu-item flex-row"
@@ -929,7 +1136,24 @@
       </div>
     {:else}
       <!-- Main Mobile Navigation Tabs -->
-      <div class="mobile-content flex-grow">
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div
+        class="mobile-content flex-grow"
+        bind:this={mobileContentEl}
+        ontouchstart={ptrTouchStart}
+        ontouchmove={ptrTouchMove}
+        ontouchend={ptrTouchEnd}
+        ontouchcancel={ptrTouchEnd}
+        use:edgeSwipeBack={{ onBack: () => mobileNav.back() }}
+      >
+        <!-- Pull-to-refresh indicator -->
+        {#if ptrDistance > 0 || ptrRefreshing}
+          <div class="ptr-indicator flex-row" style="height: {ptrDistance}px; opacity: {ptrRefreshing ? 1 : Math.min(ptrDistance / PTR_THRESHOLD, 1)};" aria-hidden="true">
+            <span class="ptr-spinner flex-row" class:spin={ptrRefreshing} style="transform: rotate({ptrRefreshing ? 0 : Math.min(ptrDistance / PTR_THRESHOLD, 1) * 270}deg);">
+              <RefreshCw size={18} />
+            </span>
+          </div>
+        {/if}
         <!-- 1. HOME TAB -->
         {#if appState.activeTab === 'home'}
           <div class="mobile-tab-view flex-col">
@@ -955,7 +1179,14 @@
                       </span>
                     {/if}
                   {/if}
-                  <button 
+                  <button
+                    class="icon-circle-btn flex-row"
+                    onclick={() => (showMobileSearch = true)}
+                    aria-label="Search notes"
+                  >
+                    <Search size={20} />
+                  </button>
+                  <button
                     class="icon-circle-btn flex-row" 
                     onclick={() => appState.showSettings = true}
                     aria-label="Settings"
@@ -986,6 +1217,29 @@
                 >
                   Select All
                 </button>
+              </div>
+            {/if}
+            {#if favoriteNotes.length > 0 && !appState.selectMode}
+              <div class="home-section">
+                <h2 class="section-title">Favorites</h2>
+                <div class="fav-carousel">
+                  {#each favoriteNotes as note (note.path)}
+                    <button
+                      type="button"
+                      class="fav-card flex-col"
+                      onclick={() => appState.selectNote(note.path)}
+                      aria-label={`Open favorite note ${note.name}`}
+                    >
+                      <span class="fav-card-icon flex-row">
+                        <Star size={16} fill="var(--accent)" color="var(--accent)" />
+                      </span>
+                      <span class="fav-card-title">{note.name}</span>
+                      {#if note.path.includes('/')}
+                        <span class="card-notebook-badge">{note.path.split('/')[0]}</span>
+                      {/if}
+                    </button>
+                  {/each}
+                </div>
               </div>
             {/if}
             <div class="home-section">
@@ -1350,7 +1604,7 @@
                   <div class="flex-row" style="gap: var(--spacing-xs); max-width: 70%; align-items: center;">
                     <button 
                       class="icon-circle-btn flex-row" 
-                      onclick={() => { appState.activeNotebook = null; }}
+                      onclick={() => mobileNav.closeNotebook()}
                       aria-label="Back to Library"
                       style="width: 32px; height: 32px;"
                     >
@@ -1546,7 +1800,7 @@
                   <div class="flex-row" style="gap: var(--spacing-xs); max-width: 70%; align-items: center;">
                     <button 
                       class="icon-circle-btn flex-row" 
-                      onclick={() => { appState.selectedTag = null; }}
+                      onclick={() => mobileNav.closeTag()}
                       aria-label="Back to Tags"
                       style="width: 32px; height: 32px;"
                     >
@@ -1768,168 +2022,134 @@
       {#if appState.activeTab === 'library' || appState.activeTab === 'home' || appState.activeTab === 'tags'}
         <button 
           class="mobile-fab flex-row" 
-          onclick={() => {
-            handleCreateNote(appState.activeNotebook);
-          }}
-          aria-label="Add new note"
+          class:open={showQuickCreate}
+          onclick={() => (showQuickCreate = !showQuickCreate)}
+          aria-label="Quick create"
+          aria-haspopup="menu"
+          aria-expanded={showQuickCreate}
         >
-          <Plus size={24} />
+          <span class="fab-icon flex-row"><Plus size={24} /></span>
         </button>
       {/if}
 
+      <!-- UI-M-003: Quick Create speed-dial bottom sheet -->
+      <BottomSheet show={showQuickCreate} onClose={() => (showQuickCreate = false)} title="Create new">
+        {#if appState.activeNotebook}
+          <span class="quick-create-context flex-row">
+            <Folder size={12} style="color: var(--accent);" /> in “{appState.activeNotebook}”
+          </span>
+        {/if}
+
+        <button type="button" class="quick-create-row flex-row" onclick={quickCreateNote}>
+          <span class="quick-create-icon flex-row" style="background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent);"><FileText size={18} /></span>
+          <span class="flex-col" style="align-items: flex-start; gap: 1px;">
+            <span class="quick-create-label">New Note</span>
+            <span class="quick-create-desc">Start a blank note{appState.activeNotebook ? ' in this notebook' : ''}</span>
+          </span>
+        </button>
+
+        <button type="button" class="quick-create-row flex-row" onclick={quickCreateDaily}>
+          <span class="quick-create-icon flex-row" style="background: color-mix(in srgb, var(--semantic-info, #539df5) 16%, transparent); color: var(--semantic-info, #539df5);"><Calendar size={18} /></span>
+          <span class="flex-col" style="align-items: flex-start; gap: 1px;">
+            <span class="quick-create-label">Daily Log</span>
+            <span class="quick-create-desc">Open or create today’s log</span>
+          </span>
+        </button>
+
+        <button type="button" class="quick-create-row flex-row" onclick={quickCreateNotebook}>
+          <span class="quick-create-icon flex-row" style="background: color-mix(in srgb, var(--semantic-warning, #ffa42b) 16%, transparent); color: var(--semantic-warning, #ffa42b);"><FolderPlus size={18} /></span>
+          <span class="flex-col" style="align-items: flex-start; gap: 1px;">
+            <span class="quick-create-label">New Notebook</span>
+            <span class="quick-create-desc">Create a folder to organize notes</span>
+          </span>
+        </button>
+      </BottomSheet>
+
       <!-- Android Bottom Navigation Bar (Spotify Style) -->
-      <div class="android-bottom-nav flex-row">
-        <button 
-          class="nav-tab flex-col" 
-          class:active={appState.activeTab === 'home'} 
-          onclick={() => { appState.activeTab = 'home'; appState.activeNotebook = null; appState.selectedTag = null; if (appState.selectMode) appState.toggleSelectMode(); }}
-        >
-          <Home size={22} />
-          <span>Home</span>
-        </button>
-
-        <button 
-          class="nav-tab flex-col" 
-          class:active={appState.activeTab === 'tags'} 
-          onclick={() => { appState.activeTab = 'tags'; appState.activeNotebook = null; appState.selectedTag = null; appState.searchQuery = ''; mobileSearchInput = ''; if (appState.selectMode) appState.toggleSelectMode(); }}
-        >
-          <TagIcon size={22} />
-          <span>Tags</span>
-        </button>
-        
-        <button 
-          class="nav-tab flex-col" 
-          class:active={appState.activeTab === 'library'} 
-          onclick={() => { appState.activeTab = 'library'; appState.activeNotebook = null; appState.selectedTag = null; appState.searchQuery = ''; mobileSearchInput = ''; if (appState.selectMode) appState.toggleSelectMode(); }}
-        >
-          <Library size={22} />
-          <span>Library</span>
-        </button>
-
-         <button 
-          class="nav-tab flex-col" 
-          class:active={appState.activeTab === 'daily'} 
-          onclick={() => { appState.activeTab = 'daily'; appState.selectedTag = null; if (appState.selectMode) appState.toggleSelectMode(); }}
-        >
-          <Calendar size={22} />
-          <span>Daily</span>
-        </button>
-
-
-      </div>
+      <MobileTabBar onNavigate={() => (mobileSearchInput = '')} />
     {/if}
 
     <!-- ST-013: Mobile Tag Actions Menu Bottom Sheet -->
-    {#if showMobileTagActions && mobileTagActionsTag}
-      <!-- svelte-ignore a11y_no_static_element_interactions -->
-      <div 
-        class="color-picker-backdrop"
-        onclick={() => showMobileTagActions = false}
-        onkeydown={(e) => e.key === 'Escape' && (showMobileTagActions = false)}
-      ></div>
-      <div class="mobile-color-picker-popover flex-col" transition:fly={{ y: 200, duration: 200, easing: cubicOut }}>
-        <div class="color-picker-header flex-row" style="justify-content: space-between; align-items: center; width: 100%;">
-          <span style="font-size: var(--font-size-xs); font-weight: 700; color: var(--text-primary);">Tag Options: #{mobileTagActionsTag}</span>
-          <button 
-            class="icon-circle-btn flex-row" 
-            onclick={() => showMobileTagActions = false}
-            aria-label="Close"
-            style="width: 24px; height: 24px; min-width: 24px; border: none; background: color-mix(in srgb, var(--text-primary) 8%, transparent);"
-          >
-            <X size={14} />
-          </button>
-        </div>
-        
-        <div class="mobile-tag-options-list flex-col" style="width: 100%; gap: var(--spacing-sm); margin-top: var(--spacing-2xs);">
-          <button 
-            class="btn-pill flex-row" 
-            onclick={triggerMobileTagRename}
-            style="background: color-mix(in srgb, var(--text-primary) 4%, transparent); border: 1px solid var(--border-color); padding: var(--spacing-sm) var(--spacing-md); border-radius: 8px; justify-content: flex-start; gap: var(--spacing-sm); color: var(--text-primary); cursor: pointer;"
-          >
-            <Edit3 size={16} style="color: var(--accent);" />
-            <span style="font-size: var(--font-size-sm); font-weight: 600;">Rename Tag</span>
-          </button>
+    <BottomSheet
+      show={showMobileTagActions && !!mobileTagActionsTag}
+      onClose={() => showMobileTagActions = false}
+      title={mobileTagActionsTag ? `Tag Options: #${mobileTagActionsTag}` : 'Tag Options'}
+    >
+      <div class="mobile-tag-options-list flex-col" style="width: 100%; gap: var(--spacing-sm); margin-top: var(--spacing-2xs);">
+        <button
+          class="btn-pill flex-row"
+          onclick={triggerMobileTagRename}
+          style="background: color-mix(in srgb, var(--text-primary) 4%, transparent); border: 1px solid var(--border-color); padding: var(--spacing-sm) var(--spacing-md); border-radius: 8px; justify-content: flex-start; gap: var(--spacing-sm); color: var(--text-primary); cursor: pointer;"
+        >
+          <Edit3 size={16} style="color: var(--accent);" />
+          <span style="font-size: var(--font-size-sm); font-weight: 600;">Rename Tag</span>
+        </button>
 
-          <button 
-            class="btn-pill flex-row" 
-            onclick={triggerMobileTagColor}
-            style="background: color-mix(in srgb, var(--text-primary) 4%, transparent); border: 1px solid var(--border-color); padding: var(--spacing-sm) var(--spacing-md); border-radius: 8px; justify-content: flex-start; gap: var(--spacing-sm); color: var(--text-primary); cursor: pointer;"
-          >
-            <Palette size={16} style="color: var(--accent);" />
-            <span style="font-size: var(--font-size-sm); font-weight: 600;">Change Color</span>
-          </button>
+        <button
+          class="btn-pill flex-row"
+          onclick={triggerMobileTagColor}
+          style="background: color-mix(in srgb, var(--text-primary) 4%, transparent); border: 1px solid var(--border-color); padding: var(--spacing-sm) var(--spacing-md); border-radius: 8px; justify-content: flex-start; gap: var(--spacing-sm); color: var(--text-primary); cursor: pointer;"
+        >
+          <Palette size={16} style="color: var(--accent);" />
+          <span style="font-size: var(--font-size-sm); font-weight: 600;">Change Color</span>
+        </button>
 
-          <button 
-            class="btn-pill flex-row" 
-            onclick={triggerMobileTagDelete}
-            style="background: color-mix(in srgb, var(--text-primary) 4%, transparent); border: 1px solid var(--border-color); padding: var(--spacing-sm) var(--spacing-md); border-radius: 8px; justify-content: flex-start; gap: var(--spacing-sm); color: var(--semantic-error); cursor: pointer;"
-            onmouseover={(e) => e.currentTarget.style.backgroundColor = 'color-mix(in srgb, var(--semantic-error) 8%, transparent)'}
-            onmouseout={(e) => e.currentTarget.style.backgroundColor = 'color-mix(in srgb, var(--text-primary) 4%, transparent)'}
-          >
-            <Trash2 size={16} style="color: var(--semantic-error);" />
-            <span style="font-size: var(--font-size-sm); font-weight: 600;">Delete Tag</span>
-          </button>
-        </div>
-      </div>
-    {/if}
-
-    <!-- ST-010: Mobile Tag Color Picker Popover / Bottom Sheet -->
-    {#if mobileColorPickerTag}
-      <!-- svelte-ignore a11y_no_static_element_interactions -->
-      <div 
-        class="color-picker-backdrop"
-        onclick={() => mobileColorPickerTag = null}
-        onkeydown={(e) => e.key === 'Escape' && (mobileColorPickerTag = null)}
-      ></div>
-      <div class="mobile-color-picker-popover flex-col" transition:fly={{ y: 200, duration: 200, easing: cubicOut }}>
-        <div class="color-picker-header flex-row" style="justify-content: space-between; align-items: center; width: 100%;">
-          <span style="font-size: var(--font-size-xs); font-weight: 700; color: var(--text-primary);">Color for #{mobileColorPickerTag}</span>
-          <button 
-            class="icon-circle-btn flex-row" 
-            onclick={() => mobileColorPickerTag = null}
-            aria-label="Close"
-            style="width: 24px; height: 24px; min-width: 24px; border: none; background: color-mix(in srgb, var(--text-primary) 8%, transparent);"
-          >
-            <X size={14} />
-          </button>
-        </div>
-        <div class="color-picker-grid">
-          {#each TAG_COLOR_PALETTE as color}
-            {@const isActive = getTagColor(mobileColorPickerTag) === color}
-            <button 
-              class="color-swatch" 
-              class:active={isActive}
-              style="background-color: {color};"
-              onclick={() => handleSetMobileColor(mobileColorPickerTag ?? '', color)}
-              aria-label="Set color to {color}"
-            >
-              {#if isActive}<span class="swatch-check">✓</span>{/if}
-            </button>
-          {/each}
-        </div>
-        <div class="custom-hex-container flex-row" style="margin: var(--spacing-sm) 0; gap: var(--spacing-sm); align-items: center; border-top: 1px dashed color-mix(in srgb, var(--text-primary) 8%, transparent); padding-top: var(--spacing-sm); width: 100%;">
-          <div class="color-preview-circle" style="width: 20px; height: 20px; border-radius: 50%; background-color: {normalizedMobileCustomHex || 'transparent'}; border: 1px solid color-mix(in srgb, var(--text-primary) 20%, transparent); flex-shrink: 0;"></div>
-          <input 
-            type="text" 
-            placeholder="Custom Hex (e.g. #ff0055)" 
-            bind:value={mobileCustomHexValue}
-            style="flex: 1; padding: var(--spacing-xs) var(--spacing-sm); font-size: var(--font-size-xs); background: color-mix(in srgb, var(--text-primary) 6%, transparent); border: 1px solid var(--border-color); border-radius: 6px; color: var(--text-primary); outline: none;"
-          />
-          <button 
-            type="button" 
-            disabled={!isMobileCustomHexValid}
-            onclick={() => handleSetMobileColor(mobileColorPickerTag ?? '', normalizedMobileCustomHex)}
-            style="padding: var(--spacing-xs) var(--spacing-md); font-size: var(--font-size-xs); cursor: pointer; opacity: {isMobileCustomHexValid ? 1 : 0.5}; background: var(--accent); border: none; border-radius: 6px; color: var(--text-primary); font-weight: 600;"
-          >
-            Apply
-          </button>
-        </div>
-        <button class="color-reset-btn" onclick={() => handleSetMobileColor(mobileColorPickerTag ?? '', null)} style="margin-top: var(--spacing-xs);">
-          <X size={12} />
-          <span>Reset Color</span>
+        <button
+          class="btn-pill flex-row"
+          onclick={triggerMobileTagDelete}
+          style="background: color-mix(in srgb, var(--text-primary) 4%, transparent); border: 1px solid var(--border-color); padding: var(--spacing-sm) var(--spacing-md); border-radius: 8px; justify-content: flex-start; gap: var(--spacing-sm); color: var(--semantic-error); cursor: pointer;"
+        >
+          <Trash2 size={16} style="color: var(--semantic-error);" />
+          <span style="font-size: var(--font-size-sm); font-weight: 600;">Delete Tag</span>
         </button>
       </div>
-    {/if}
+    </BottomSheet>
+
+    <!-- ST-010: Mobile Tag Color Picker Bottom Sheet -->
+    <BottomSheet
+      show={!!mobileColorPickerTag}
+      onClose={() => mobileColorPickerTag = null}
+      title={mobileColorPickerTag ? `Color for #${mobileColorPickerTag}` : 'Tag Color'}
+    >
+      <div class="color-picker-grid">
+        {#each TAG_COLOR_PALETTE as color}
+          {@const isActive = getTagColor(mobileColorPickerTag ?? '') === color}
+          <button
+            class="color-swatch"
+            class:active={isActive}
+            style="background-color: {color};"
+            onclick={() => handleSetMobileColor(mobileColorPickerTag ?? '', color)}
+            aria-label="Set color to {color}"
+          >
+            {#if isActive}<span class="swatch-check">✓</span>{/if}
+          </button>
+        {/each}
+      </div>
+      <div class="custom-hex-container flex-row" style="margin: var(--spacing-sm) 0; gap: var(--spacing-sm); align-items: center; border-top: 1px dashed color-mix(in srgb, var(--text-primary) 8%, transparent); padding-top: var(--spacing-sm); width: 100%;">
+        <div class="color-preview-circle" style="width: 20px; height: 20px; border-radius: 50%; background-color: {normalizedMobileCustomHex || 'transparent'}; border: 1px solid color-mix(in srgb, var(--text-primary) 20%, transparent); flex-shrink: 0;"></div>
+        <input
+          type="text"
+          placeholder="Custom Hex (e.g. #ff0055)"
+          bind:value={mobileCustomHexValue}
+          style="flex: 1; padding: var(--spacing-xs) var(--spacing-sm); font-size: var(--font-size-xs); background: color-mix(in srgb, var(--text-primary) 6%, transparent); border: 1px solid var(--border-color); border-radius: 6px; color: var(--text-primary); outline: none;"
+        />
+        <button
+          type="button"
+          disabled={!isMobileCustomHexValid}
+          onclick={() => handleSetMobileColor(mobileColorPickerTag ?? '', normalizedMobileCustomHex)}
+          style="padding: var(--spacing-xs) var(--spacing-md); font-size: var(--font-size-xs); cursor: pointer; opacity: {isMobileCustomHexValid ? 1 : 0.5}; background: var(--accent); border: none; border-radius: 6px; color: var(--text-primary); font-weight: 600;"
+        >
+          Apply
+        </button>
+      </div>
+      <button class="color-reset-btn" onclick={() => handleSetMobileColor(mobileColorPickerTag ?? '', null)} style="margin-top: var(--spacing-xs);">
+        <X size={12} />
+        <span>Reset Color</span>
+      </button>
+    </BottomSheet>
+
+    <!-- UI-M-009: Full-screen mobile search overlay -->
+    <MobileSearch show={showMobileSearch} onClose={() => (showMobileSearch = false)} />
     <!-- ST-011: Mobile Bulk Action Bar -->
     {#if appState.selectMode}
       <div class="mobile-bulk-action-bar" transition:fly={{ y: 80, duration: 250, easing: cubicOut }}>
@@ -2241,7 +2461,12 @@
 </Modal>
 
 <!-- Settings Modal (Extracted Component) -->
-<SettingsModal />
+{#if isMobile}
+  <!-- UI-M-013: full-screen sectioned mobile settings -->
+  <MobileSettings />
+{:else}
+  <SettingsModal />
+{/if}
 
 <!-- Toast Notifications Container -->
 <div class="toast-container flex-col">
@@ -2723,59 +2948,152 @@
   }
 
   /* Mobile Bottom Navigation Bar - Floating Pill */
-  .android-bottom-nav {
-    position: absolute;
-    bottom: 16px;
-    left: 16px;
-    right: 16px;
-    height: 56px;
-    background-color: var(--bg-surface);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-pill);
-    box-shadow: 0 8px 32px 0 color-mix(in srgb, var(--bg-base) 40%, transparent);
-    justify-content: space-around;
-    z-index: 10;
-    padding: 0 var(--spacing-xs);
-  }
-
-  .nav-tab {
-    padding: var(--spacing-xs) var(--spacing-sm);
-    color: var(--text-secondary);
-    gap: var(--spacing-3xs);
-    align-items: center;
-    justify-content: center;
-    border-radius: var(--radius-pill);
-    transition: all 0.2s ease;
-  }
-
-  .nav-tab.active {
-    color: var(--accent);
-    background-color: color-mix(in srgb, var(--text-primary) 4%, transparent);
-  }
-
-  .nav-tab span {
-    font-size: var(--font-size-xs);
-    font-weight: 750;
-  }
 
   /* Floating Action Button (FAB) */
   .mobile-fab {
     position: absolute;
-    bottom: 88px; /* sits above floating bottom nav */
-    right: 20px;
-    width: 52px;
-    height: 52px;
+    bottom: calc(92px + env(safe-area-inset-bottom, 0px)); /* sits above floating bottom nav + safe area */
+    right: calc(20px + env(safe-area-inset-right, 0px));
+    width: 56px;
+    height: 56px;
     border-radius: 50%;
     background-color: var(--accent);
     color: var(--bg-base);
     box-shadow: 0 4px 16px color-mix(in srgb, var(--accent) 35%, transparent);
     justify-content: center;
-    z-index: 20;
+    z-index: 10000; /* above the quick-create backdrop (9998) and sheet (9999) */
     transition: transform 0.15s ease, background-color 0.2s;
+    touch-action: manipulation;
   }
 
   .mobile-fab:active {
     transform: scale(0.9);
+  }
+
+  .fab-icon {
+    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .mobile-fab.open .fab-icon {
+    transform: rotate(45deg);
+  }
+
+  /* UI-M-003: Quick Create speed-dial sheet (rendered via BottomSheet) */
+  .quick-create-context {
+    font-size: var(--font-size-xs);
+    color: var(--text-secondary);
+    gap: var(--spacing-3xs);
+    padding: 0 var(--spacing-2xs);
+    margin-bottom: var(--spacing-2xs);
+  }
+
+  .quick-create-row {
+    gap: var(--spacing-md);
+    align-items: center;
+    width: 100%;
+    min-height: 56px;
+    padding: var(--spacing-xs) var(--spacing-2xs);
+    background: none;
+    border: none;
+    border-radius: var(--radius-comfortable);
+    cursor: pointer;
+    text-align: left;
+    transition: background-color 0.15s ease;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .quick-create-row:active {
+    background-color: var(--bg-mid-dark);
+  }
+
+  .quick-create-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: var(--radius-standard);
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .quick-create-label {
+    font-size: var(--font-size-sm);
+    font-weight: 700;
+    color: var(--text-primary);
+  }
+
+  .quick-create-desc {
+    font-size: var(--font-size-xs);
+    color: var(--text-tertiary);
+  }
+
+  /* UI-M-004: Favorites carousel */
+  .fav-carousel {
+    display: flex;
+    flex-direction: row;
+    gap: var(--spacing-sm);
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: var(--spacing-3xs);
+  }
+
+  .fav-carousel::-webkit-scrollbar {
+    display: none;
+  }
+
+  .fav-card {
+    scroll-snap-align: start;
+    flex: 0 0 auto;
+    width: 150px;
+    min-height: 92px;
+    gap: var(--spacing-xs);
+    align-items: flex-start;
+    background-color: var(--bg-surface);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-comfortable);
+    padding: var(--spacing-md);
+    cursor: pointer;
+    text-align: left;
+    transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.2s ease;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .fav-card:active {
+    transform: scale(0.97);
+    border-color: var(--border-highlight);
+  }
+
+  .fav-card-icon {
+    width: 28px;
+    height: 28px;
+    border-radius: var(--radius-standard);
+    background-color: color-mix(in srgb, var(--accent) 12%, transparent);
+    justify-content: center;
+  }
+
+  .fav-card-title {
+    font-size: var(--font-size-xs);
+    font-weight: 700;
+    color: var(--text-primary);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    line-height: 1.3;
+  }
+
+  /* UI-M-004: Pull-to-refresh indicator */
+  .ptr-indicator {
+    width: 100%;
+    justify-content: center;
+    align-items: flex-end;
+    overflow: hidden;
+    color: var(--accent);
+  }
+
+  .ptr-spinner {
+    justify-content: center;
+    align-items: center;
+    margin-bottom: var(--spacing-xs);
   }
 
   /* Full-Screen Mobile Editor Overlay */
@@ -3267,12 +3585,51 @@
     color: var(--semantic-error);
   }
 
-  /* Make sure the direct icon buttons match desktop style */
-  .mobile-action-btn {
-    transition: color 0.15s, transform 0.1s;
+  /* UI-M-012: clean editor header — breadcrumb + Done */
+  .mobile-note-breadcrumb {
+    gap: var(--spacing-2xs);
+    font-size: var(--font-size-xs);
+    font-weight: 600;
+    color: var(--text-secondary);
+    flex: 1;
+    min-width: 0;
+    justify-content: center;
+    overflow: hidden;
+    white-space: nowrap;
+    padding: 0 var(--spacing-xs);
   }
-  .mobile-action-btn:active {
-    transform: scale(0.9);
+
+  .mobile-note-breadcrumb .crumb-folder {
+    color: var(--text-tertiary);
+    flex-shrink: 0;
+    max-width: 38%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .mobile-note-breadcrumb .crumb-note {
+    color: var(--text-primary);
+    font-weight: 700;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .mobile-done-btn {
+    background: none;
+    border: none;
+    color: var(--accent);
+    font-family: inherit;
+    font-size: var(--font-size-sm);
+    font-weight: 700;
+    padding: var(--spacing-2xs) var(--spacing-xs);
+    cursor: pointer;
+    border-radius: var(--radius-subtle);
+    transition: background-color 0.15s, transform 0.1s;
+  }
+  .mobile-done-btn:active {
+    transform: scale(0.94);
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
   }
 
   .notebook-select-list {
@@ -3370,16 +3727,6 @@
   }
 
   /* ST-010: Mobile Color Picker Popover/Bottom Sheet */
-  .color-picker-backdrop {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: color-mix(in srgb, var(--bg-base) 40%, transparent);
-    backdrop-filter: blur(4px);
-    z-index: 9998;
-  }
 
   .mobile-color-picker-popover {
     position: fixed;

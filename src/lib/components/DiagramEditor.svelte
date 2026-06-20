@@ -9,6 +9,7 @@
 		type DiagramShape,
 		type DiagramShapeType
 	} from '../utils/diagram';
+	import { appState } from '../stores/appState.svelte';
 
 	interface Props {
 		data: string;
@@ -285,9 +286,19 @@
 	}
 
 	function clearAll() {
-		if (shapes.length && !confirm('Clear the entire diagram?')) return;
-		shapes = [];
-		selectedId = null;
+		if (!shapes.length) {
+			selectedId = null;
+			return;
+		}
+		appState.showConfirmation({
+			title: 'Clear diagram?',
+			message: 'Clear the entire diagram? This cannot be undone.',
+			confirmText: 'Clear',
+			onConfirm: () => {
+				shapes = [];
+				selectedId = null;
+			}
+		});
 	}
 
 	function commitText() {

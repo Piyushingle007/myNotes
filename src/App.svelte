@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, untrack } from 'svelte';
   import { appState } from './lib/stores/appState.svelte';
+  import { mobileNav } from './lib/stores/mobileNav.svelte';
   import AppLayout from './lib/components/AppLayout.svelte';
   import { FolderOpen, Play } from 'lucide-svelte';
   import GoogleLogo from './lib/components/GoogleLogo.svelte';
@@ -46,6 +47,9 @@
       }
     } else {
       if (appState.activeNotePath !== null) {
+        // Leaving an open note via browser/gesture back — persist edits first
+        // so unsaved changes are never lost (UI-M-001).
+        void mobileNav.flushPendingSave();
         appState.activeNotePath = null;
       }
 
@@ -117,6 +121,14 @@
     } finally {
       initializing = false;
     }
+  });
+
+  // Register the Android hardware back button (Capacitor) so it follows the
+  // mobile navigation hierarchy and never loses unsaved edits (UI-M-001).
+  onMount(() => {
+    let cleanup: (() => void) | undefined;
+    mobileNav.registerBackHandlers().then((c) => { cleanup = c; });
+    return () => cleanup?.();
   });
 
   // Global key bindings for shortcuts (Save, Wikilink)

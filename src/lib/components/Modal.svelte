@@ -2,6 +2,7 @@
   import { fade, fly } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
   import { X } from 'lucide-svelte';
+  import { mobileNav } from '../stores/mobileNav.svelte';
 
   interface Props {
     show: boolean;
@@ -33,6 +34,35 @@
 
   let modalElement = $state<HTMLElement | null>(null);
   let triggerElement = $state<HTMLElement | null>(null);
+  // UI-M-005: track the on-screen keyboard so the dialog (and its actions)
+  // are never hidden behind it on mobile.
+  let keyboardHeight = $state(0);
+
+  // Keep the modal above the virtual keyboard using the visual viewport.
+  $effect(() => {
+    if (!show) { keyboardHeight = 0; return; }
+    const vv = typeof window !== 'undefined' ? window.visualViewport : null;
+    if (!vv) return;
+    const update = () => {
+      const kb = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+      // Ignore small viewport changes (browser chrome) — only react to a keyboard.
+      keyboardHeight = kb > 120 ? kb : 0;
+    };
+    update();
+    vv.addEventListener('resize', update);
+    vv.addEventListener('scroll', update);
+    return () => {
+      vv.removeEventListener('resize', update);
+      vv.removeEventListener('scroll', update);
+    };
+  });
+
+  // Register with the navigation model so the hardware/edge back button closes
+  // the dialog first (UI-M-011).
+  $effect(() => {
+    if (!show) return;
+    return mobileNav.registerOverlay(onClose);
+  });
 
   // Manage body scroll lock and focus tracking
   $effect(() => {
@@ -117,6 +147,7 @@
     transition:fade={{ duration: 150 }}
     onclick={handleOverlayClick}
     role="presentation"
+    style="padding-bottom: {keyboardHeight}px;"
   >
     <!-- Modal Card -->
     <div 
@@ -167,6 +198,7 @@
     left: 0;
     right: 0;
     bottom: 0;
+    box-sizing: border-box;
     background: color-mix(in srgb, var(--bg-base) 60%, transparent);
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
@@ -174,6 +206,7 @@
     justify-content: center;
     align-items: center;
     display: flex;
+    transition: padding-bottom 0.18s ease;
   }
 
   .modal-card {
@@ -244,5 +277,31 @@
     display: flex;
     flex-direction: row;
     flex-shrink: 0;
+  }
+
+  /* UI-M-005: mobile-friendly form controls inside any dialog.
+     16px font prevents iOS auto-zoom on focus; 44px keeps targets tappable. */
+  @media (max-width: 768px) {
+    .modal-card {
+      width: 92%;
+    }
+
+    .modal-body :global(input:not([type='checkbox']):not([type='radio'])),
+    .modal-body :global(textarea),
+    .modal-body :global(select) {
+      font-size: 16px !important;
+      min-height: 44px;
+    }
+
+    .modal-footer :global(button),
+    .modal-body :global(.btn-pill) {
+      min-height: 44px;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .modal-backdrop {
+      transition: none;
+    }
   }
 </style>

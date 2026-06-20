@@ -311,6 +311,13 @@ class AppState {
   focusModeEnabled = $state<boolean>(localStorage.getItem('mynotes_focus_mode') === 'true');
   typewriterScrollEnabled = $state<boolean>(localStorage.getItem('mynotes_typewriter_scroll') === 'true');
 
+  // Mobile Google authentication flow (UI-M-014)
+  // Drives a multi-step, mobile-appropriate OAuth handoff with clear progress
+  // and retry. Steps: idle → awaiting (browser sign-in) → verifying → idle,
+  // or → error (with a retry affordance).
+  mobileAuthStep = $state<'idle' | 'awaiting' | 'verifying' | 'error'>('idle');
+  mobileAuthError = $state<string | null>(null);
+
   // Move/Copy Note Dialog States
   showMoveCopyModal = $state<boolean>(false);
   moveCopyNotePath = $state<string | null>(null);
@@ -768,6 +775,106 @@ class AppState {
     }
   }
 
+  // ───────────────────── Mobile OAuth handoff (UI-M-014) ─────────────────────
+
+  private mobileAuthListenerCleanup: (() => void) | null = null;
+
+  /** True when running inside a native Capacitor shell (Android/iOS). */
+  private get isNativePlatform(): boolean {
+    return typeof window !== 'undefined' && !!(window as any).Capacitor?.isNativePlatform?.();
+  }
+
+  /** Build the Google implicit-grant OAuth URL for the mobile/browser flow. */
+  buildGoogleAuthUrl(): string {
+    return 'https://accounts.google.com/o/oauth2/v2/auth?client_id=' +
+      encodeURIComponent(this.googleClientId) +
+      '&redirect_uri=' + encodeURIComponent(this.googleRedirectUri) +
+      '&response_type=token&scope=' + encodeURIComponent('https://www.googleapis.com/auth/drive.file') +
+      '&prompt=consent';
+  }
+
+  /**
+   * Begin the mobile Google sign-in flow: open the secure system browser and,
+   * on native, register a deep-link listener so the OAuth redirect is captured
+   * automatically (no manual copy/paste). Falls back to manual paste if the
+   * deep link isn't wired up on the device.
+   */
+  async startMobileGoogleAuth(): Promise<void> {
+    if (!this.googleClientId.trim()) {
+      this.mobileAuthStep = 'error';
+      this.mobileAuthError = 'Please enter your Google OAuth Client ID first.';
+      return;
+    }
+    if (!this.googleRedirectUri.trim()) {
+      this.mobileAuthStep = 'error';
+      this.mobileAuthError = 'Please set an OAuth Redirect URI first.';
+      return;
+    }
+
+    this.mobileAuthError = null;
+    this.mobileAuthStep = 'awaiting';
+
+    // Attempt automatic capture of the redirect via Capacitor deep links.
+    await this.registerMobileAuthRedirectListener();
+
+    // Hand off to the secure system browser (required by Google policy).
+    const url = this.buildGoogleAuthUrl();
+    try {
+      window.open(url, '_system');
+    } catch {
+      window.location.href = url;
+    }
+  }
+
+  private async registerMobileAuthRedirectListener(): Promise<void> {
+    this.clearMobileAuthRedirectListener();
+    if (!this.isNativePlatform) return;
+    try {
+      const { App } = await import('@capacitor/app');
+      const handle = await App.addListener('appUrlOpen', (event: { url: string }) => {
+        if (event?.url && event.url.includes('access_token')) {
+          void this.completeMobileGoogleAuth(event.url).catch(() => {/* surfaced via state */});
+        }
+      });
+      this.mobileAuthListenerCleanup = () => { void handle.remove(); };
+    } catch (e) {
+      console.warn('[Auth] appUrlOpen deep-link listener unavailable:', e);
+    }
+  }
+
+  private clearMobileAuthRedirectListener(): void {
+    if (this.mobileAuthListenerCleanup) {
+      try { this.mobileAuthListenerCleanup(); } catch { /* ignore */ }
+      this.mobileAuthListenerCleanup = null;
+    }
+  }
+
+  /**
+   * Finish the mobile flow with a captured/pasted redirect URL or raw token.
+   * Updates progress state and surfaces a clear error (with retry) on failure.
+   */
+  async completeMobileGoogleAuth(tokenOrUrl: string): Promise<void> {
+    this.mobileAuthStep = 'verifying';
+    this.mobileAuthError = null;
+    try {
+      await this.connectGoogleDriveMobile(tokenOrUrl);
+      this.mobileAuthStep = 'idle';
+      this.clearMobileAuthRedirectListener();
+      this.showToast('Connected to Google Drive', 'success');
+    } catch (e: any) {
+      this.mobileAuthStep = 'error';
+      this.mobileAuthError = e?.message || 'Failed to verify the sign-in. Please try again.';
+      throw e;
+    }
+  }
+
+  /** Reset the mobile auth flow back to its initial state. */
+  cancelMobileGoogleAuth(): void {
+    this.mobileAuthStep = 'idle';
+    this.mobileAuthError = null;
+    this.clearMobileAuthRedirectListener();
+  }
+
   async disconnectGoogleDrive() {
     this.syncService.clearToken();
     localStorage.removeItem('mynotes_google_access_token');
@@ -776,6 +883,7 @@ class AppState {
     this.googleUserEmail = null;
     this.setSyncEnabled(false);
     this.syncStatus = 'idle';
+    this.cancelMobileGoogleAuth();
   }
 
   async autoConnectGoogleDrive() {
@@ -2186,7 +2294,7 @@ class AppState {
 
     // Check if new path already exists
     if (this.notes.some(n => n.path === newPath)) {
-      alert('A note with this name already exists.');
+      this.showToast('A note with this name already exists.', 'warning', 4000);
       return;
     }
 
@@ -2254,7 +2362,7 @@ class AppState {
       }
     } catch (e) {
       console.error('Failed to rename note:', e);
-      alert('Failed to rename note file.');
+      this.showToast('Failed to rename note file.', 'error', 4000);
     }
   }
 
@@ -2269,7 +2377,7 @@ class AppState {
     if (newPath === oldPath) return;
 
     if (this.notes.some(n => n.path === newPath)) {
-      alert('A note with this name already exists in the destination notebook.');
+      this.showToast('A note with this name already exists in the destination notebook.', 'warning', 4000);
       return;
     }
 
@@ -2330,7 +2438,7 @@ class AppState {
       }
     } catch (e) {
       console.error('Failed to move note:', e);
-      alert('Failed to move note.');
+      this.showToast('Failed to move note.', 'error', 4000);
     }
   }
 
@@ -2374,7 +2482,7 @@ class AppState {
       }
     } catch (e) {
       console.error('Failed to copy note:', e);
-      alert('Failed to copy note.');
+      this.showToast('Failed to copy note.', 'error', 4000);
     }
   }
 

@@ -643,6 +643,66 @@ a {
   text-decoration: none;
 }
 
+/* ============================================================
+   UI-M-007: Touch Interaction Standards
+   ============================================================ */
+
+/* Remove the blue tap-flash and prevent text selection flicker on
+   interactive elements; kill the legacy 300ms click delay and stop
+   double-tap zoom on controls. */
+button,
+a,
+[role="button"],
+input,
+select,
+textarea,
+label,
+.nav-tab,
+.recent-note-card,
+.fav-card {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button,
+a,
+[role="button"] {
+  touch-action: manipulation;
+}
+
+/* Utility: guarantees a comfortable minimum touch target (>= 44px). */
+.touch-target {
+  min-width: 44px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* On touch-primary devices, ensure common compact icon controls have a
+   large-enough hit area without forcing it on mouse-driven desktops. */
+@media (pointer: coarse) {
+  .icon-circle-btn,
+  .mobile-save-check-btn,
+  .nav-history-btn {
+    min-width: 40px;
+    min-height: 40px;
+  }
+}
+
+/* Consistent, motion-free press feedback on touch devices.
+   (Transform-based feedback declared elsewhere is automatically
+   neutralised under prefers-reduced-motion by the reset below.) */
+@media (hover: none) {
+  button:active,
+  [role="button"]:active,
+  .btn-pill:active,
+  .recent-note-card:active,
+  .fav-card:active,
+  .nav-tab:active {
+    opacity: 0.85;
+  }
+}
+
 /* Micro-animations and Utilities */
 .transition-all {
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);

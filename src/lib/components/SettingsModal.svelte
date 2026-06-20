@@ -67,7 +67,7 @@
       const bundle = JSON.parse(text);
 
       if (!bundle.title || !bundle.content) {
-        alert('Invalid .mynote file format. Missing title or content.');
+        appState.showToast('Invalid .mynote file format. Missing title or content.', 'error', 4000);
         return;
       }
 
@@ -267,7 +267,7 @@
                       await appState.connectGoogleDriveMobile(mobilePastedToken);
                       mobilePastedToken = '';
                     } catch (e: any) {
-                      alert(e.message || 'Failed to verify token');
+                      appState.showToast(e.message || 'Failed to verify token', 'error', 4000);
                     }
                   }}
                   disabled={!mobilePastedToken}
@@ -283,7 +283,7 @@
                   try {
                     await appState.connectGoogleDrive();
                   } catch (e: any) {
-                    alert(e.message || 'Failed to connect to Google Drive');
+                    appState.showToast(e.message || 'Failed to connect to Google Drive', 'error', 4000);
                   }
                 }}
                 disabled={!appState.googleClientId}
