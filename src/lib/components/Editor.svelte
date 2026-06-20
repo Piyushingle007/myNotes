@@ -43,6 +43,7 @@
 	import MermaidEditor from './MermaidEditor.svelte';
 	import MetricsBlock from './MetricsBlock.svelte';
 	import { renderDiagramSVG, decodeDiagram } from '../utils/diagram';
+	import ErrorBanner from './ErrorBanner.svelte';
 
 	let resolvedAssetsMap = new Map<string, string>(); // relative path -> blob URL
 
@@ -663,7 +664,7 @@
 	let loadedPath = '';
 	let pendingContent = $state<string | null>(null);
 	let ignoreNextUpdate = false;
-	let isLoadingNote = false;
+	let isLoadingNote = $state(false);
 	let fixingBlobsPromise: Promise<void> = Promise.resolve();
 	let hasPendingBlobs = false;
 	let lastSourceMode = $sourceMode;
@@ -884,6 +885,7 @@
 		fontDropdown = false;
 		fontSizeDropdown = false;
 		exportDropdownOpen = false;
+		moreMenuOpen = false;
 	}
 
 	function exportAsHtml() {
@@ -1019,7 +1021,8 @@
 
 
 	let exportDropdownOpen = $state(false);
-	let anyDropdownOpen = $derived(headingDropdown || colorDropdown || highlightDropdown || alignDropdown || insertDropdown || tablePickerOpen || fontDropdown || fontSizeDropdown || exportDropdownOpen);
+	let moreMenuOpen = $state(false);
+	let anyDropdownOpen = $derived(headingDropdown || colorDropdown || highlightDropdown || alignDropdown || insertDropdown || tablePickerOpen || fontDropdown || fontSizeDropdown || exportDropdownOpen || moreMenuOpen);
 	let editorState = $state(0);
 	let editorStateRaf = 0; // RAF handle for batching toolbar updates
 
@@ -2424,29 +2427,23 @@
 				};
 				render();
 				let lastTap = 0;
-				let lastTouchTime = 0;
 
-				const handleTap = (e: Event, isTouch: boolean) => {
-					if (appState.isReadOnly) {
-						return;
-					}
+				// UI-M-012: reliable diagram tap handling via unified Pointer Events.
+				// Using pointerdown (one event per physical input) avoids the historical
+				// race where a touchstart was followed by a synthetic mousedown on mobile,
+				// which caused double-edits / cursor jumps. A single tap never focuses the
+				// editor (so the soft keyboard stays closed); a double tap within the delay
+				// opens the diagram editor.
+				const handlePointerDown = (e: PointerEvent) => {
+					if (appState.isReadOnly) return;
+					if (e.button === 2) return; // ignore right-click / context menu
 					const target = e.target as HTMLElement;
 					if (target.closest('button') || target.closest('.mermaid-render-toolbar') || target.closest('input') || target.closest('a')) {
 						return;
 					}
 
 					const now = Date.now();
-
-					// Throttle simulated/emulated mousedown events that follow touchstart on mobile
-					if (!isTouch && now - lastTouchTime < 800) {
-						return;
-					}
-
-					if (isTouch) {
-						lastTouchTime = now;
-					}
-
-					const DOUBLE_PRESS_DELAY = 300;
+					const DOUBLE_PRESS_DELAY = 320;
 
 					if (now - lastTap < DOUBLE_PRESS_DELAY) {
 						e.preventDefault();
@@ -2461,21 +2458,20 @@
 					}
 				};
 
-				dom.addEventListener('mousedown', (e) => {
-					if (e.button === 2) return; // Ignore right clicks
-					handleTap(e, false);
-				});
-
-				dom.addEventListener('touchstart', (e) => {
-					if (e.touches.length > 1) return;
-					handleTap(e, true);
-				});
+				dom.addEventListener('pointerdown', handlePointerDown);
 				return {
 					dom,
 					stopEvent(event) {
-						// Prevent pointer/touch events on the diagram block from focusing the editor
-						// and opening the mobile virtual keyboard
-						if (event.type === 'mousedown' || event.type === 'touchstart' || event.type === 'click' || event.type === 'touchend') {
+						// Prevent pointer/touch events on the diagram block from focusing the
+						// editor and opening the mobile virtual keyboard (UI-M-012).
+						if (
+							event.type === 'pointerdown' ||
+							event.type === 'pointerup' ||
+							event.type === 'mousedown' ||
+							event.type === 'touchstart' ||
+							event.type === 'click' ||
+							event.type === 'touchend'
+						) {
 							return true;
 						}
 						return false;
@@ -3300,10 +3296,62 @@
 				container.innerHTML = '';
 				container.classList.remove('mermaid-render-loading');
 				container.classList.add('mermaid-render-error');
-				const text = document.createElement('div');
-				text.textContent = msg;
-				container.appendChild(text);
-				addRetryButton(container, container.getAttribute('data-mermaid-source') || '');
+				
+				// Card container
+				const card = document.createElement('div');
+				card.className = 'diagram-error-card flex-col';
+				card.setAttribute('role', 'alert');
+				card.setAttribute('aria-live', 'assertive');
+
+				// Header
+				const header = document.createElement('div');
+				header.className = 'error-card-header flex-row';
+				header.style.display = 'flex';
+				header.style.alignItems = 'center';
+				header.style.gap = 'var(--spacing-xs)';
+				header.style.color = 'var(--semantic-error)';
+				
+				// Exclamation triangle SVG icon
+				header.innerHTML = `
+					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+						<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+						<line x1="12" y1="9" x2="12" y2="13"></line>
+						<line x1="12" y1="17" x2="12.01" y2="17"></line>
+					</svg>
+					<span class="error-card-title" style="font-size: var(--font-size-xs); font-weight: 700; color: var(--text-primary);">Diagram Render Failed</span>
+				`;
+
+				// Message
+				const message = document.createElement('span');
+				message.className = 'error-card-message';
+				message.style.fontSize = 'var(--font-size-xs)';
+				message.style.lineHeight = 'var(--line-height-normal)';
+				message.style.color = 'var(--text-secondary)';
+				message.style.wordBreak = 'break-word';
+				message.textContent = msg;
+
+				card.appendChild(header);
+				card.appendChild(message);
+
+				// Actions
+				const actions = document.createElement('div');
+				actions.className = 'error-card-actions flex-row';
+				actions.style.marginTop = 'var(--spacing-3xs)';
+				
+				const retryBtn = document.createElement('button');
+				retryBtn.type = 'button';
+				retryBtn.className = 'mermaid-render-btn mermaid-render-btn-small';
+				retryBtn.textContent = '↻ Retry';
+				retryBtn.onclick = (e) => {
+					e.preventDefault();
+					e.stopPropagation();
+					renderInto(container, container.getAttribute('data-mermaid-source') || '');
+				};
+				
+				actions.appendChild(retryBtn);
+				card.appendChild(actions);
+
+				container.appendChild(card);
 			}
 
 			function addRetryButton(container: HTMLElement, source: string) {
@@ -3795,18 +3843,24 @@
 					e.preventDefault();
 					e.stopPropagation();
 					if (!editor) return;
-					if (confirm('Clear all code in this block?')) {
-						const pos = getPos();
-						if (typeof pos === 'number') {
-							const node = editor.state.doc.nodeAt(pos);
-							if (node) {
-								const tr = editor.state.tr.delete(pos + 1, pos + node.nodeSize - 1);
-								editor.view.dispatch(tr);
-								editor.commands.focus();
-								appState.showToast('Code cleared', 'info');
+					appState.showConfirmation({
+						title: 'Clear code block?',
+						message: 'Clear all code in this block?',
+						confirmText: 'Clear',
+						onConfirm: () => {
+							if (!editor) return;
+							const pos = getPos();
+							if (typeof pos === 'number') {
+								const node = editor.state.doc.nodeAt(pos);
+								if (node) {
+									const tr = editor.state.tr.delete(pos + 1, pos + node.nodeSize - 1);
+									editor.view.dispatch(tr);
+									editor.commands.focus();
+									appState.showToast('Code cleared', 'info');
+								}
 							}
 						}
-					}
+					});
 				};
 
 				const copyBtn = document.createElement('button');
@@ -4839,6 +4893,21 @@
 		}
 	}
 
+	function triggerCreateNote() {
+		appState.showPrompt({
+			title: 'New Note',
+			message: 'Enter title for the new note:',
+			value: 'Untitled Note',
+			placeholder: 'Note title...',
+			onConfirm: (title) => {
+				const trimmed = title.trim();
+				if (trimmed) {
+					appState.createNote(trimmed, appState.activeNotebook);
+				}
+			}
+		});
+	}
+
 	function stripTitleH1(md: string): string {
 		const title = $activeNote?.meta.title;
 		if (!$appConfig?.hide_title_in_body || !title) {
@@ -5672,10 +5741,12 @@
 		function onClickAway(e: Event) {
 			const bar = document.querySelector('.editor-formatting-bar');
 			const exp = document.querySelector('.export-dropdown-wrap');
+			const more = document.querySelector('.more-dropdown-wrap');
 			const targetNode = e.target as Node;
 			const isInsideBar = bar && bar.contains(targetNode);
 			const isInsideExp = exp && exp.contains(targetNode);
-			if (!isInsideBar && !isInsideExp) {
+			const isInsideMore = more && more.contains(targetNode);
+			if (!isInsideBar && !isInsideExp && !isInsideMore) {
 				closeAllDropdowns();
 			}
 		}
@@ -7243,19 +7314,92 @@
 	});
 </script>
 
-<div class="editor-container" class:mobile={isMobile} class:readonly={$readOnly}>
+<div class="editor-container" class:mobile={isMobile} class:readonly={$readOnly} style="position: relative;">
+	{#if isLoadingNote}
+		<div class="editor-skeleton flex-col" style="position: absolute; inset: 0; background: var(--bg-editor, var(--bg-base)); z-index: 10; padding: var(--spacing-md); gap: var(--spacing-md); width: 100%; height: 100%; box-sizing: border-box;">
+			<!-- Toolbar Skeleton -->
+			<div class="skeleton-toolbar flex-row" style="display: flex; gap: var(--spacing-sm); padding: var(--spacing-xs) var(--spacing-sm); background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-standard); width: 100%; height: 40px; align-items: center; box-sizing: border-box;">
+				<div class="skeleton-btn-group flex-row" style="display: flex; gap: var(--spacing-2xs);">
+					<div class="skeleton-block skeleton-pulse" style="width: 28px; height: 28px; border-radius: 4px;"></div>
+					<div class="skeleton-block skeleton-pulse" style="width: 28px; height: 28px; border-radius: 4px;"></div>
+					<div class="skeleton-block skeleton-pulse" style="width: 28px; height: 28px; border-radius: 4px;"></div>
+				</div>
+				<div style="width: 1px; height: 16px; background-color: var(--border-color);"></div>
+				<div class="skeleton-btn-group flex-row" style="display: flex; gap: var(--spacing-2xs);">
+					<div class="skeleton-block skeleton-pulse" style="width: 48px; height: 28px; border-radius: 4px;"></div>
+					<div class="skeleton-block skeleton-pulse" style="width: 28px; height: 28px; border-radius: 4px;"></div>
+				</div>
+				<div style="width: 1px; height: 16px; background-color: var(--border-color);"></div>
+				<div class="skeleton-btn-group flex-row" style="display: flex; gap: var(--spacing-2xs);">
+					<div class="skeleton-block skeleton-pulse" style="width: 28px; height: 28px; border-radius: 4px;"></div>
+					<div class="skeleton-block skeleton-pulse" style="width: 28px; height: 28px; border-radius: 4px;"></div>
+				</div>
+			</div>
+			<!-- Body Skeleton -->
+			<div class="skeleton-body flex-col" style="display: flex; flex-direction: column; gap: var(--spacing-md); padding: var(--spacing-lg) var(--spacing-md) 0 var(--spacing-md); flex-grow: 1;">
+				<div class="skeleton-block skeleton-pulse" style="width: 40%; height: 28px; border-radius: 6px; margin-bottom: var(--spacing-sm);"></div>
+				<div class="skeleton-block skeleton-pulse" style="width: 90%; height: 14px; border-radius: 4px;"></div>
+				<div class="skeleton-block skeleton-pulse" style="width: 85%; height: 14px; border-radius: 4px;"></div>
+				<div class="skeleton-block skeleton-pulse" style="width: 95%; height: 14px; border-radius: 4px;"></div>
+				<div class="skeleton-block skeleton-pulse" style="width: 60%; height: 14px; border-radius: 4px; margin-bottom: var(--spacing-md);"></div>
+				
+				<div class="skeleton-block skeleton-pulse" style="width: 80%; height: 14px; border-radius: 4px;"></div>
+				<div class="skeleton-block skeleton-pulse" style="width: 85%; height: 14px; border-radius: 4px;"></div>
+				<div class="skeleton-block skeleton-pulse" style="width: 30%; height: 14px; border-radius: 4px;"></div>
+			</div>
+		</div>
+	{/if}
+
 	{#if !$activeNote}
-		<div class="empty-editor">
-			<div class="empty-icon">
-				<svg width="48" height="48" viewBox="0 0 48 48" fill="none">
-					<rect x="8" y="6" width="32" height="36" rx="4" stroke="var(--text-tertiary)" stroke-width="2" fill="none" />
-					<path d="M16 16h16M16 22h12M16 28h16M16 34h8" stroke="var(--text-tertiary)" stroke-width="1.5" stroke-linecap="round" />
+		<div class="empty-editor flex-col">
+			<!-- Glow backdrop -->
+			<div class="empty-glow"></div>
+			
+			<div class="empty-illustration-wrapper">
+				<!-- Elegant, outline-only visual illustration representing writing/documentation -->
+				<svg class="empty-visual-icon" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">
+					<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+					<polyline points="14 2 14 8 20 8"></polyline>
+					<line x1="16" y1="13" x2="8" y2="13"></line>
+					<line x1="16" y1="17" x2="8" y2="17"></line>
+					<polyline points="10 9 9 9 8 9"></polyline>
 				</svg>
 			</div>
-			<p>Select a note or create a new one</p>
-			<div class="shortcuts-hint">
-				<span><kbd>{modKey}</kbd>+<kbd>N</kbd> New note</span>
-				<span><kbd>{modKey}</kbd>+<kbd>P</kbd> Quick open</span>
+
+			<h2 class="empty-editor-title">MyNotes Workspace</h2>
+			<p class="empty-editor-subtitle">Select an existing document from the library, search using the command palette, or create a new file to get started.</p>
+
+			<div class="empty-actions flex-row" style="gap: var(--spacing-sm); margin-top: var(--spacing-xs);">
+				<button class="btn-pill btn-pill-primary flex-row" onclick={triggerCreateNote} style="gap: var(--spacing-2xs); padding: var(--spacing-xs) var(--spacing-md); cursor: pointer; border: none;">
+					<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+					<span>Create Note</span>
+				</button>
+				<button class="btn-pill btn-pill-outline flex-row" onclick={() => appState.showCommandPalette = true} style="gap: var(--spacing-2xs); padding: var(--spacing-xs) var(--spacing-md); cursor: pointer;">
+					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+					<span>Search Notes</span>
+				</button>
+			</div>
+
+			<div class="shortcuts-card flex-col">
+				<span class="shortcuts-title">Keyboard Shortcuts</span>
+				<div class="shortcuts-list flex-col">
+					<div class="shortcut-row flex-row">
+						<span class="shortcut-label">Create new note</span>
+						<div class="shortcut-keys"><kbd>{modKey}</kbd> + <kbd>N</kbd></div>
+					</div>
+					<div class="shortcut-row flex-row">
+						<span class="shortcut-label">Open search palette</span>
+						<div class="shortcut-keys"><kbd>{modKey}</kbd> + <kbd>P</kbd></div>
+					</div>
+					<div class="shortcut-row flex-row">
+						<span class="shortcut-label">Focus search input</span>
+						<div class="shortcut-keys"><kbd>{modKey}</kbd> + <kbd>K</kbd></div>
+					</div>
+					<div class="shortcut-row flex-row">
+						<span class="shortcut-label">Cycle active panels</span>
+						<div class="shortcut-keys"><kbd>F6</kbd></div>
+					</div>
+				</div>
 			</div>
 		</div>
 	{:else}
@@ -7274,6 +7418,20 @@
 					<span class="viewer-banner-toast">{viewerToast}</span>
 				{/if}
 			</div>
+		{/if}
+		{#if !$viewerNote}
+			{#if appState.saveError}
+				<div style="padding: var(--spacing-sm) var(--spacing-md) 0 var(--spacing-md);">
+					<ErrorBanner
+						title="Save Error"
+						message={appState.saveError}
+						severity="error"
+						retryAction={() => appState.saveActiveNote(true)}
+						retryLabel="Retry Save"
+						dismissAction={() => appState.saveError = null}
+					/>
+				</div>
+			{/if}
 		{/if}
 		{#if !$viewerNote && !isMobile}
 		<div class="editor-toolbar" class:mobile={isMobile}>
@@ -7418,24 +7576,28 @@
 				{/if}
 			</div>
 			{#if !isMobile}
-			<div class="toolbar-actions">
+			<!-- svelte-ignore a11y_no_noninteractive_element_to_interactive_role -->
+			<div class="toolbar-actions" role="toolbar" aria-label="Note actions" aria-orientation="horizontal">
 				{#if $canGoBack || $canGoForward}
-				<div class="nav-history-btns">
-					<button class="nav-history-btn" disabled={!$canGoBack} onclick={() => editorNavigateHistory(-1)} title="Back (Alt+←)">
+				<div class="toolbar-group nav-history-btns" role="group" aria-label="Navigation history">
+					<button type="button" class="nav-history-btn" disabled={!$canGoBack} onclick={() => editorNavigateHistory(-1)} aria-label="Go back" title="Back (Alt+←)">
 						<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
 					</button>
-					<button class="nav-history-btn" disabled={!$canGoForward} onclick={() => editorNavigateHistory(1)} title="Forward (Alt+→)">
+					<button type="button" class="nav-history-btn" disabled={!$canGoForward} onclick={() => editorNavigateHistory(1)} aria-label="Go forward" title="Forward (Alt+→)">
 						<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
 					</button>
 				</div>
+				<span class="toolbar-sep" aria-hidden="true"></span>
 				{/if}
 
-				<!-- Segmented Edit/Read Mode Control -->
-				<div class="mode-segmented-control">
+				<!-- Group: Editing Mode (Edit / Read) -->
+				<div class="mode-segmented-control" role="radiogroup" aria-label="Editing mode">
 					<button
 						type="button"
 						class="mode-segment-btn"
 						class:active={!$readOnly}
+						role="radio"
+						aria-checked={!$readOnly}
 						onclick={() => { if ($readOnly) toggleReadMode(); }}
 						title={`Edit Mode (${modKey}+Shift+R)`}
 					>
@@ -7449,6 +7611,8 @@
 						type="button"
 						class="mode-segment-btn"
 						class:active={$readOnly}
+						role="radio"
+						aria-checked={$readOnly}
 						onclick={() => { if (!$readOnly) toggleReadMode(); }}
 						title={`Read-Only Mode (${modKey}+Shift+R)`}
 					>
@@ -7460,159 +7624,188 @@
 					</button>
 				</div>
 
-				<button
-					class="icon-btn"
-					class:active={noteSearchOpen}
-					onclick={() => noteSearchOpen ? closeNoteSearch() : openNoteSearch()}
-					title={`Find in note (${modKey}+F)`}
-				>
-					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-						<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-					</svg>
-				</button>
+				<span class="toolbar-sep" aria-hidden="true"></span>
 
-				<button
-					class="icon-btn"
-					class:active={appState.favorites.includes($activeNotePath || '')}
-					onclick={() => {
-						if ($activeNotePath) {
-							appState.toggleFavorite($activeNotePath);
-						}
-					}}
-					title={appState.favorites.includes($activeNotePath || '') ? 'Remove from Favorites' : 'Add to Favorites'}
-				>
-					<svg width="16" height="16" viewBox="0 0 24 24" fill={appState.favorites.includes($activeNotePath || '') ? 'currentColor' : 'none'} stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-						<path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
-					</svg>
-				</button>
-				<button
-					class="icon-btn"
-					class:active={showOutline}
-					onclick={() => { showOutline = !showOutline; if (showOutline) updateOutline(); }}
-					title="Outline"
-				>
-					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-						<line x1="4" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="20" y2="12"/><line x1="8" y1="18" x2="20" y2="18"/><circle cx="4" cy="12" r="1" fill="currentColor"/><circle cx="4" cy="18" r="1" fill="currentColor"/>
-					</svg>
-				</button>
-
-				<!-- Desktop Download Note Button -->
-				<div class="export-dropdown-wrap">
+				<!-- Group: View (Find / Outline) -->
+				<div class="toolbar-group" role="group" aria-label="View">
 					<button
+						type="button"
 						class="icon-btn"
-						class:active={exportDropdownOpen}
-						onclick={(e) => { e.stopPropagation(); exportDropdownOpen = !exportDropdownOpen; }}
-						title="Export Note"
+						class:active={noteSearchOpen}
+						aria-label="Find in note"
+						aria-pressed={noteSearchOpen}
+						onclick={() => noteSearchOpen ? closeNoteSearch() : openNoteSearch()}
+						title={`Find in note (${modKey}+F)`}
 					>
 						<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-							<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-							<polyline points="7 10 12 15 17 10"/>
-							<line x1="12" y1="15" x2="12" y2="3"/>
+							<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
 						</svg>
 					</button>
-					{#if exportDropdownOpen}
-						<!-- svelte-ignore a11y_no_static_element_interactions -->
-						<div class="fmt-dropdown export-dropdown" onclick={(e) => e.stopPropagation()}>
-							<button onclick={exportAsHtml}>
-								<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M8 17h8"/><path d="M12 12v5"/><path d="m9 15 3 3 3-3"/></svg>
-								Download HTML (.html)
-							</button>
-							<button onclick={exportAsMarkdown}>
-								<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-								Download Markdown (.md)
-							</button>
-							<button onclick={exportAsPdf}>
-								<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><circle cx="9" cy="15" r="2"/><path d="M9 17v2h3"/></svg>
-								Export as PDF
-							</button>
-						</div>
-					{/if}
+					<button
+						type="button"
+						class="icon-btn"
+						class:active={showOutline}
+						aria-label="Document outline"
+						aria-pressed={showOutline}
+						onclick={() => { showOutline = !showOutline; if (showOutline) updateOutline(); }}
+						title="Outline"
+					>
+						<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+							<line x1="4" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="20" y2="12"/><line x1="8" y1="18" x2="20" y2="18"/><circle cx="4" cy="12" r="1" fill="currentColor"/><circle cx="4" cy="18" r="1" fill="currentColor"/>
+						</svg>
+					</button>
 				</div>
-				<button
-					class="icon-btn"
-					class:active={showHistory}
-					onclick={toggleHistory}
-					title="Version history"
-				>
-					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-						<circle cx="12" cy="12" r="10"/>
-						<polyline points="12 6 12 12 16 14"/>
-					</svg>
-				</button>
-				{#if $appConfig?.enable_wiki_links}
-				<button
-					class="icon-btn"
-					class:active={showGraph}
-					onclick={() => showGraph = !showGraph}
-					title="Graph View"
-				>
-					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-						<circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="18" r="3"/>
-						<line x1="8.5" y1="7.5" x2="15.5" y2="16.5"/><line x1="15.5" y1="7.5" x2="8.5" y2="16.5"/>
-					</svg>
-				</button>
-				{/if}
-				{#if $appConfig?.ai_provider}
-				<button
-					class="icon-btn"
-					onclick={openAiMenu}
-					title="AI Actions"
-				>
-					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-						<path d="M12 8V4l-2-2"/><rect x="4" y="8" width="16" height="12" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M9 13v2"/><path d="M15 13v2"/>
-					</svg>
-				</button>
-				{/if}
-				{#if !$readOnly}
-				<!-- Desktop Focus Mode Button -->
-				<button
-					class="icon-btn toggle-btn"
-					class:active={appState.focusModeEnabled}
-					onclick={() => appState.setFocusMode(!appState.focusModeEnabled)}
-					title="Toggle Focus Mode"
-				>
-					<svg class="focus-mode-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-						<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
-					</svg>
-				</button>
 
-				<!-- Desktop Typewriter Scroll Button -->
-				<button
-					class="icon-btn toggle-btn"
-					class:active={appState.typewriterScrollEnabled}
-					onclick={() => appState.setTypewriterScroll(!appState.typewriterScrollEnabled)}
-					title="Toggle Typewriter Scrolling"
-				>
-					<svg class="typewriter-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-						<line class="lock-line" x1="4" y1="12" x2="20" y2="12" stroke-dasharray="3,3"/>
-						<polyline class="arrow-up" points="8 7 12 3 16 7"/>
-						<polyline class="arrow-down" points="8 17 12 21 16 17"/>
-					</svg>
-				</button>
-				{/if}
+				<span class="toolbar-sep" aria-hidden="true"></span>
 
-				<!-- Desktop Delete Note Button -->
-				<button
-					class="icon-btn delete-btn"
-					onclick={handleDeleteActiveNote}
-					title="Delete Note"
-					style="color: var(--semantic-error, #ff4d4d);"
-				>
-					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-						<polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>
-					</svg>
-				</button>
+				<!-- Group: Writing Modes (Focus / Typewriter / Source) -->
+				<div class="toolbar-group" role="group" aria-label="Writing modes">
+					{#if !$readOnly}
+					<button
+						type="button"
+						class="icon-btn toggle-btn"
+						class:active={appState.focusModeEnabled}
+						aria-label="Focus mode"
+						aria-pressed={appState.focusModeEnabled}
+						onclick={() => appState.setFocusMode(!appState.focusModeEnabled)}
+						title="Toggle Focus Mode"
+					>
+						<svg class="focus-mode-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+							<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+						</svg>
+					</button>
+					<button
+						type="button"
+						class="icon-btn toggle-btn"
+						class:active={appState.typewriterScrollEnabled}
+						aria-label="Typewriter scrolling"
+						aria-pressed={appState.typewriterScrollEnabled}
+						onclick={() => appState.setTypewriterScroll(!appState.typewriterScrollEnabled)}
+						title="Toggle Typewriter Scrolling"
+					>
+						<svg class="typewriter-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+							<line class="lock-line" x1="4" y1="12" x2="20" y2="12" stroke-dasharray="3,3"/>
+							<polyline class="arrow-up" points="8 7 12 3 16 7"/>
+							<polyline class="arrow-down" points="8 17 12 21 16 17"/>
+						</svg>
+					</button>
+					{/if}
+					<button
+						type="button"
+						class="icon-btn"
+						class:active={$sourceMode}
+						aria-label="Markdown source mode"
+						aria-pressed={$sourceMode}
+						onclick={() => ($sourceMode = !$sourceMode)}
+						title="Toggle Markdown Editor"
+					>
+						<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+							<path d="M5.854 4.854a.5.5 0 10-.708-.708l-3.5 3.5a.5.5 0 000 .708l3.5 3.5a.5.5 0 00.708-.708L2.707 8l3.147-3.146zm4.292 0a.5.5 0 01.708-.708l3.5 3.5a.5.5 0 010 .708l-3.5 3.5a.5.5 0 01-.708-.708L13.293 8l-3.147-3.146z" />
+						</svg>
+					</button>
+				</div>
 
-				<button
-					class="icon-btn"
-					class:active={$sourceMode}
-					onclick={() => ($sourceMode = !$sourceMode)}
-					title="Toggle Markdown Editor"
-				>
-					<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-						<path d="M5.854 4.854a.5.5 0 10-.708-.708l-3.5 3.5a.5.5 0 000 .708l3.5 3.5a.5.5 0 00.708-.708L2.707 8l3.147-3.146zm4.292 0a.5.5 0 01.708-.708l3.5 3.5a.5.5 0 010 .708l-3.5 3.5a.5.5 0 01-.708-.708L13.293 8l-3.147-3.146z" />
-					</svg>
-				</button>
+				<span class="toolbar-sep" aria-hidden="true"></span>
+
+				<!-- Group: Document (Favorite / Export / More) -->
+				<div class="toolbar-group" role="group" aria-label="Document">
+					<button
+						type="button"
+						class="icon-btn"
+						class:active={appState.favorites.includes($activeNotePath || '')}
+						aria-label={appState.favorites.includes($activeNotePath || '') ? 'Remove from favorites' : 'Add to favorites'}
+						aria-pressed={appState.favorites.includes($activeNotePath || '')}
+						onclick={() => { if ($activeNotePath) appState.toggleFavorite($activeNotePath); }}
+						title={appState.favorites.includes($activeNotePath || '') ? 'Remove from Favorites' : 'Add to Favorites'}
+					>
+						<svg width="16" height="16" viewBox="0 0 24 24" fill={appState.favorites.includes($activeNotePath || '') ? 'currentColor' : 'none'} stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+							<path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+						</svg>
+					</button>
+
+					<!-- Export menu -->
+					<!-- svelte-ignore a11y_no_static_element_interactions -->
+					<div class="export-dropdown-wrap" onkeydown={(e) => { if (e.key === 'Escape') { exportDropdownOpen = false; } }}>
+						<button
+							type="button"
+							class="icon-btn"
+							class:active={exportDropdownOpen}
+							aria-label="Export note"
+							aria-haspopup="menu"
+							aria-expanded={exportDropdownOpen}
+							onclick={(e) => { e.stopPropagation(); moreMenuOpen = false; exportDropdownOpen = !exportDropdownOpen; }}
+							title="Export Note"
+						>
+							<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+								<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+								<polyline points="7 10 12 15 17 10"/>
+								<line x1="12" y1="15" x2="12" y2="3"/>
+							</svg>
+						</button>
+						{#if exportDropdownOpen}
+							<!-- svelte-ignore a11y_no_static_element_interactions -->
+							<div class="fmt-dropdown export-dropdown" role="menu" aria-label="Export note" onclick={(e) => e.stopPropagation()}>
+								<button type="button" role="menuitem" onclick={exportAsHtml}>
+									<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M8 17h8"/><path d="M12 12v5"/><path d="m9 15 3 3 3-3"/></svg>
+									Download HTML (.html)
+								</button>
+								<button type="button" role="menuitem" onclick={exportAsMarkdown}>
+									<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+									Download Markdown (.md)
+								</button>
+								<button type="button" role="menuitem" onclick={exportAsPdf}>
+									<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><circle cx="9" cy="15" r="2"/><path d="M9 17v2h3"/></svg>
+									Export as PDF
+								</button>
+							</div>
+						{/if}
+					</div>
+
+					<!-- Overflow "More" menu (secondary actions) -->
+					<!-- svelte-ignore a11y_no_static_element_interactions -->
+					<div class="more-dropdown-wrap" onkeydown={(e) => { if (e.key === 'Escape') { moreMenuOpen = false; } }}>
+						<button
+							type="button"
+							class="icon-btn"
+							class:active={moreMenuOpen}
+							aria-label="More actions"
+							aria-haspopup="menu"
+							aria-expanded={moreMenuOpen}
+							onclick={(e) => { e.stopPropagation(); exportDropdownOpen = false; moreMenuOpen = !moreMenuOpen; }}
+							title="More actions"
+						>
+							<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+								<circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/>
+							</svg>
+						</button>
+						{#if moreMenuOpen}
+							<!-- svelte-ignore a11y_no_static_element_interactions -->
+							<div class="fmt-dropdown more-dropdown" role="menu" aria-label="More actions" onclick={(e) => e.stopPropagation()}>
+								<button type="button" role="menuitem" class:active={showHistory} onclick={() => { moreMenuOpen = false; toggleHistory(); }}>
+									<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+									Version history
+								</button>
+								{#if $appConfig?.enable_wiki_links}
+								<button type="button" role="menuitem" class:active={showGraph} onclick={() => { moreMenuOpen = false; showGraph = !showGraph; }}>
+									<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="18" r="3"/><line x1="8.5" y1="7.5" x2="15.5" y2="16.5"/><line x1="15.5" y1="7.5" x2="8.5" y2="16.5"/></svg>
+									Graph view
+								</button>
+								{/if}
+								{#if $appConfig?.ai_provider}
+								<button type="button" role="menuitem" onclick={() => { moreMenuOpen = false; openAiMenu(); }}>
+									<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4l-2-2"/><rect x="4" y="8" width="16" height="12" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M9 13v2"/><path d="M15 13v2"/></svg>
+									AI actions
+								</button>
+								{/if}
+								<div class="more-dropdown-sep" role="separator"></div>
+								<button type="button" role="menuitem" class="danger" onclick={() => { moreMenuOpen = false; handleDeleteActiveNote(); }}>
+									<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+									Delete note
+								</button>
+							</div>
+						{/if}
+					</div>
+				</div>
 			</div>
 			{/if}
 		</div>
@@ -9821,37 +10014,157 @@
 	}
 
 	.empty-editor {
+		position: relative;
 		display: flex;
 		flex-direction: column;
 		align-items: center;
 		justify-content: center;
 		height: 100%;
-		color: var(--text-tertiary);
-		gap: 12px;
+		width: 100%;
+		padding: var(--spacing-xl) var(--spacing-lg);
+		box-sizing: border-box;
+		color: var(--text-secondary);
+		gap: var(--spacing-md);
+		overflow-y: auto;
+		text-align: center;
 	}
 
-	.empty-icon {
-		opacity: 0.5;
+	.empty-glow {
+		position: absolute;
+		width: 250px;
+		height: 250px;
+		border-radius: 50%;
+		background: radial-gradient(circle, color-mix(in srgb, var(--accent) 15%, transparent) 0%, transparent 70%);
+		top: 30%;
+		left: 50%;
+		transform: translate(-50%, -50%);
+		pointer-events: none;
+		z-index: 0;
 	}
 
-	.empty-editor p {
-		font-size: 14px;
-	}
-
-	.shortcuts-hint {
+	.empty-illustration-wrapper {
+		position: relative;
 		display: flex;
-		gap: 16px;
-		font-size: 12px;
-		margin-top: 8px;
+		align-items: center;
+		justify-content: center;
+		width: 100px;
+		height: 100px;
+		border-radius: 50%;
+		background: color-mix(in srgb, var(--text-primary) 3%, transparent);
+		border: 1px solid color-mix(in srgb, var(--text-primary) 5%, transparent);
+		margin-bottom: var(--spacing-xs);
+		z-index: 1;
+		transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.3s;
 	}
 
-	.shortcuts-hint kbd {
-		background: var(--bg-tertiary);
+	.empty-illustration-wrapper:hover {
+		transform: scale(1.05) translateY(-4px);
+		border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+		box-shadow: 0 8px 24px color-mix(in srgb, var(--accent) 8%, transparent);
+	}
+
+	.empty-visual-icon {
+		filter: drop-shadow(0 4px 12px color-mix(in srgb, var(--accent) 20%, transparent));
+		animation: empty-float 4s ease-in-out infinite;
+	}
+
+	@keyframes empty-float {
+		0%, 100% {
+			transform: translateY(0);
+		}
+		50% {
+			transform: translateY(-6px);
+		}
+	}
+
+	.empty-editor-title {
+		font-size: var(--font-size-xl);
+		font-weight: 800;
+		color: var(--text-primary);
+		margin: 0;
+		letter-spacing: -0.5px;
+		z-index: 1;
+	}
+
+	.empty-editor-subtitle {
+		font-size: var(--font-size-sm);
+		color: var(--text-tertiary);
+		max-width: 480px;
+		line-height: 1.6;
+		margin: 0 0 var(--spacing-xs) 0;
+		z-index: 1;
+	}
+
+	.empty-actions {
+		display: flex;
+		gap: var(--spacing-sm);
+		z-index: 1;
+	}
+
+	.shortcuts-card {
+		display: flex;
+		flex-direction: column;
+		background: color-mix(in srgb, var(--bg-surface) 60%, transparent);
 		border: 1px solid var(--border-color);
-		border-radius: 3px;
-		padding: 1px 5px;
-		font-size: 11px;
-		font-family: inherit;
+		backdrop-filter: blur(8px);
+		border-radius: var(--radius-comfortable, 8px);
+		padding: var(--spacing-md);
+		width: 100%;
+		max-width: 320px;
+		margin-top: var(--spacing-lg);
+		gap: var(--spacing-xs);
+		box-shadow: var(--shadow-subtle, 0 4px 12px rgba(0,0,0,0.1));
+		z-index: 1;
+		transition: border-color 0.2s;
+	}
+
+	.shortcuts-card:hover {
+		border-color: color-mix(in srgb, var(--text-primary) 12%, transparent);
+	}
+
+	.shortcuts-title {
+		font-size: var(--font-size-xs);
+		font-weight: 700;
+		color: var(--text-secondary);
+		text-transform: uppercase;
+		letter-spacing: 0.5px;
+		text-align: left;
+	}
+
+	.shortcuts-list {
+		display: flex;
+		flex-direction: column;
+		gap: var(--spacing-xs);
+	}
+
+	.shortcut-row {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		gap: var(--spacing-md);
+	}
+
+	.shortcut-label {
+		font-size: var(--font-size-xs);
+		color: var(--text-tertiary);
+		text-align: left;
+	}
+
+	.shortcut-keys {
+		display: flex;
+		gap: var(--spacing-3xs);
+		align-items: center;
+	}
+
+	.shortcut-keys kbd {
+		background: var(--bg-mid-dark, rgba(255, 255, 255, 0.05));
+		border: 1px solid var(--border-color);
+		border-radius: var(--radius-subtle, 4px);
+		padding: var(--spacing-3xs) var(--spacing-2xs);
+		font-size: 10px;
+		font-family: var(--font-mono, monospace);
+		color: var(--text-secondary);
+		box-shadow: 0 1px 0 var(--border-color);
 	}
 
 	.editor-toolbar {
@@ -10226,6 +10539,59 @@
 		display: flex;
 		align-items: center;
 		gap: 8px;
+	}
+
+	/* UI-D-023: grouped, overflow-aware desktop toolbar chrome */
+	.toolbar-group {
+		display: flex;
+		align-items: center;
+		gap: 2px;
+		flex-shrink: 0;
+	}
+
+	.toolbar-sep {
+		width: 1px;
+		height: 18px;
+		background: var(--border-color);
+		flex-shrink: 0;
+		opacity: 0.7;
+	}
+
+	.more-dropdown-wrap {
+		position: relative;
+	}
+
+	.more-dropdown {
+		top: calc(100% + 4px) !important;
+		bottom: auto !important;
+		right: 0 !important;
+		left: auto !important;
+		min-width: 180px;
+	}
+
+	.more-dropdown button {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+
+	.more-dropdown button.active {
+		color: var(--text-accent);
+		background: var(--accent-light);
+	}
+
+	.more-dropdown button.danger {
+		color: var(--semantic-error, #ff4d4d);
+	}
+
+	.more-dropdown button.danger:hover {
+		background: color-mix(in srgb, var(--semantic-error, #ff4d4d) 14%, transparent);
+	}
+
+	.more-dropdown-sep {
+		height: 1px;
+		background: var(--border-color);
+		margin: 4px 0;
 	}
 
 	.save-indicator {
@@ -12297,6 +12663,23 @@
 		margin: 0;
 	}
 
+	/* UI-M-006: On mobile, let tables size to their content and scroll
+	   horizontally inside the wrapper instead of squishing columns. */
+	@media (max-width: 768px) {
+		:global(.tiptap-wrapper .tiptap .tableWrapper) {
+			-webkit-overflow-scrolling: touch;
+		}
+		:global(.tiptap-wrapper .tiptap table) {
+			table-layout: auto;
+			width: max-content;
+			min-width: 100%;
+		}
+		:global(.tiptap-wrapper .tiptap td),
+		:global(.tiptap-wrapper .tiptap th) {
+			min-width: 120px;
+		}
+	}
+
 	:global(.tiptap-wrapper .tiptap .selectedCell::after) {
 		content: "";
 		position: absolute;
@@ -12872,8 +13255,20 @@
 		font-size: 13px;
 	}
 	:global(.tiptap .mermaid-render-error) {
-		color: var(--text-secondary);
-		font-size: 13px;
+		width: 100%;
+		box-sizing: border-box;
+	}
+	:global(.tiptap .diagram-error-card) {
+		display: flex;
+		flex-direction: column;
+		background: color-mix(in srgb, var(--semantic-error) 8%, var(--bg-surface));
+		border: 1px solid color-mix(in srgb, var(--semantic-error) 15%, var(--border-color));
+		border-radius: var(--radius-standard);
+		padding: var(--spacing-sm) var(--spacing-md);
+		gap: var(--spacing-xs);
+		box-sizing: border-box;
+		align-items: flex-start;
+		margin: var(--spacing-xs) 0;
 	}
 	:global(.tiptap .mermaid-render-btn) {
 		appearance: none;
@@ -13807,6 +14202,11 @@
 		gap: 1px;
 		background: var(--bg-surface) !important;
 		border-top: 1px solid var(--border-color);
+		/* UI-M-012: keep the keyboard-anchored bar scrolling horizontally only and
+		   prevent the scroll from chaining into the page/editor body. */
+		touch-action: pan-x;
+		overscroll-behavior-x: contain;
+		scroll-snap-type: x proximity;
 	}
 
 	.editor-container.mobile .editor-formatting-bar::-webkit-scrollbar {

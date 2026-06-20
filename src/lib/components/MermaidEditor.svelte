@@ -145,9 +145,13 @@
 
 	function handleCancel() {
 		if (isDirty) {
-			if (!confirm('Are you sure you want to discard unsaved changes?')) {
-				return;
-			}
+			appState.showConfirmation({
+				title: 'Discard changes?',
+				message: 'Are you sure you want to discard unsaved changes?',
+				confirmText: 'Discard',
+				onConfirm: () => onCancel()
+			});
+			return;
 		}
 		onCancel();
 	}
