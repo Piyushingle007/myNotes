@@ -16,6 +16,7 @@
 	let rows: Array<{ id: string; checked: boolean; label: string; tagIds?: string[] }> = $state([]);
 	let showSettings = $state(false);
 	let editingRowIndex = $state<number | null>(null);
+	let lastRowEditTime = 0;
 	let isInsertingDate = false;
 	let activeTagPickerRowId = $state<string | null>(null);
 	// MB-005: fixed-position coordinates for the tag picker so it escapes the scroll container
@@ -619,6 +620,10 @@
 	// scrollable card body and auto-flip above the button when near the viewport bottom.
 	function toggleTagPicker(event: MouseEvent | TouchEvent, rowId: string) {
 		event.stopPropagation();
+		// Prevent ghost clicks / accidental taps immediately after entering edit mode
+		if (Date.now() - lastRowEditTime < 300) {
+			return;
+		}
 		if (activeTagPickerRowId === rowId) {
 			activeTagPickerRowId = null;
 			tagPickerCoords = null;
@@ -1214,7 +1219,6 @@
 			onclick={(e) => e.stopPropagation()}
 			ontouchstart={(e) => e.stopPropagation()}
 			ontouchend={(e) => e.stopPropagation()}
-			onpointerdown={(e) => e.stopPropagation()}
 		>
 			{#each visible as t}
 				<span
@@ -1298,6 +1302,12 @@
 				ondragleave={handleDragLeave}
 				ondrop={(e) => handleDrop(e, index)}
 				ondragend={handleDragEnd}
+				onfocusin={() => {
+					if (editingRowIndex !== index) {
+						editingRowIndex = index;
+						lastRowEditTime = Date.now();
+					}
+				}}
 				onfocusout={(e) => {
 					if (isInsertingDate) {
 						isInsertingDate = false;
@@ -1358,10 +1368,15 @@
 									class="metrics-row-tag-dropdown-btn flex-row"
 									class:has-tags={rowTags.length > 0}
 									onmousedown={(e) => { e.preventDefault(); e.stopPropagation(); }}
-									ontouchstart={(e) => { e.stopPropagation(); }}
-									ontouchend={(e) => { e.stopPropagation(); }}
-									onpointerdown={(e) => { e.stopPropagation(); }}
-									onclick={(e) => toggleTagPicker(e, row.id)}
+									ontouchstart={(e) => { 
+										e.preventDefault(); 
+										e.stopPropagation(); 
+										toggleTagPicker(e, row.id); 
+									}}
+									onclick={(e) => {
+										e.stopPropagation();
+										toggleTagPicker(e, row.id);
+									}}
 									title="Categorize row"
 								>
 									{#if rowTags.length === 0}
@@ -1394,8 +1409,6 @@
 											activeTagPickerRowId = null;
 											tagPickerCoords = null;
 										}}
-										ontouchend={(e) => { e.preventDefault(); e.stopPropagation(); }}
-										onpointerdown={(e) => { e.preventDefault(); e.stopPropagation(); }}
 										onclick={(e) => {
 											e.stopPropagation();
 											activeTagPickerRowId = null;
@@ -1412,7 +1425,6 @@
 										onclick={(e) => e.stopPropagation()}
 										ontouchstart={(e) => e.stopPropagation()}
 										ontouchend={(e) => e.stopPropagation()}
-										onpointerdown={(e) => e.stopPropagation()}
 									>
 										<div class="tag-picker-header flex-row">
 											<span class="tag-picker-header-title">Categorize</span>
@@ -1506,6 +1518,7 @@
 									class="row-label-input preview-mode"
 									onclick={() => {
 										editingRowIndex = index;
+										lastRowEditTime = Date.now();
 									}}
 									title="Click to edit"
 								>
