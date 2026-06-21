@@ -284,6 +284,22 @@ Improve the mobile experience (< 600px breakpoint) for the MetricsBlock.
 
 ---
 
+### Story MB-013 — Mobile Keyboard Suppression in Tag Picker
+**Priority**: High | **Theme**: D (Mobile)
+
+Prevent the mobile virtual keyboard from popping up when opening, selecting, or interacting with the row tag picker.
+
+**Scope**: [MetricsBlock.svelte](file:///Volumes/SSD%20SN770/piyush/Documents/notes%20app/myNotes/src/lib/components/MetricsBlock.svelte) (toggleTagPicker, tag picker markup, backdrop, and buttons)
+
+**Acceptance Criteria**:
+- [ ] Tapping the tag dropdown button on mobile blurs any active editor or input immediately, dismissing the virtual keyboard.
+- [ ] Disabled `autofocus` on the search input when on mobile view.
+- [ ] Stopping propagation of touch and pointer events (`touchstart`, `touchend`, `pointerdown`, `pointerup`) on the tag picker menu, backdrop, and list items to prevent ProseMirror from auto-focusing the editor.
+- [ ] Selecting/deselecting tags in the list toggles the category status without focusing any inputs or triggering the keyboard.
+- [ ] Dismissing the picker via backdrop or Done button closes the dropdown without triggering the keyboard.
+
+---
+
 ## Implementation Priority Order
 
 | Phase | Stories | Rationale |

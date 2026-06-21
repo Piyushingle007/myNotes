@@ -617,12 +617,15 @@
 
 	// MB-005: open the row tag picker, computing fixed coordinates that escape the
 	// scrollable card body and auto-flip above the button when near the viewport bottom.
-	function toggleTagPicker(event: MouseEvent, rowId: string) {
+	function toggleTagPicker(event: MouseEvent | TouchEvent, rowId: string) {
 		event.stopPropagation();
 		if (activeTagPickerRowId === rowId) {
 			activeTagPickerRowId = null;
 			tagPickerCoords = null;
 			return;
+		}
+		if (isMobile && typeof document !== 'undefined') {
+			(document.activeElement as HTMLElement)?.blur();
 		}
 		tagPickerSearch = '';
 		const btn = event.currentTarget as HTMLElement;
@@ -1204,7 +1207,15 @@
 		{@const isExpanded = expandedTagRows.includes(rowId)}
 		{@const visible = isExpanded ? tags : tags.slice(0, MAX_VISIBLE_ROW_TAGS)}
 		{@const hiddenCount = tags.length - visible.length}
-		<span class="metrics-row-tags" class:is-inline={inline}>
+		<span 
+			class="metrics-row-tags" 
+			class:is-inline={inline}
+			onmousedown={(e) => e.stopPropagation()}
+			onclick={(e) => e.stopPropagation()}
+			ontouchstart={(e) => e.stopPropagation()}
+			ontouchend={(e) => e.stopPropagation()}
+			onpointerdown={(e) => e.stopPropagation()}
+		>
 			{#each visible as t}
 				<span
 					class="metrics-row-tag-pill"
@@ -1347,6 +1358,9 @@
 									class="metrics-row-tag-dropdown-btn flex-row"
 									class:has-tags={rowTags.length > 0}
 									onmousedown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+									ontouchstart={(e) => { e.stopPropagation(); }}
+									ontouchend={(e) => { e.stopPropagation(); }}
+									onpointerdown={(e) => { e.stopPropagation(); }}
 									onclick={(e) => toggleTagPicker(e, row.id)}
 									title="Categorize row"
 								>
@@ -1374,6 +1388,14 @@
 									<div 
 										class="tag-picker-backdrop"
 										onmousedown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+										ontouchstart={(e) => { 
+											e.preventDefault(); 
+											e.stopPropagation(); 
+											activeTagPickerRowId = null;
+											tagPickerCoords = null;
+										}}
+										ontouchend={(e) => { e.preventDefault(); e.stopPropagation(); }}
+										onpointerdown={(e) => { e.preventDefault(); e.stopPropagation(); }}
 										onclick={(e) => {
 											e.stopPropagation();
 											activeTagPickerRowId = null;
@@ -1388,6 +1410,9 @@
 										style={isMobile || !tagPickerCoords ? '' : `left: ${tagPickerCoords.left}px; ${tagPickerCoords.flip ? `bottom: ${window.innerHeight - tagPickerCoords.top}px;` : `top: ${tagPickerCoords.top + 4}px;`}`}
 										onmousedown={(e) => e.stopPropagation()}
 										onclick={(e) => e.stopPropagation()}
+										ontouchstart={(e) => e.stopPropagation()}
+										ontouchend={(e) => e.stopPropagation()}
+										onpointerdown={(e) => e.stopPropagation()}
 									>
 										<div class="tag-picker-header flex-row">
 											<span class="tag-picker-header-title">Categorize</span>
@@ -1402,7 +1427,7 @@
 													class="tag-picker-search-input"
 													placeholder="Search categories..."
 													bind:value={tagPickerSearch}
-													autofocus
+													autofocus={!isMobile}
 													onkeydown={(e) => {
 														if (e.key === 'Enter') {
 															e.preventDefault();
