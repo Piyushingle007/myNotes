@@ -300,6 +300,21 @@ Prevent the mobile virtual keyboard from popping up when opening, selecting, or 
 
 ---
 
+### Story MB-014 — Calculation Box Row Padding & Spacing Polish
+**Priority**: Medium | **Theme**: A (Layout)
+
+Improve vertical spacing, margins, and padding in the Calculation Box row layout to prevent overlapping tags and provide consistent breathing room between elements.
+
+**Scope**: [MetricsBlock.svelte](file:///Volumes/SSD%20SN770/piyush/Documents/notes%20app/myNotes/src/lib/components/MetricsBlock.svelte) (CSS styles for metrics-card-row, metrics-card-body, row-content-stack, row-tags-line)
+
+**Acceptance Criteria**:
+- [ ] Increased gap between row text and tag pills within the row stack to prevent crowding.
+- [ ] Increased bottom padding and min-height on rows to ensure tag lines are fully contained within the row bounds.
+- [ ] Increased gap between rows in the card body to prevent tags in one row from overlapping text in the next row.
+- [ ] Confirmed clean visual alignment and spacing on mobile viewports.
+
+---
+
 ## Implementation Priority Order
 
 | Phase | Stories | Rationale |
