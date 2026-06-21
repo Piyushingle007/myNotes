@@ -2183,10 +2183,10 @@
 	}
 
 	.metrics-card-body {
-		padding: 12px 8px;
+		padding: var(--spacing-sm) var(--spacing-xs);
 		display: flex;
 		flex-direction: column;
-		gap: 4px;
+		gap: var(--spacing-xs);
 		max-height: 400px;
 		overflow-y: auto;
 	}
@@ -2203,11 +2203,11 @@
 		display: flex;
 		align-items: flex-start;
 		gap: var(--spacing-xs);
-		padding: var(--spacing-2xs) var(--spacing-xs);
+		padding: var(--spacing-xs) var(--spacing-xs);
 		border-radius: var(--radius-standard);
 		transition: background-color 0.15s;
 		box-sizing: border-box;
-		min-height: 36px;
+		min-height: 40px;
 	}
 
 	.metrics-card-row:hover {
@@ -2290,7 +2290,7 @@
 	.row-content-stack {
 		display: flex;
 		flex-direction: column;
-		gap: var(--spacing-2xs);
+		gap: 6px;
 		flex: 1;
 		min-width: 0;
 		width: 100%;
@@ -2300,8 +2300,9 @@
 		display: flex;
 		flex-wrap: wrap;
 		align-items: center;
-		gap: var(--spacing-3xs);
+		gap: 6px;
 		min-width: 0;
+		padding-top: 2px;
 	}
 
 	.row-label-input.preview-mode {
@@ -2755,7 +2756,8 @@
 		}
 		.metrics-card-row {
 			gap: var(--spacing-2xs);
-			padding: var(--spacing-2xs);
+			padding: var(--spacing-xs) var(--spacing-2xs);
+			min-height: 40px;
 		}
 		.row-label-input {
 			font-size: 12px;
