@@ -13,7 +13,7 @@
 	let { nodeStore, getPos, editor, updateAttributes }: Props = $props();
 
 	// Local reactive state for rows
-	let rows: Array<{ id: string; checked: boolean; label: string; tagId?: string }> = $state([]);
+	let rows: Array<{ id: string; checked: boolean; label: string; tagIds?: string[] }> = $state([]);
 	let showSettings = $state(false);
 	let editingRowIndex = $state<number | null>(null);
 	let isInsertingDate = false;
@@ -22,6 +22,8 @@
 	let tagPickerCoords = $state<{ left: number; top: number; flip: boolean; width: number } | null>(null);
 	// MB-010: search/filter term for the tag picker dropdown
 	let tagPickerSearch = $state('');
+	// MT-005: maximum tag pills shown inline before collapsing into a "+N" overflow pill
+	const MAX_VISIBLE_ROW_TAGS = 2;
 
 	// Redesign: Tabbed settings dropdown menu state
 	let activeSettingsTab = $state<'options' | 'categories'>('options');
@@ -251,20 +253,24 @@
 		try {
 			const parsed = JSON.parse(dataStr);
 			const migrated = parsed.map((r: any) => {
+				// MT-001: normalize tags to an array (legacy rows carry a single `tagId`)
+				const tagIds: string[] = Array.isArray(r.tagIds)
+					? r.tagIds.filter((id: any) => typeof id === 'string')
+					: (r.tagId ? [r.tagId] : []);
 				// Migrate legacy rows that have a separate value column
 				if (r.value !== undefined && r.value !== null && String(r.value).trim() !== '') {
 					return {
 						id: r.id,
 						checked: !!r.checked,
 						label: (r.label || '').trim() + ' ' + String(r.value).trim(),
-						tagId: r.tagId
+						tagIds
 					};
 				}
 				return {
 					id: r.id,
 					checked: !!r.checked,
 					label: r.label || '',
-					tagId: r.tagId
+					tagIds
 				};
 			});
 
@@ -383,14 +389,17 @@
 		const totalsMap = new Map<string, number>();
 		let untaggedTotal = 0;
 
-		activeRows.forEach((r: { id: string; checked: boolean; label: string; tagId?: string }) => {
+		activeRows.forEach((r: { id: string; checked: boolean; label: string; tagIds?: string[] }) => {
 			const numbers = getRowNumbers(r.label);
 			if (numbers.length === 0) return;
 			const total = numbers.reduce((sum, n) => sum + n, 0);
-			
-			if (r.tagId) {
-				const current = totalsMap.get(r.tagId) || 0;
-				totalsMap.set(r.tagId, current + total);
+
+			const ids = getRowTagIds(r);
+			if (ids.length > 0) {
+				// MT-002: a row contributes its total to every category it belongs to
+				ids.forEach((tagId) => {
+					totalsMap.set(tagId, (totalsMap.get(tagId) || 0) + total);
+				});
 			} else {
 				untaggedTotal += total;
 			}
@@ -491,6 +500,36 @@
 
 	function saveRows() {
 		updateAttributes({ data: JSON.stringify(rows) });
+	}
+
+	// MT-001/MT-003: multi-tag helpers
+	function getRowTagIds(row: any): string[] {
+		return Array.isArray(row?.tagIds) ? row.tagIds : (row?.tagId ? [row.tagId] : []);
+	}
+
+	function getRowTags(row: any) {
+		return getRowTagIds(row)
+			.map((id) => appState.calcTags.find((t) => t.id === id))
+			.filter((t): t is NonNullable<typeof t> => !!t);
+	}
+
+	function rowHasTag(row: any, tagId: string): boolean {
+		return getRowTagIds(row).includes(tagId);
+	}
+
+	function toggleRowTag(row: any, tagId: string) {
+		const ids = getRowTagIds(row);
+		if (ids.includes(tagId)) {
+			row.tagIds = ids.filter((id) => id !== tagId);
+		} else {
+			row.tagIds = [...ids, tagId];
+		}
+		saveRows();
+	}
+
+	function clearRowTags(row: any) {
+		row.tagIds = [];
+		saveRows();
 	}
 
 	function addRow() {
@@ -1148,6 +1187,28 @@
 		{/if}
 	</div>
 	
+	<!-- MT-005: reusable multi-tag pill renderer with "+N" overflow -->
+	{#snippet tagPills(tags: any[], inline: boolean)}
+		{@const visible = tags.slice(0, MAX_VISIBLE_ROW_TAGS)}
+		{@const hidden = tags.slice(MAX_VISIBLE_ROW_TAGS)}
+		<span class="metrics-row-tags" class:is-inline={inline}>
+			{#each visible as t}
+				<span
+					class="metrics-row-tag-pill"
+					style="background: color-mix(in srgb, {t.color || 'var(--text-tertiary)'} 11%, transparent); border-color: color-mix(in srgb, {t.color || 'var(--text-tertiary)'} 27%, transparent); color: {t.color || 'var(--text-secondary)'};"
+					title={t.enabled ? t.name : `${t.name} (Disabled)`}
+				>
+					{t.name}
+				</span>
+			{/each}
+			{#if hidden.length > 0}
+				<span class="metrics-row-tag-pill metrics-row-tag-overflow" title={hidden.map((t) => t.name).join(', ')}>
+					+{hidden.length}
+				</span>
+			{/if}
+		</span>
+	{/snippet}
+
 	<!-- Income Row -->
 	{#if showIncome}
 		<div class="metrics-income-row flex-row">
@@ -1184,7 +1245,7 @@
 		{#each rows as row, index (row.id)}
 			{@const numbers = getRowNumbers(row.label)}
 			{@const total = numbers.reduce((sum, n) => sum + n, 0)}
-			{@const rowTag = appState.calcTags.find(t => t.id === row.tagId)}
+			{@const rowTags = getRowTags(row)}
 			<div
 				class="metrics-card-row flex-row"
 				class:dragging={draggingIndex === index}
@@ -1249,28 +1310,35 @@
 								use:focusOnMount
 							></div>
 							
-							<!-- Custom Row tag picker dropdown -->
+							<!-- Custom Row tag picker dropdown (multi-select) -->
 							<div class="metrics-row-tag-dropdown-container">
 								<button
 									type="button"
 									class="metrics-row-tag-dropdown-btn flex-row"
-									style="border-color: {rowTag ? (rowTag.color || 'var(--border-color)') : 'var(--border-color)'}"
+									class:has-tags={rowTags.length > 0}
 									onmousedown={(e) => { e.preventDefault(); e.stopPropagation(); }}
 									onclick={(e) => toggleTagPicker(e, row.id)}
 									title="Categorize row"
 								>
-									{#if rowTag}
-										<span class="tag-dot" style="background: {rowTag.color || 'var(--text-secondary)'};"></span>
-										<span class="tag-name-text">{rowTag.name}</span>
-									{:else}
+									{#if rowTags.length === 0}
 										<span class="tag-name-text">No Tag</span>
+									{:else if rowTags.length === 1}
+										<span class="tag-dot" style="background: {rowTags[0].color || 'var(--text-secondary)'};"></span>
+										<span class="tag-name-text">{rowTags[0].name}</span>
+									{:else}
+										<span class="tag-dot-stack">
+											{#each rowTags.slice(0, 3) as t}
+												<span class="tag-dot tag-dot-stacked" style="background: {t.color || 'var(--text-secondary)'};"></span>
+											{/each}
+										</span>
+										<span class="tag-name-text">{rowTags.length} tags</span>
 									{/if}
 									<span class="dropdown-chevron"><ChevronDown size={12} /></span>
 								</button>
 
 								{#if activeTagPickerRowId === row.id}
-									{@const pickerTags = appState.calcTags.filter(t => (t.enabled || t.id === row.tagId) && (!tagPickerSearch.trim() || t.name.toLowerCase().includes(tagPickerSearch.trim().toLowerCase())))}
-									{@const showSearch = appState.calcTags.filter(t => t.enabled || t.id === row.tagId).length > 5}
+									{@const pickerTags = appState.calcTags.filter(t => (t.enabled || rowHasTag(row, t.id)) && (!tagPickerSearch.trim() || t.name.toLowerCase().includes(tagPickerSearch.trim().toLowerCase())))}
+									{@const showSearch = appState.calcTags.filter(t => t.enabled || rowHasTag(row, t.id)).length > 5}
 									<!-- Click-away backdrop overlay -->
 									<!-- svelte-ignore a11y_no_static_element_interactions -->
 									<div 
@@ -1291,6 +1359,10 @@
 										onmousedown={(e) => e.stopPropagation()}
 										onclick={(e) => e.stopPropagation()}
 									>
+										<div class="tag-picker-header flex-row">
+											<span class="tag-picker-header-title">Categorize</span>
+											<span class="tag-picker-header-count">{getRowTagIds(row).length} selected</span>
+										</div>
 										{#if showSearch}
 											<div class="tag-picker-search flex-row">
 												<Search size={12} />
@@ -1306,10 +1378,7 @@
 															e.preventDefault();
 															const first = pickerTags[0];
 															if (first) {
-																row.tagId = first.id;
-																saveRows();
-																activeTagPickerRowId = null;
-																tagPickerCoords = null;
+																toggleRowTag(row, first.id);
 															}
 														} else if (e.key === 'Escape') {
 															activeTagPickerRowId = null;
@@ -1322,38 +1391,42 @@
 										<div class="tag-picker-list flex-col">
 											<button
 												type="button"
-												class="tag-dropdown-item flex-row"
-												class:selected={!row.tagId}
+												class="tag-dropdown-item tag-dropdown-clear flex-row"
+												disabled={getRowTagIds(row).length === 0}
 												onmousedown={(e) => e.preventDefault()}
-												onclick={() => {
-													row.tagId = undefined;
-													saveRows();
-													activeTagPickerRowId = null;
-													tagPickerCoords = null;
-												}}
+												onclick={() => clearRowTags(row)}
 											>
-												No Tag
+												<X size={12} />
+												<span>Clear tags</span>
 											</button>
 											{#each pickerTags as tag}
+												{@const isSel = rowHasTag(row, tag.id)}
 												<button
 													type="button"
-													class="tag-dropdown-item flex-row"
-													class:selected={row.tagId === tag.id}
+													class="tag-dropdown-item tag-dropdown-toggle flex-row"
+													class:selected={isSel}
 													onmousedown={(e) => e.preventDefault()}
-													onclick={() => {
-														row.tagId = tag.id;
-														saveRows();
-														activeTagPickerRowId = null;
-														tagPickerCoords = null;
-													}}
+													onclick={() => toggleRowTag(row, tag.id)}
 												>
+													<span class="tag-dropdown-check" class:checked={isSel}></span>
 													<span class="tag-dot" style="background: {tag.color || 'var(--text-secondary)'};"></span>
-													<span>{tag.name}</span>
+													<span class="tag-dropdown-name">{tag.name}</span>
+													{#if !tag.enabled}
+														<span class="tag-dropdown-disabled">disabled</span>
+													{/if}
 												</button>
 											{:else}
 												<span class="tag-picker-empty">No matches</span>
 											{/each}
 										</div>
+										<button
+											type="button"
+											class="tag-picker-done"
+											onmousedown={(e) => e.preventDefault()}
+											onclick={() => { activeTagPickerRowId = null; tagPickerCoords = null; }}
+										>
+											Done
+										</button>
 									</div>
 								{/if}
 							</div>
@@ -1387,14 +1460,8 @@
 								{/if}
 							</div>
 
-							{#if rowTag}
-								<span 
-									class="metrics-row-tag-pill" 
-									style="background: color-mix(in srgb, {rowTag.color || 'var(--text-tertiary)'} 11%, transparent); border-color: color-mix(in srgb, {rowTag.color || 'var(--text-tertiary)'} 27%, transparent); color: {rowTag.color || 'var(--text-secondary)'};"
-									title={rowTag.enabled ? rowTag.name : `${rowTag.name} (Disabled)`}
-								>
-									{rowTag.name}
-								</span>
+							{#if rowTags.length > 0}
+								{@render tagPills(rowTags, false)}
 							{/if}
 						{/if}
 					</div>
@@ -1406,14 +1473,8 @@
 							{@html renderFormattedLabel(row.label)}
 						{/if}
 						
-						{#if rowTag}
-							<span 
-								class="metrics-row-tag-pill metrics-row-tag-pill-inline"
-								style="background: color-mix(in srgb, {rowTag.color || 'var(--text-tertiary)'} 11%, transparent); border-color: color-mix(in srgb, {rowTag.color || 'var(--text-tertiary)'} 27%, transparent); color: {rowTag.color || 'var(--text-secondary)'};"
-								title={rowTag.enabled ? rowTag.name : `${rowTag.name} (Disabled)`}
-							>
-								{rowTag.name}
-							</span>
+						{#if rowTags.length > 0}
+							{@render tagPills(rowTags, true)}
 						{/if}
 					</div>
 				{/if}
@@ -2212,10 +2273,25 @@
 		flex-shrink: 0;
 	}
 
-	.metrics-row-tag-pill-inline {
-		display: inline-block;
+	/* MT-005: multi-tag pill container + overflow */
+	.metrics-row-tags {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--spacing-3xs);
+		flex-shrink: 0;
+		max-width: 100%;
+	}
+
+	.metrics-row-tags.is-inline {
 		vertical-align: middle;
 		margin-left: var(--spacing-2xs);
+	}
+
+	.metrics-row-tag-overflow {
+		background: color-mix(in srgb, var(--text-primary) 8%, transparent);
+		border-color: var(--border-color);
+		color: var(--text-secondary);
+		cursor: default;
 	}
 
 	/* MB-007: trailing group keeps badge + delete together, right aligned */
@@ -2774,7 +2850,7 @@
 		color: var(--text-secondary);
 		padding: var(--spacing-3xs) var(--spacing-2xs);
 		cursor: pointer;
-		max-width: 100px;
+		max-width: 120px;
 		font-weight: var(--font-weight-medium);
 		transition: all 0.15s ease;
 		display: inline-flex;
@@ -2789,6 +2865,26 @@
 		border-color: var(--accent);
 		color: var(--text-primary);
 		background: color-mix(in srgb, var(--text-primary) 8%, transparent);
+	}
+
+	/* MT-004: trigger reflects multi-selection */
+	.metrics-row-tag-dropdown-btn.has-tags {
+		border-color: color-mix(in srgb, var(--accent) 55%, var(--border-color));
+		color: var(--text-primary);
+	}
+
+	.tag-dot-stack {
+		display: inline-flex;
+		align-items: center;
+	}
+
+	.tag-dot-stacked {
+		border: 1px solid var(--bg-surface);
+		box-sizing: content-box;
+	}
+
+	.tag-dot-stacked:not(:first-child) {
+		margin-left: -4px;
 	}
 
 	.metrics-row-tag-dropdown-btn .tag-name-text {
@@ -2886,6 +2982,101 @@
 		background: color-mix(in srgb, var(--text-primary) 8%, transparent);
 		color: var(--text-primary);
 		font-weight: var(--font-weight-semibold);
+	}
+
+	.tag-dropdown-item:disabled {
+		opacity: 0.4;
+		cursor: not-allowed;
+	}
+
+	/* MT-003: multi-select picker header / check indicator / clear / done */
+	.tag-picker-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: var(--spacing-xs);
+		padding: var(--spacing-3xs) var(--spacing-2xs) var(--spacing-2xs);
+		border-bottom: 1px solid var(--border-color);
+		margin-bottom: var(--spacing-3xs);
+	}
+
+	.tag-picker-header-title {
+		font-size: var(--font-size-xs);
+		font-weight: var(--font-weight-bold);
+		color: var(--text-primary);
+	}
+
+	.tag-picker-header-count {
+		font-size: 10px;
+		font-weight: var(--font-weight-semibold);
+		color: var(--text-tertiary);
+	}
+
+	.tag-dropdown-check {
+		width: 14px;
+		height: 14px;
+		flex-shrink: 0;
+		border-radius: var(--radius-subtle);
+		border: 1.5px solid var(--border-highlight);
+		background: color-mix(in srgb, var(--bg-base) 40%, transparent);
+		position: relative;
+		transition: background-color var(--motion-duration-fast), border-color var(--motion-duration-fast);
+	}
+
+	.tag-dropdown-check.checked {
+		background-color: var(--accent);
+		border-color: var(--accent);
+	}
+
+	.tag-dropdown-check.checked::after {
+		content: '';
+		position: absolute;
+		inset: 0;
+		background-color: var(--bg-primary);
+		-webkit-mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='20 6 9 17 4 12'/></svg>") center / 70% 70% no-repeat;
+		mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='20 6 9 17 4 12'/></svg>") center / 70% 70% no-repeat;
+	}
+
+	.tag-dropdown-name {
+		flex: 1;
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.tag-dropdown-disabled {
+		font-size: 9px;
+		font-style: italic;
+		color: var(--text-tertiary);
+		flex-shrink: 0;
+	}
+
+	.tag-dropdown-clear {
+		color: var(--semantic-error);
+	}
+
+	.tag-dropdown-clear:not(:disabled):hover {
+		background: color-mix(in srgb, var(--semantic-error) 12%, transparent);
+		color: var(--semantic-error);
+	}
+
+	.tag-picker-done {
+		margin-top: var(--spacing-2xs);
+		background: var(--accent);
+		color: var(--bg-primary);
+		border: none;
+		border-radius: var(--radius-subtle);
+		padding: var(--spacing-2xs) var(--spacing-sm);
+		font-size: 11px;
+		font-weight: var(--font-weight-bold);
+		cursor: pointer;
+		flex-shrink: 0;
+		transition: background-color var(--motion-duration-fast);
+	}
+
+	.tag-picker-done:hover {
+		background: var(--accent-hover);
 	}
 
 	.tag-picker-backdrop {
