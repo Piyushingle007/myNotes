@@ -2208,6 +2208,7 @@
 		transition: background-color 0.15s;
 		box-sizing: border-box;
 		min-height: 40px;
+		flex-shrink: 0;
 	}
 
 	.metrics-card-row:hover {
@@ -2498,6 +2499,7 @@
 		box-sizing: border-box;
 		margin-top: var(--spacing-2xs);
 		transition: background-color 0.15s, color 0.15s, border-color 0.15s;
+		flex-shrink: 0;
 	}
 
 	.add-row-action:hover {
