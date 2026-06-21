@@ -24,6 +24,18 @@
 	let tagPickerSearch = $state('');
 	// MT-005: maximum tag pills shown inline before collapsing into a "+N" overflow pill
 	const MAX_VISIBLE_ROW_TAGS = 2;
+	// Redesign: row ids whose tag list is expanded (clicking "+N" reveals all tags)
+	let expandedTagRows = $state<string[]>([]);
+
+	function toggleExpandTags(event: MouseEvent, rowId: string) {
+		event.preventDefault();
+		event.stopPropagation();
+		if (expandedTagRows.includes(rowId)) {
+			expandedTagRows = expandedTagRows.filter((id) => id !== rowId);
+		} else {
+			expandedTagRows = [...expandedTagRows, rowId];
+		}
+	}
 
 	// Redesign: Tabbed settings dropdown menu state
 	let activeSettingsTab = $state<'options' | 'categories'>('options');
@@ -1187,24 +1199,42 @@
 		{/if}
 	</div>
 	
-	<!-- MT-005: reusable multi-tag pill renderer with "+N" overflow -->
-	{#snippet tagPills(tags: any[], inline: boolean)}
-		{@const visible = tags.slice(0, MAX_VISIBLE_ROW_TAGS)}
-		{@const hidden = tags.slice(MAX_VISIBLE_ROW_TAGS)}
+	<!-- MT-005: reusable multi-tag pill renderer; "+N" expands to reveal every tag -->
+	{#snippet tagPills(tags: any[], rowId: string, inline: boolean)}
+		{@const isExpanded = expandedTagRows.includes(rowId)}
+		{@const visible = isExpanded ? tags : tags.slice(0, MAX_VISIBLE_ROW_TAGS)}
+		{@const hiddenCount = tags.length - visible.length}
 		<span class="metrics-row-tags" class:is-inline={inline}>
 			{#each visible as t}
 				<span
 					class="metrics-row-tag-pill"
-					style="background: color-mix(in srgb, {t.color || 'var(--text-tertiary)'} 11%, transparent); border-color: color-mix(in srgb, {t.color || 'var(--text-tertiary)'} 27%, transparent); color: {t.color || 'var(--text-secondary)'};"
+					style="background: color-mix(in srgb, {t.color || 'var(--text-tertiary)'} 14%, transparent); border-color: color-mix(in srgb, {t.color || 'var(--text-tertiary)'} 32%, transparent); color: {t.color || 'var(--text-secondary)'};"
 					title={t.enabled ? t.name : `${t.name} (Disabled)`}
 				>
+					<span class="metrics-row-tag-dot" style="background: {t.color || 'var(--text-secondary)'};"></span>
 					{t.name}
 				</span>
 			{/each}
-			{#if hidden.length > 0}
-				<span class="metrics-row-tag-pill metrics-row-tag-overflow" title={hidden.map((t) => t.name).join(', ')}>
-					+{hidden.length}
-				</span>
+			{#if hiddenCount > 0}
+				<button
+					type="button"
+					class="metrics-row-tag-pill metrics-row-tag-overflow"
+					title={tags.slice(MAX_VISIBLE_ROW_TAGS).map((t) => t.name).join(', ')}
+					onmousedown={(e) => e.preventDefault()}
+					onclick={(e) => toggleExpandTags(e, rowId)}
+				>
+					+{hiddenCount}
+				</button>
+			{:else if isExpanded && tags.length > MAX_VISIBLE_ROW_TAGS}
+				<button
+					type="button"
+					class="metrics-row-tag-pill metrics-row-tag-overflow"
+					title="Show fewer tags"
+					onmousedown={(e) => e.preventDefault()}
+					onclick={(e) => toggleExpandTags(e, rowId)}
+				>
+					Less
+				</button>
 			{/if}
 		</span>
 	{/snippet}
@@ -1446,35 +1476,43 @@
 						{:else}
 							<!-- svelte-ignore a11y_click_events_have_key_events -->
 							<!-- svelte-ignore a11y_no_static_element_interactions -->
-							<div
-								class="row-label-input preview-mode"
-								onclick={() => {
-									editingRowIndex = index;
-								}}
-								title="Click to edit"
-							>
-								{#if row.label.trim() === ''}
-									<span class="row-label-placeholder">List item (e.g. groceries 2000)...</span>
-								{:else}
-									{@html renderFormattedLabel(row.label)}
+							<div class="row-content-stack">
+								<div
+									class="row-label-input preview-mode"
+									onclick={() => {
+										editingRowIndex = index;
+									}}
+									title="Click to edit"
+								>
+									{#if row.label.trim() === ''}
+										<span class="row-label-placeholder">List item (e.g. groceries 2000)...</span>
+									{:else}
+										{@html renderFormattedLabel(row.label)}
+									{/if}
+								</div>
+
+								{#if rowTags.length > 0}
+									<div class="row-tags-line">
+										{@render tagPills(rowTags, row.id, false)}
+									</div>
 								{/if}
 							</div>
-
-							{#if rowTags.length > 0}
-								{@render tagPills(rowTags, false)}
-							{/if}
 						{/if}
 					</div>
 				{:else}
-					<div class="row-label-input readonly-label-text">
-						{#if row.label.trim() === ''}
-							<span class="row-label-placeholder">Empty item</span>
-						{:else}
-							{@html renderFormattedLabel(row.label)}
-						{/if}
-						
+					<div class="row-content-stack readonly">
+						<div class="row-label-input readonly-label-text">
+							{#if row.label.trim() === ''}
+								<span class="row-label-placeholder">Empty item</span>
+							{:else}
+								{@html renderFormattedLabel(row.label)}
+							{/if}
+						</div>
+
 						{#if rowTags.length > 0}
-							{@render tagPills(rowTags, true)}
+							<div class="row-tags-line">
+								{@render tagPills(rowTags, row.id, true)}
+							</div>
 						{/if}
 					</div>
 				{/if}
@@ -2249,12 +2287,29 @@
 		border-bottom-color: var(--accent);
 	}
 
+	/* Redesign: label gets its own full-width line, tags drop beneath it */
+	.row-content-stack {
+		display: flex;
+		flex-direction: column;
+		gap: var(--spacing-2xs);
+		flex: 1;
+		min-width: 0;
+		width: 100%;
+	}
+
+	.row-tags-line {
+		display: flex;
+		min-width: 0;
+	}
+
 	.row-label-input.preview-mode {
 		cursor: text;
 		border-bottom-color: transparent;
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
+		white-space: normal;
+		overflow: visible;
+		text-overflow: clip;
+		word-break: break-word;
+		width: 100%;
 	}
 
 	.row-label-input.preview-mode:hover {
@@ -2276,22 +2331,44 @@
 	/* MT-005: multi-tag pill container + overflow */
 	.metrics-row-tags {
 		display: inline-flex;
+		flex-wrap: wrap;
 		align-items: center;
 		gap: var(--spacing-3xs);
-		flex-shrink: 0;
+		min-width: 0;
 		max-width: 100%;
 	}
 
 	.metrics-row-tags.is-inline {
 		vertical-align: middle;
-		margin-left: var(--spacing-2xs);
+	}
+
+	.metrics-row-tag-pill {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+	}
+
+	.metrics-row-tag-dot {
+		width: 6px;
+		height: 6px;
+		border-radius: var(--radius-circle);
+		flex-shrink: 0;
 	}
 
 	.metrics-row-tag-overflow {
-		background: color-mix(in srgb, var(--text-primary) 8%, transparent);
-		border-color: var(--border-color);
+		background: color-mix(in srgb, var(--text-primary) 9%, transparent);
+		border-color: var(--border-highlight);
 		color: var(--text-secondary);
-		cursor: default;
+		cursor: pointer;
+		font-family: inherit;
+		line-height: 1.4;
+		transition: background-color var(--motion-duration-fast), color var(--motion-duration-fast);
+	}
+
+	.metrics-row-tag-overflow:hover {
+		background: var(--accent-light);
+		border-color: var(--accent);
+		color: var(--text-primary);
 	}
 
 	/* MB-007: trailing group keeps badge + delete together, right aligned */
