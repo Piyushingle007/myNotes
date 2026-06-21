@@ -2,7 +2,7 @@
 	import { tick, untrack } from 'svelte';
 	import type { Writable } from 'svelte/store';
 	import { appState } from '../stores/appState.svelte';
-	import { Trash2, GripVertical, X, ChevronDown, BarChart3, Plus, Settings, Search } from 'lucide-svelte';
+	import { Trash2, GripVertical, X, ChevronDown, BarChart3, Plus, Settings, Search, Tag } from 'lucide-svelte';
 
 	interface Props {
 		nodeStore: Writable<any>;
@@ -16,7 +16,6 @@
 	let rows: Array<{ id: string; checked: boolean; label: string; tagIds?: string[] }> = $state([]);
 	let showSettings = $state(false);
 	let editingRowIndex = $state<number | null>(null);
-	let lastRowEditTime = 0;
 	let isInsertingDate = false;
 	let activeTagPickerRowId = $state<string | null>(null);
 	// MB-005: fixed-position coordinates for the tag picker so it escapes the scroll container
@@ -618,19 +617,18 @@
 
 	// MB-005: open the row tag picker, computing fixed coordinates that escape the
 	// scrollable card body and auto-flip above the button when near the viewport bottom.
-	function toggleTagPicker(event: MouseEvent | TouchEvent, rowId: string) {
+	function toggleTagPicker(event: MouseEvent, rowId: string) {
+		event.preventDefault();
 		event.stopPropagation();
-		// Prevent ghost clicks / accidental taps immediately after entering edit mode
-		if (Date.now() - lastRowEditTime < 300) {
-			return;
-		}
 		if (activeTagPickerRowId === rowId) {
 			activeTagPickerRowId = null;
 			tagPickerCoords = null;
 			return;
 		}
-		if (isMobile && typeof document !== 'undefined') {
-			(document.activeElement as HTMLElement)?.blur();
+		// On mobile, drop any lingering text-field focus so the virtual keyboard closes
+		// before the picker (rendered as a bottom sheet) appears.
+		if (typeof document !== 'undefined') {
+			(document.activeElement as HTMLElement)?.blur?.();
 		}
 		tagPickerSearch = '';
 		const btn = event.currentTarget as HTMLElement;
@@ -1254,6 +1252,120 @@
 		</span>
 	{/snippet}
 
+	<!-- Mobile fix: tag picker lives on an always-visible line (not tied to edit mode / contenteditable focus) -->
+	{#snippet rowTagPicker(row: any, rowTags: any[])}
+		<div class="metrics-row-tag-dropdown-container">
+			<button
+				type="button"
+				class="row-tag-trigger flex-row"
+				class:has-tags={rowTags.length > 0}
+				onmousedown={(e) => e.preventDefault()}
+				onclick={(e) => toggleTagPicker(e, row.id)}
+				title="Categorize row"
+			>
+				<Tag size={11} />
+				{#if rowTags.length === 0}
+					<span class="row-tag-trigger-text">Tag</span>
+				{/if}
+			</button>
+
+			{#if activeTagPickerRowId === row.id}
+				{@const pickerTags = appState.calcTags.filter(t => (t.enabled || rowHasTag(row, t.id)) && (!tagPickerSearch.trim() || t.name.toLowerCase().includes(tagPickerSearch.trim().toLowerCase())))}
+				{@const showSearch = appState.calcTags.filter(t => t.enabled || rowHasTag(row, t.id)).length > 5}
+				<!-- Click-away backdrop overlay -->
+				<!-- svelte-ignore a11y_no_static_element_interactions -->
+				<!-- svelte-ignore a11y_click_events_have_key_events -->
+				<div
+					class="tag-picker-backdrop"
+					class:is-dim={isMobile}
+					onclick={(e) => {
+						e.stopPropagation();
+						activeTagPickerRowId = null;
+						tagPickerCoords = null;
+					}}
+				></div>
+				<!-- Dropdown / bottom sheet (fixed-positioned so it escapes the scroll container) -->
+				<div
+					class="metrics-row-tag-dropdown-menu flex-col"
+					class:mb-bottom-sheet={isMobile}
+					class:flip-up={!isMobile && tagPickerCoords?.flip}
+					style={isMobile || !tagPickerCoords ? '' : `left: ${tagPickerCoords.left}px; ${tagPickerCoords.flip ? `bottom: ${window.innerHeight - tagPickerCoords.top}px;` : `top: ${tagPickerCoords.top + 4}px;`}`}
+					onmousedown={(e) => e.stopPropagation()}
+					onclick={(e) => e.stopPropagation()}
+				>
+					<div class="tag-picker-header flex-row">
+						<span class="tag-picker-header-title">Categorize</span>
+						<span class="tag-picker-header-count">{getRowTagIds(row).length} selected</span>
+					</div>
+					{#if showSearch}
+						<div class="tag-picker-search flex-row">
+							<Search size={12} />
+							<!-- svelte-ignore a11y_autofocus -->
+							<input
+								type="text"
+								class="tag-picker-search-input"
+								placeholder="Search categories..."
+								bind:value={tagPickerSearch}
+								autofocus={!isMobile}
+								onkeydown={(e) => {
+									if (e.key === 'Enter') {
+										e.preventDefault();
+										const first = pickerTags[0];
+										if (first) {
+											toggleRowTag(row, first.id);
+										}
+									} else if (e.key === 'Escape') {
+										activeTagPickerRowId = null;
+										tagPickerCoords = null;
+									}
+								}}
+							/>
+						</div>
+					{/if}
+					<div class="tag-picker-list flex-col">
+						<button
+							type="button"
+							class="tag-dropdown-item tag-dropdown-clear flex-row"
+							disabled={getRowTagIds(row).length === 0}
+							onmousedown={(e) => e.preventDefault()}
+							onclick={() => clearRowTags(row)}
+						>
+							<X size={12} />
+							<span>Clear tags</span>
+						</button>
+						{#each pickerTags as tag}
+							{@const isSel = rowHasTag(row, tag.id)}
+							<button
+								type="button"
+								class="tag-dropdown-item tag-dropdown-toggle flex-row"
+								class:selected={isSel}
+								onmousedown={(e) => e.preventDefault()}
+								onclick={() => toggleRowTag(row, tag.id)}
+							>
+								<span class="tag-dropdown-check" class:checked={isSel}></span>
+								<span class="tag-dot" style="background: {tag.color || 'var(--text-secondary)'};"></span>
+								<span class="tag-dropdown-name">{tag.name}</span>
+								{#if !tag.enabled}
+									<span class="tag-dropdown-disabled">disabled</span>
+								{/if}
+							</button>
+						{:else}
+							<span class="tag-picker-empty">No matches</span>
+						{/each}
+					</div>
+					<button
+						type="button"
+						class="tag-picker-done"
+						onmousedown={(e) => e.preventDefault()}
+						onclick={() => { activeTagPickerRowId = null; tagPickerCoords = null; }}
+					>
+						Done
+					</button>
+				</div>
+			{/if}
+		</div>
+	{/snippet}
+
 	<!-- Income Row -->
 	{#if showIncome}
 		<div class="metrics-income-row flex-row">
@@ -1302,12 +1414,6 @@
 				ondragleave={handleDragLeave}
 				ondrop={(e) => handleDrop(e, index)}
 				ondragend={handleDragEnd}
-				onfocusin={() => {
-					if (editingRowIndex !== index) {
-						editingRowIndex = index;
-						lastRowEditTime = Date.now();
-					}
-				}}
 				onfocusout={(e) => {
 					if (isInsertingDate) {
 						isInsertingDate = false;
@@ -1347,195 +1453,57 @@
 				{/if}
 
 				{#if !appState.isReadOnly}
-					<div class="row-input-wrapper flex-row" style="align-items: center; gap: 6px;">
+					<div class="row-content-stack">
 						{#if editingRowIndex === index}
-							<!-- svelte-ignore a11y_no_static_element_interactions -->
-							<div
-								contenteditable="plaintext-only"
-								class="row-label-input editing"
-								data-row-id={row.id}
-								bind:textContent={row.label}
-								placeholder="List item (e.g. groceries 2000)..."
-								oninput={(e) => handleRowInput(e, row)}
-								onkeydown={(e) => handleKeyDown(e, index)}
-								use:focusOnMount
-							></div>
-							
-							<!-- Custom Row tag picker dropdown (multi-select) -->
-							<div class="metrics-row-tag-dropdown-container">
+							<div class="row-edit-line flex-row">
+								<!-- svelte-ignore a11y_no_static_element_interactions -->
+								<div
+									contenteditable="plaintext-only"
+									class="row-label-input editing"
+									data-row-id={row.id}
+									bind:textContent={row.label}
+									placeholder="List item (e.g. groceries 2000)..."
+									oninput={(e) => handleRowInput(e, row)}
+									onkeydown={(e) => handleKeyDown(e, index)}
+									use:focusOnMount
+								></div>
 								<button
 									type="button"
-									class="metrics-row-tag-dropdown-btn flex-row"
-									class:has-tags={rowTags.length > 0}
-									onmousedown={(e) => { e.preventDefault(); e.stopPropagation(); }}
-									ontouchstart={(e) => { 
-										e.preventDefault(); 
-										e.stopPropagation(); 
-										toggleTagPicker(e, row.id); 
+									class="row-date-insert-btn"
+									onmousedown={(e) => {
+										e.preventDefault();
+										isInsertingDate = true;
 									}}
-									onclick={(e) => {
-										e.stopPropagation();
-										toggleTagPicker(e, row.id);
-									}}
-									title="Categorize row"
+									onclick={(e) => handleInsertDate(e, row.id)}
+									title="Insert today's date"
 								>
-									{#if rowTags.length === 0}
-										<span class="tag-name-text">No Tag</span>
-									{:else if rowTags.length === 1}
-										<span class="tag-dot" style="background: {rowTags[0].color || 'var(--text-secondary)'};"></span>
-										<span class="tag-name-text">{rowTags[0].name}</span>
-									{:else}
-										<span class="tag-dot-stack">
-											{#each rowTags.slice(0, 3) as t}
-												<span class="tag-dot tag-dot-stacked" style="background: {t.color || 'var(--text-secondary)'};"></span>
-											{/each}
-										</span>
-										<span class="tag-name-text">{rowTags.length} tags</span>
-									{/if}
-									<span class="dropdown-chevron"><ChevronDown size={12} /></span>
+									<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
 								</button>
-
-								{#if activeTagPickerRowId === row.id}
-									{@const pickerTags = appState.calcTags.filter(t => (t.enabled || rowHasTag(row, t.id)) && (!tagPickerSearch.trim() || t.name.toLowerCase().includes(tagPickerSearch.trim().toLowerCase())))}
-									{@const showSearch = appState.calcTags.filter(t => t.enabled || rowHasTag(row, t.id)).length > 5}
-									<!-- Click-away backdrop overlay -->
-									<!-- svelte-ignore a11y_no_static_element_interactions -->
-									<div 
-										class="tag-picker-backdrop"
-										onmousedown={(e) => { e.preventDefault(); e.stopPropagation(); }}
-										ontouchstart={(e) => { 
-											e.preventDefault(); 
-											e.stopPropagation(); 
-											activeTagPickerRowId = null;
-											tagPickerCoords = null;
-										}}
-										onclick={(e) => {
-											e.stopPropagation();
-											activeTagPickerRowId = null;
-											tagPickerCoords = null;
-										}}
-									></div>
-									<!-- Dropdown List (fixed-positioned so it escapes the scroll container) -->
-									<div
-										class="metrics-row-tag-dropdown-menu flex-col"
-										class:mb-bottom-sheet={isMobile}
-										class:flip-up={!isMobile && tagPickerCoords?.flip}
-										style={isMobile || !tagPickerCoords ? '' : `left: ${tagPickerCoords.left}px; ${tagPickerCoords.flip ? `bottom: ${window.innerHeight - tagPickerCoords.top}px;` : `top: ${tagPickerCoords.top + 4}px;`}`}
-										onmousedown={(e) => e.stopPropagation()}
-										onclick={(e) => e.stopPropagation()}
-										ontouchstart={(e) => e.stopPropagation()}
-										ontouchend={(e) => e.stopPropagation()}
-									>
-										<div class="tag-picker-header flex-row">
-											<span class="tag-picker-header-title">Categorize</span>
-											<span class="tag-picker-header-count">{getRowTagIds(row).length} selected</span>
-										</div>
-										{#if showSearch}
-											<div class="tag-picker-search flex-row">
-												<Search size={12} />
-												<!-- svelte-ignore a11y_autofocus -->
-												<input
-													type="text"
-													class="tag-picker-search-input"
-													placeholder="Search categories..."
-													bind:value={tagPickerSearch}
-													autofocus={!isMobile}
-													onkeydown={(e) => {
-														if (e.key === 'Enter') {
-															e.preventDefault();
-															const first = pickerTags[0];
-															if (first) {
-																toggleRowTag(row, first.id);
-															}
-														} else if (e.key === 'Escape') {
-															activeTagPickerRowId = null;
-															tagPickerCoords = null;
-														}
-													}}
-												/>
-											</div>
-										{/if}
-										<div class="tag-picker-list flex-col">
-											<button
-												type="button"
-												class="tag-dropdown-item tag-dropdown-clear flex-row"
-												disabled={getRowTagIds(row).length === 0}
-												onmousedown={(e) => e.preventDefault()}
-												onclick={() => clearRowTags(row)}
-											>
-												<X size={12} />
-												<span>Clear tags</span>
-											</button>
-											{#each pickerTags as tag}
-												{@const isSel = rowHasTag(row, tag.id)}
-												<button
-													type="button"
-													class="tag-dropdown-item tag-dropdown-toggle flex-row"
-													class:selected={isSel}
-													onmousedown={(e) => e.preventDefault()}
-													onclick={() => toggleRowTag(row, tag.id)}
-												>
-													<span class="tag-dropdown-check" class:checked={isSel}></span>
-													<span class="tag-dot" style="background: {tag.color || 'var(--text-secondary)'};"></span>
-													<span class="tag-dropdown-name">{tag.name}</span>
-													{#if !tag.enabled}
-														<span class="tag-dropdown-disabled">disabled</span>
-													{/if}
-												</button>
-											{:else}
-												<span class="tag-picker-empty">No matches</span>
-											{/each}
-										</div>
-										<button
-											type="button"
-											class="tag-picker-done"
-											onmousedown={(e) => e.preventDefault()}
-											onclick={() => { activeTagPickerRowId = null; tagPickerCoords = null; }}
-										>
-											Done
-										</button>
-									</div>
-								{/if}
 							</div>
-
-							<button 
-								type="button"
-								class="row-date-insert-btn" 
-								onmousedown={(e) => {
-									e.preventDefault();
-									isInsertingDate = true;
-								}} 
-								onclick={(e) => handleInsertDate(e, row.id)} 
-								title="Insert today's date"
-							>
-								<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-							</button>
 						{:else}
 							<!-- svelte-ignore a11y_click_events_have_key_events -->
 							<!-- svelte-ignore a11y_no_static_element_interactions -->
-							<div class="row-content-stack">
-								<div
-									class="row-label-input preview-mode"
-									onclick={() => {
-										editingRowIndex = index;
-										lastRowEditTime = Date.now();
-									}}
-									title="Click to edit"
-								>
-									{#if row.label.trim() === ''}
-										<span class="row-label-placeholder">List item (e.g. groceries 2000)...</span>
-									{:else}
-										{@html renderFormattedLabel(row.label)}
-									{/if}
-								</div>
-
-								{#if rowTags.length > 0}
-									<div class="row-tags-line">
-										{@render tagPills(rowTags, row.id, false)}
-									</div>
+							<div
+								class="row-label-input preview-mode"
+								onclick={() => { editingRowIndex = index; }}
+								title="Click to edit"
+							>
+								{#if row.label.trim() === ''}
+									<span class="row-label-placeholder">List item (e.g. groceries 2000)...</span>
+								{:else}
+									{@html renderFormattedLabel(row.label)}
 								{/if}
 							</div>
 						{/if}
+
+						<!-- Tags line: ALWAYS visible so tagging works in preview mode without
+						     focusing the contenteditable (which is what summoned the keyboard). -->
+						<div class="row-tags-line">
+							{#if rowTags.length > 0}
+								{@render tagPills(rowTags, row.id, false)}
+							{/if}
+							{@render rowTagPicker(row, rowTags)}
+						</div>
 					</div>
 				{:else}
 					<div class="row-content-stack readonly">
@@ -2298,13 +2266,6 @@
 		margin-top: 2px;
 	}
 
-	.row-input-wrapper {
-		flex: 1;
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		min-width: 0;
-	}
 
 	.row-label-input {
 		flex: 1;
@@ -2337,6 +2298,9 @@
 
 	.row-tags-line {
 		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: var(--spacing-3xs);
 		min-width: 0;
 	}
 
@@ -2957,63 +2921,55 @@
 		display: inline-block;
 	}
 
-	.metrics-row-tag-dropdown-btn {
-		background: color-mix(in srgb, var(--text-primary) 4%, transparent);
-		border: 1px solid var(--border-color);
-		border-radius: var(--radius-subtle);
-		font-size: 11px;
-		color: var(--text-secondary);
-		padding: var(--spacing-3xs) var(--spacing-2xs);
-		cursor: pointer;
-		max-width: 120px;
-		font-weight: var(--font-weight-medium);
-		transition: all 0.15s ease;
-		display: inline-flex;
+	/* Mobile fix: editing line keeps the label + date button on one row */
+	.row-edit-line {
+		display: flex;
 		align-items: center;
 		gap: var(--spacing-2xs);
-		height: 22px;
-		box-sizing: border-box;
+		width: 100%;
+	}
+
+	.row-edit-line .row-label-input.editing {
+		flex: 1;
+		min-width: 0;
+	}
+
+	/* Compact tag trigger that lives on the always-visible tags line */
+	.row-tag-trigger {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--spacing-3xs);
+		background: color-mix(in srgb, var(--text-primary) 4%, transparent);
+		border: 1px dashed var(--border-highlight);
+		border-radius: var(--radius-pill);
+		color: var(--text-secondary);
+		padding: 2px var(--spacing-2xs);
+		min-height: 24px;
+		font-size: 10px;
+		font-weight: var(--font-weight-semibold);
+		cursor: pointer;
 		outline: none;
 		flex-shrink: 0;
+		transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 	}
-	.metrics-row-tag-dropdown-btn:hover {
+
+	.row-tag-trigger:hover {
 		border-color: var(--accent);
 		color: var(--text-primary);
-		background: color-mix(in srgb, var(--text-primary) 8%, transparent);
+		background: var(--accent-light);
 	}
 
-	/* MT-004: trigger reflects multi-selection */
-	.metrics-row-tag-dropdown-btn.has-tags {
-		border-color: color-mix(in srgb, var(--accent) 55%, var(--border-color));
-		color: var(--text-primary);
+	.row-tag-trigger.has-tags {
+		border-style: solid;
+		border-color: color-mix(in srgb, var(--accent) 45%, var(--border-color));
+		color: var(--text-secondary);
+		padding: 2px var(--spacing-2xs);
+		min-width: 28px;
+		justify-content: center;
 	}
 
-	.tag-dot-stack {
-		display: inline-flex;
-		align-items: center;
-	}
-
-	.tag-dot-stacked {
-		border: 1px solid var(--bg-surface);
-		box-sizing: content-box;
-	}
-
-	.tag-dot-stacked:not(:first-child) {
-		margin-left: -4px;
-	}
-
-	.metrics-row-tag-dropdown-btn .tag-name-text {
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		max-width: 60px;
-	}
-
-	.metrics-row-tag-dropdown-btn .dropdown-chevron {
-		display: inline-flex;
-		align-items: center;
-		opacity: 0.6;
-		margin-left: 2px;
+	.row-tag-trigger-text {
+		line-height: 1;
 	}
 
 	.metrics-row-tag-dropdown-menu {
@@ -3202,6 +3158,12 @@
 		height: 100vh;
 		z-index: calc(var(--z-index-toast) - 1);
 		background: transparent;
+	}
+
+	/* Mobile: dim behind the bottom-sheet picker for clarity */
+	.tag-picker-backdrop.is-dim {
+		z-index: var(--z-index-overlay);
+		background: rgba(0, 0, 0, 0.5);
 	}
 
 	/* MB-012: shared bottom-sheet presentation for mobile */
