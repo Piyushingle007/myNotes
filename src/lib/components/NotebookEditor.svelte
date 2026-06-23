@@ -62,6 +62,10 @@
   let panStartScrollLeft = 0;
   let panStartScrollTop = 0;
 
+  // Drawing-in-progress guard — prevents save from blocking the main thread
+  let isActivelyDrawing = false;
+  let lastStrokeTime = 0;
+
   // Touch tracking for two-finger pan & zoom
   let touchStartDist = 0;
   let touchStartZoom = 1.0;
@@ -821,22 +825,54 @@
     triggerSave();
   }
 
-  // Saving debounced
+  // Saving debounced — uses longer debounce during active drawing
+  // and requestIdleCallback to yield to pointer event processing
   let saveTimeout: ReturnType<typeof setTimeout> | null = null;
+  let pendingIdleCallback: number | null = null;
   
   function triggerSave() {
     appState.editorDirty = true;
     if (saveTimeout) clearTimeout(saveTimeout);
+
+    // Use a longer debounce during active drawing to avoid blocking strokes.
+    // After drawing stops, the shorter debounce kicks in.
+    const recentlyDrawing = Date.now() - lastStrokeTime < 1000;
+    const debounceMs = recentlyDrawing ? 2000 : 500;
+
     saveTimeout = setTimeout(() => {
-      performSaveImmediate();
-    }, 500);
+      // Use requestIdleCallback so the save yields to any pending
+      // pointer events / RAF rendering. Falls back to setTimeout.
+      if (typeof requestIdleCallback === 'function') {
+        if (pendingIdleCallback !== null) cancelIdleCallback(pendingIdleCallback);
+        pendingIdleCallback = requestIdleCallback(() => {
+          pendingIdleCallback = null;
+          performSaveImmediate();
+        }, { timeout: 3000 });
+      } else {
+        performSaveImmediate();
+      }
+    }, debounceMs);
   }
 
   function performSaveImmediate() {
     if (!notebook) return;
     notebook.updatedAt = new Date().toISOString();
-    const thumbnail = generateFirstPageThumbnail();
-    notebook.thumbnail = thumbnail;
+
+    // Defer expensive thumbnail generation if we were drawing very recently
+    const recentlyDrawing = Date.now() - lastStrokeTime < 500;
+    let thumbnail = notebook.thumbnail || '';
+    if (!recentlyDrawing) {
+      thumbnail = generateFirstPageThumbnail();
+      notebook.thumbnail = thumbnail;
+    } else {
+      // Schedule a deferred thumbnail generation
+      setTimeout(() => {
+        if (notebook) {
+          notebook.thumbnail = generateFirstPageThumbnail();
+        }
+      }, 2000);
+    }
+
     const contentStr = serializeNotebook(notebook);
     lastSavedContent = contentStr;
     onSave(contentStr, thumbnail);
@@ -858,6 +894,8 @@
     if (!notebook) return;
     const idx = notebook.pages.findIndex(p => p.id === pageId);
     if (idx === -1) return;
+
+    lastStrokeTime = Date.now();
 
     pushToUndo({
       pageId,
@@ -889,6 +927,8 @@
     if (!notebook) return;
     const idx = notebook.pages.findIndex(p => p.id === pageId);
     if (idx === -1) return;
+
+    lastStrokeTime = Date.now();
 
     const originalCount = notebook.pages[idx].strokes.length;
     const erasedStrokes = notebook.pages[idx].strokes.filter(s => erasedIds.includes(s.id));

@@ -492,7 +492,27 @@
 
 		$activeNote.meta.thumbnail = thumbnail;
 		$activeNote.content = content;
-		await saveNote($activeNotePath, $activeNote.meta, content);
+
+		// Lightweight save path for notebooks — bypasses the heavy 
+		// saveActiveNote → refreshNotes → reindex chain.
+		// Notebook content is binary stroke data, not structural metadata,
+		// so we skip search reindexing, tag syncing, and HTML parsing.
+		appState.activeNoteContent = content;
+		const noteIdx = appState.notes.findIndex(n => n.path === $activeNotePath);
+		if (noteIdx !== -1) {
+			appState.notes[noteIdx].content = content;
+			appState.notes[noteIdx].modified = Date.now();
+		}
+		try {
+			await appState.storage.writeNote($activeNotePath, content);
+			appState.editorDirty = false;
+			// Trigger debounced sync if enabled (non-blocking)
+			if (appState.syncEnabled && appState.googleConnected) {
+				appState.triggerDebouncedSync();
+			}
+		} catch (e: any) {
+			console.error('Notebook save failed:', e);
+		}
 		$editorDirty = false;
 	}
 

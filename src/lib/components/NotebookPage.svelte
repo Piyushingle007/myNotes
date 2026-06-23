@@ -43,8 +43,6 @@
   }: Props = $props();
 
   // ─── Dual-Layer Canvas Elements ────────────────────────────────────
-  // Static layer: completed strokes (only redrawn on stroke add/erase)
-  // Dynamic layer: active in-progress stroke + eraser cursor (redrawn on pointer-move)
   let staticCanvas = $state<HTMLCanvasElement | null>(null);
   let dynamicCanvas = $state<HTMLCanvasElement | null>(null);
 
@@ -52,9 +50,7 @@
   let longPressTimeout = $state<ReturnType<typeof setTimeout> | null>(null);
   let startPointerPos = $state<{ x: number; y: number } | null>(null);
 
-  // ─── Drawing State (Plain JS — NOT reactive during drawing) ────────
-  // Using plain variables instead of $state to avoid Svelte reactivity
-  // overhead during the hot drawing loop. Only synced back on pointer-up.
+  // ─── Drawing State (Plain JS — NOT reactive) ──────────────────────
   let _isDrawing = false;
   let _activePoints: StrokePoint[] = [];
   let _activePointerId: number | null = null;
@@ -64,8 +60,6 @@
   let isDrawing = $state(false);
 
   // ─── Path2D Cache for Completed Strokes ────────────────────────────
-  // Maps stroke.id → { path: Path2D, color, opacity, pointCount }
-  // Avoids recomputing getStroke() for strokes that haven't changed.
   interface CachedPath {
     path: Path2D;
     color: string;
@@ -77,6 +71,10 @@
   // ─── RAF Batching ─────────────────────────────────────────────────
   let rafId: number | null = null;
   let staticDirty = false;
+
+  // ─── Cached bounding rect (avoid forced reflow per pointer event) ──
+  let _cachedRect: DOMRect | null = null;
+  let _cachedRectTime = 0;
 
   // Theme support
   const activeThemeObj = $derived(appState.themes.find(t => t.id === appState.theme));
@@ -93,24 +91,30 @@
 
   const activeTouchAction = $derived(isDrawing ? 'none' : touchAction);
 
-  // Coordinates translation helper
+  // ─── Coordinates Translation (with rect caching) ──────────────────
   function getPointerCoords(e: PointerEvent): { x: number; y: number } {
-    // Use dynamicCanvas (topmost) for bounding rect
     const canvas = dynamicCanvas || staticCanvas;
     if (!canvas) return { x: 0, y: 0 };
-    const rect = canvas.getBoundingClientRect();
+
+    // Cache getBoundingClientRect — it forces a reflow and is expensive.
+    // Invalidate every 200ms or when not drawing (in case of resize/scroll).
+    const now = performance.now();
+    if (!_cachedRect || now - _cachedRectTime > 200 || !_isDrawing) {
+      _cachedRect = canvas.getBoundingClientRect();
+      _cachedRectTime = now;
+    }
+
+    const rect = _cachedRect;
     const clientX = e.clientX - rect.left;
     const clientY = e.clientY - rect.top;
-    
-    // Map to base coordinate system (800x1130)
+
     return {
       x: (clientX / rect.width) * PAGE_WIDTH,
       y: (clientY / rect.height) * PAGE_HEIGHT
     };
   }
 
-  // ─── Path2D Computation ────────────────────────────────────────────
-  // Compute a Path2D from a stroke's points using perfect-freehand
+  // ─── Path2D Computation for completed strokes ─────────────────────
   function computeStrokePath(stroke: Stroke): Path2D | null {
     if (stroke.points.length === 0) return null;
     if (stroke.tool === 'eraser') return null;
@@ -139,7 +143,6 @@
     return path;
   }
 
-  // Get or create a cached Path2D for a completed stroke
   function getCachedPath(stroke: Stroke): CachedPath | null {
     const existing = pathCache.get(stroke.id);
     if (existing && existing.pointCount === stroke.points.length) {
@@ -159,7 +162,6 @@
     return cached;
   }
 
-  // Prune cache entries for strokes that no longer exist
   function prunePathCache() {
     const currentIds = new Set(page.strokes.map(s => s.id));
     for (const id of pathCache.keys()) {
@@ -202,7 +204,7 @@
     ctx.scale(rect.width * dpr / PAGE_WIDTH, rect.height * dpr / PAGE_HEIGHT);
     ctx.clearRect(0, 0, PAGE_WIDTH, PAGE_HEIGHT);
 
-    // Draw completed highlighter strokes first (below pen strokes)
+    // Draw completed highlighter strokes first
     for (const stroke of page.strokes) {
       if (stroke.tool === 'highlighter') {
         const cached = getCachedPath(stroke);
@@ -216,7 +218,7 @@
       }
     }
 
-    // Draw completed pen strokes next (on top)
+    // Draw completed pen strokes on top
     for (const stroke of page.strokes) {
       if (stroke.tool === 'pen') {
         const cached = getCachedPath(stroke);
@@ -235,6 +237,10 @@
   }
 
   // ─── Dynamic Layer: Active Stroke + Eraser Cursor ─────────────────
+  // KEY OPTIMIZATION: Uses a lightweight raw polyline during drawing
+  // instead of calling getStroke() every frame. The final polished stroke
+  // is computed once on pointer-up. This eliminates the O(n) perfect-freehand
+  // computation that was running 60+ times per second with a growing point array.
   function redrawDynamic() {
     if (!dynamicCanvas) return;
     const ctx = setupCanvasSize(dynamicCanvas);
@@ -247,25 +253,60 @@
     ctx.scale(rect.width * dpr / PAGE_WIDTH, rect.height * dpr / PAGE_HEIGHT);
     ctx.clearRect(0, 0, PAGE_WIDTH, PAGE_HEIGHT);
 
-    // Draw active stroke (if currently drawing)
-    if (_isDrawing && _activePoints.length > 0 && tool !== 'eraser') {
-      const activeStroke: Stroke = {
-        id: 'active',
-        tool: tool,
-        points: _activePoints,
-        color: color,
-        size: size,
-        opacity: tool === 'highlighter' ? 0.3 : 1.0
-      };
+    // Draw active stroke as a lightweight polyline (no getStroke computation)
+    if (_isDrawing && _activePoints.length > 1 && tool !== 'eraser') {
+      ctx.save();
 
-      const path = computeStrokePath(activeStroke);
-      if (path) {
-        ctx.save();
-        ctx.fillStyle = activeStroke.color;
-        ctx.globalAlpha = activeStroke.opacity;
-        ctx.fill(path);
-        ctx.restore();
+      if (tool === 'highlighter') {
+        ctx.globalAlpha = 0.3;
+        ctx.strokeStyle = color;
+        ctx.lineWidth = size;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+      } else {
+        // Pen: use pressure-sensitive variable width via line segments
+        ctx.globalAlpha = 1.0;
+        ctx.fillStyle = color;
+        ctx.strokeStyle = color;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
       }
+
+      if (tool === 'pen') {
+        // Draw pressure-sensitive polyline segments
+        // Each segment width = base size * pressure
+        for (let i = 1; i < _activePoints.length; i++) {
+          const prev = _activePoints[i - 1];
+          const curr = _activePoints[i];
+          const pressure = Math.max(0.2, curr.pressure || 0.5);
+          ctx.beginPath();
+          ctx.lineWidth = size * pressure;
+          ctx.moveTo(prev.x, prev.y);
+          ctx.lineTo(curr.x, curr.y);
+          ctx.stroke();
+        }
+      } else {
+        // Highlighter: simple connected path
+        ctx.beginPath();
+        ctx.moveTo(_activePoints[0].x, _activePoints[0].y);
+        for (let i = 1; i < _activePoints.length; i++) {
+          ctx.lineTo(_activePoints[i].x, _activePoints[i].y);
+        }
+        ctx.stroke();
+      }
+
+      ctx.restore();
+    } else if (_isDrawing && _activePoints.length === 1 && tool !== 'eraser') {
+      // Single dot
+      ctx.save();
+      ctx.globalAlpha = tool === 'highlighter' ? 0.3 : 1.0;
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      const p = _activePoints[0];
+      const pressure = Math.max(0.2, p.pressure || 0.5);
+      ctx.arc(p.x, p.y, (size * pressure) / 2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
     }
 
     // Eraser preview cursor
@@ -281,16 +322,15 @@
     ctx.restore();
   }
 
-  // ─── Combined Redraw (for non-drawing scenarios) ──────────────────
+  // Combined redraw (for non-drawing scenarios like theme/zoom change)
   function redrawAll() {
     redrawStatic();
     redrawDynamic();
   }
 
   // ─── RAF-Batched Render Scheduler ─────────────────────────────────
-  // During active drawing, we batch renders to once per animation frame.
   function scheduleDrawingFrame() {
-    if (rafId !== null) return; // Already scheduled
+    if (rafId !== null) return;
 
     rafId = requestAnimationFrame(() => {
       rafId = null;
@@ -304,10 +344,8 @@
   }
 
   // ─── Reactive Redraw Triggers ─────────────────────────────────────
-  // Only triggers for non-drawing changes (theme, strokes added/removed externally, zoom)
   $effect(() => {
     if (visible && staticCanvas && dynamicCanvas) {
-      // Establish Svelte 5 reactive dependencies
       const _strokes = page.strokes;
       const _bg = page.background;
       const _theme = appState.theme;
@@ -316,7 +354,7 @@
       const _color = color;
       const _size = size;
       const _zoom = zoom;
-      
+
       tick().then(() => {
         redrawAll();
       });
@@ -330,7 +368,7 @@
     if (e.pointerType === 'touch') {
       if (inputMode === 'touchDraw') return true;
       if (inputMode === 'auto' && !hasStylus) return true;
-      return false; // let it scroll
+      return false;
     }
     return false;
   }
@@ -342,18 +380,19 @@
 
     if (!shouldDraw(e)) return;
 
-    // Report active drawing to parent
     onActive();
 
-    // Capture pointer to track dragging outside bounds
     try {
       dynamicCanvas?.setPointerCapture(e.pointerId);
     } catch (err) {
       console.warn('Pointer capture failed', err);
     }
 
+    // Invalidate cached rect on stroke start
+    _cachedRect = null;
+
     _isDrawing = true;
-    isDrawing = true; // Reactive wrapper for CSS touch-action
+    isDrawing = true;
     _activePointerId = e.pointerId;
     const coords = getPointerCoords(e);
     _lastCursorPos = coords;
@@ -378,11 +417,10 @@
       hasStylus = true;
     }
 
-    const coords = getPointerCoords(e);
-    _lastCursorPos = coords;
-
     if (!_isDrawing || e.pointerId !== _activePointerId) {
-      if (active && tool === 'eraser') {
+      if (active && tool === 'eraser' && _isDrawing === false) {
+        const coords = getPointerCoords(e);
+        _lastCursorPos = coords;
         scheduleDrawingFrame();
       }
       return;
@@ -393,6 +431,7 @@
       const coalescedEvents = e.getCoalescedEvents?.() || [e];
       for (const ce of coalescedEvents) {
         const ceCoords = getPointerCoords(ce);
+        _lastCursorPos = ceCoords;
         eraseAt(ceCoords.x, ceCoords.y);
       }
       staticDirty = true;
@@ -421,9 +460,10 @@
     } catch (err) {}
 
     _isDrawing = false;
-    isDrawing = false; // Update reactive wrapper
+    isDrawing = false;
     _activePointerId = null;
     _lastCursorPos = null;
+    _cachedRect = null;
 
     if (tool !== 'eraser' && _activePoints.length > 0) {
       const newStroke: Stroke = {
@@ -439,7 +479,6 @@
 
     _activePoints = [];
 
-    // Cancel any pending RAF and do a full clean redraw
     if (rafId !== null) {
       cancelAnimationFrame(rafId);
       rafId = null;
@@ -455,8 +494,7 @@
 
   function hitTestStroke(stroke: Stroke, ex: number, ey: number, eraserRadius: number) {
     const threshold = eraserRadius + (stroke.size / 2);
-    
-    // Bounding Box Pre-check
+
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     for (const p of stroke.points) {
       if (p.x < minX) minX = p.x;
@@ -490,11 +528,11 @@
 
   // Long press timer functions
   function startLongPressTimer(e: PointerEvent) {
-    if (e.pointerType === 'pen') return; // Stylus drawing should not open settings
-    if (shouldDraw(e)) return; // If drawing, don't trigger long press
-    
+    if (e.pointerType === 'pen') return;
+    if (shouldDraw(e)) return;
+
     startPointerPos = { x: e.clientX, y: e.clientY };
-    
+
     if (longPressTimeout) clearTimeout(longPressTimeout);
     longPressTimeout = setTimeout(() => {
       if (startPointerPos && onLongPress) {
@@ -502,7 +540,7 @@
       }
       longPressTimeout = null;
       startPointerPos = null;
-    }, 600); // 600ms hold
+    }, 600);
   }
 
   function checkLongPressMove(e: PointerEvent) {
@@ -550,13 +588,11 @@
   onpointercancel={cancelLongPress}
 >
   {#if visible}
-    <!-- Static layer: completed strokes (bottom) -->
     <canvas
       bind:this={staticCanvas}
       class="canvas-layer static-layer"
       style="touch-action: {activeTouchAction};"
     ></canvas>
-    <!-- Dynamic layer: active stroke + eraser cursor (top, receives events) -->
     <canvas
       bind:this={dynamicCanvas}
       class="canvas-layer dynamic-layer"
@@ -613,7 +649,6 @@
     border-color: var(--accent);
   }
 
-  /* Dual-layer canvas stacking */
   .canvas-layer {
     display: block;
     position: absolute;
