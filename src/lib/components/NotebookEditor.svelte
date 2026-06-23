@@ -21,7 +21,9 @@
     Copy,
     ChevronUp,
     Maximize,
-    Minimize
+    Minimize,
+    Lock,
+    Unlock
   } from 'lucide-svelte';
   import { getStroke } from 'perfect-freehand';
   import { appState } from '../stores/appState.svelte';
@@ -50,6 +52,7 @@
   let hasStylus = $state(false);
   let zoom = $state(1.0);
   let showZoomMenu = $state(false);
+  let lockZoomScroll = $state(localStorage.getItem('mynotes_notebook_lock_zoom_scroll') === 'true');
 
   // Mobile specific settings
   let mobileToolbarPosition = $state<'top' | 'bottom' | 'left' | 'right'>('top');
@@ -344,6 +347,10 @@
       highlighter: toolSettings.highlighter,
       eraser: toolSettings.eraser
     }));
+  });
+
+  $effect(() => {
+    localStorage.setItem('mynotes_notebook_lock_zoom_scroll', lockZoomScroll.toString());
   });
 
   // Register page elements for IntersectionObserver virtualization
@@ -1322,9 +1329,11 @@
 
   function handlePointerMove(e: PointerEvent) {
     if (isPanning && scrollContainer) {
-      const dx = e.clientX - panStartX;
       const dy = e.clientY - panStartY;
-      scrollContainer.scrollLeft = panStartScrollLeft - dx;
+      if (!lockZoomScroll) {
+        const dx = e.clientX - panStartX;
+        scrollContainer.scrollLeft = panStartScrollLeft - dx;
+      }
       scrollContainer.scrollTop = panStartScrollTop - dy;
       e.preventDefault();
     }
@@ -1342,6 +1351,7 @@
 
   // Desktop Mouse Scroll Wheel Zoom (Ctrl + Scroll / Cmd + Scroll)
   function handleWheel(e: WheelEvent) {
+    if (lockZoomScroll) return;
     const container = scrollContainer;
     if ((e.ctrlKey || e.metaKey) && container) {
       e.preventDefault();
@@ -1372,6 +1382,7 @@
 
   // Touch Pinch-to-Zoom & Panning Gesture Handlers
   function handleTouchStart(e: TouchEvent) {
+    if (lockZoomScroll) return;
     if (e.touches.length === 2 && scrollContainer) {
       isPinching = true;
       const t1 = e.touches[0];
@@ -1387,6 +1398,7 @@
   }
 
   function handleTouchMove(e: TouchEvent) {
+    if (lockZoomScroll) return;
     const container = scrollContainer;
     if (isPinching && e.touches.length === 2 && container) {
       e.preventDefault(); // Block default browser zoom/scroll
@@ -1572,6 +1584,18 @@
         >
           <BookOpen size={14} />
         </button>
+        <button 
+          class="toolbar-btn" 
+          class:active={lockZoomScroll} 
+          onclick={() => lockZoomScroll = !lockZoomScroll} 
+          title={lockZoomScroll ? "Unlock zoom and scroll" : "Lock zoom and scroll"}
+        >
+          {#if lockZoomScroll}
+            <Lock size={14} style="color: var(--accent);" />
+          {:else}
+            <Unlock size={14} />
+          {/if}
+        </button>
         <button class="toolbar-btn" onclick={() => { showMobileMoreMenu = true; }} title="Settings"><Settings size={14} /></button>
       </div>
     </div>
@@ -1669,6 +1693,18 @@
           title="Toggle Page Sidebar"
         >
           <BookOpen size={16} />
+        </button>
+        <button 
+          class="toolbar-btn" 
+          class:active={lockZoomScroll} 
+          onclick={() => lockZoomScroll = !lockZoomScroll} 
+          title={lockZoomScroll ? "Unlock Zoom & Horizontal Scroll" : "Lock Zoom & Horizontal Scroll"}
+        >
+          {#if lockZoomScroll}
+            <Lock size={16} style="color: var(--accent);" />
+          {:else}
+            <Unlock size={16} />
+          {/if}
         </button>
         <button 
           class="toolbar-btn" 
@@ -2000,6 +2036,7 @@
       <div 
         class="notebook-scroll-container" 
         class:hand-tool={currentTool === 'hand'}
+        class:lock-zoom-scroll={lockZoomScroll}
         bind:this={scrollContainer}
         style="padding-top: {isMobile ? '64px' : '72px'}; --zoom-level: {zoom};"
         onscroll={() => { contextMenuState.show = false; }}
@@ -2047,7 +2084,7 @@
         <button 
           onclick={() => { zoom = Math.max(0.5, zoom - 0.1); showZoomMenu = false; }} 
           title="Zoom Out"
-          disabled={zoom <= 0.5}
+          disabled={lockZoomScroll || zoom <= 0.5}
         >
           <Minus size={14} />
         </button>
@@ -2055,13 +2092,14 @@
           onclick={() => showZoomMenu = !showZoomMenu} 
           class="zoom-value-btn"
           title="Zoom Options"
+          disabled={lockZoomScroll}
         >
           {Math.round(zoom * 100)}%
         </button>
         <button 
           onclick={() => { zoom = Math.min(3.0, zoom + 0.1); showZoomMenu = false; }} 
           title="Zoom In"
-          disabled={zoom >= 3.0}
+          disabled={lockZoomScroll || zoom >= 3.0}
         >
           <Plus size={14} />
         </button>
@@ -2671,6 +2709,10 @@
     -webkit-overflow-scrolling: touch;
     user-select: none;
     -webkit-user-select: none;
+  }
+
+  .notebook-scroll-container.lock-zoom-scroll {
+    overflow-x: hidden !important;
   }
 
   .notebook-scroll-container.hand-tool {
