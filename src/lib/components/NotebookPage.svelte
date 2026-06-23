@@ -65,13 +65,10 @@
   // Touch action determination
   const touchAction = $derived.by(() => {
     if (tool === 'hand') return 'pan-x pan-y';
-    if (inputMode === 'touchDraw') return 'none';
-    if (inputMode === 'penOnly') return 'pan-y';
-    if (inputMode === 'auto') {
-      return hasStylus ? 'pan-y' : 'none';
-    }
     return 'none';
   });
+
+  const activeTouchAction = $derived(isDrawing ? 'none' : touchAction);
 
   // Coordinates translation helper
   function getPointerCoords(e: PointerEvent): { x: number; y: number } {
@@ -403,7 +400,7 @@
 <div
   class="notebook-page-container bg-{page.background}"
   class:active
-  style="--page-bg: {pageBg}; --border-color: {borderCol}; --shadow-color: {shadowCol}; --pattern-color: {isLight ? '#e5e7eb' : '#2a2f38'}; touch-action: {touchAction};"
+  style="--page-bg: {pageBg}; --border-color: {borderCol}; --shadow-color: {shadowCol}; --pattern-color: {isLight ? '#e5e7eb' : '#2a2f38'}; touch-action: {activeTouchAction};"
   oncontextmenu={handleContextMenu}
   onpointerdown={startLongPressTimer}
   onpointermove={checkLongPressMove}
@@ -413,6 +410,7 @@
   {#if visible}
     <canvas
       bind:this={canvasElement}
+      style="touch-action: {activeTouchAction};"
       onpointerdown={handlePointerDown}
       onpointermove={handlePointerMove}
       onpointerup={handlePointerUp}

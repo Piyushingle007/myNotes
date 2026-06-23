@@ -1099,7 +1099,8 @@ class AppState {
               };
             } else {
               console.log('  First sync: local is newer (or remote unavailable). Uploading local copy.');
-              const uploadRes = await uploadNoteToDrive(note.path, `${note.name}.html`, note.content, driveFile.id);
+              const filename = note.path.split('/').pop() || `${note.name}.html`;
+              const uploadRes = await uploadNoteToDrive(note.path, filename, note.content, driveFile.id);
               const updatedRemoteTime = new Date(uploadRes.modifiedTime).getTime();
               activeMappings[note.path] = {
                 id: uploadRes.id,
@@ -1120,7 +1121,8 @@ class AppState {
             // Trust local edits within a 5-minute clock skew buffer to prevent data loss.
             if (note.modified > remoteTime - 300000) {
               console.log('  Local is newer or within skew buffer. Uploading note...');
-              const uploadRes = await uploadNoteToDrive(note.path, `${note.name}.html`, note.content, driveFile.id);
+              const filename = note.path.split('/').pop() || `${note.name}.html`;
+              const uploadRes = await uploadNoteToDrive(note.path, filename, note.content, driveFile.id);
               const updatedRemoteTime = new Date(uploadRes.modifiedTime).getTime();
               activeMappings[note.path] = {
                 id: uploadRes.id,
@@ -1139,7 +1141,8 @@ class AppState {
             }
           } else if (localChanged) {
             console.log('  Local changed since last sync. Uploading updates...');
-            const uploadRes = await uploadNoteToDrive(note.path, `${note.name}.html`, note.content, driveFile.id);
+            const filename = note.path.split('/').pop() || `${note.name}.html`;
+            const uploadRes = await uploadNoteToDrive(note.path, filename, note.content, driveFile.id);
             const updatedRemoteTime = new Date(uploadRes.modifiedTime).getTime();
             activeMappings[note.path] = {
               id: uploadRes.id,
@@ -1175,7 +1178,8 @@ class AppState {
             }
           } else {
             console.log('  New local note found. Uploading to Google Drive...');
-            const uploadRes = await uploadNoteToDrive(note.path, `${note.name}.html`, note.content);
+            const filename = note.path.split('/').pop() || `${note.name}.html`;
+            const uploadRes = await uploadNoteToDrive(note.path, filename, note.content);
             const updatedRemoteTime = new Date(uploadRes.modifiedTime).getTime();
             activeMappings[note.path] = {
               id: uploadRes.id,

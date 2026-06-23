@@ -62,10 +62,14 @@
   let panStartScrollLeft = 0;
   let panStartScrollTop = 0;
 
-  // Touch tracking for pinch-to-zoom
+  // Touch tracking for two-finger pan & zoom
   let touchStartDist = 0;
   let touchStartZoom = 1.0;
   let isPinching = false;
+  let touchStartMidX = 0;
+  let touchStartMidY = 0;
+  let touchStartScrollLeft = 0;
+  let touchStartScrollTop = 0;
 
   // Separate settings per tool
   let toolSettings = $state({
@@ -1582,43 +1586,60 @@
     }
   }
 
-  // Touch Pinch-to-Zoom Gesture Handlers
+  // Touch Pinch-to-Zoom & Panning Gesture Handlers
   function handleTouchStart(e: TouchEvent) {
-    if (e.touches.length === 2) {
+    if (e.touches.length === 2 && scrollContainer) {
       isPinching = true;
       const t1 = e.touches[0];
       const t2 = e.touches[1];
       touchStartDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
       touchStartZoom = zoom;
+      
+      touchStartMidX = (t1.clientX + t2.clientX) / 2;
+      touchStartMidY = (t1.clientY + t2.clientY) / 2;
+      touchStartScrollLeft = scrollContainer.scrollLeft;
+      touchStartScrollTop = scrollContainer.scrollTop;
     }
   }
 
   function handleTouchMove(e: TouchEvent) {
     const container = scrollContainer;
     if (isPinching && e.touches.length === 2 && container) {
-      e.preventDefault();
+      e.preventDefault(); // Block default browser zoom/scroll
       const t1 = e.touches[0];
       const t2 = e.touches[1];
-      const dist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
       
+      // Calculate current midpoint
+      const midX = (t1.clientX + t2.clientX) / 2;
+      const midY = (t1.clientY + t2.clientY) / 2;
+      const deltaX = midX - touchStartMidX;
+      const deltaY = midY - touchStartMidY;
+      
+      // Calculate zoom factor
+      const dist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+      let targetZoom = zoom;
       if (touchStartDist > 0) {
         const factor = dist / touchStartDist;
-        const targetZoom = Math.max(0.5, Math.min(3.0, touchStartZoom * factor));
+        targetZoom = Math.max(0.5, Math.min(3.0, touchStartZoom * factor));
+      }
+      
+      if (targetZoom !== zoom) {
+        const oldZoom = zoom;
+        const rect = container.getBoundingClientRect();
+        const containerMidX = midX - rect.left;
+        const containerMidY = midY - rect.top;
+        const contentX = containerMidX + touchStartScrollLeft - deltaX;
+        const contentY = containerMidY + touchStartScrollTop - deltaY;
         
-        if (targetZoom !== zoom) {
-          const oldZoom = zoom;
-          const rect = container.getBoundingClientRect();
-          const midX = (t1.clientX + t2.clientX) / 2 - rect.left;
-          const midY = (t1.clientY + t2.clientY) / 2 - rect.top;
-          const contentX = midX + container.scrollLeft;
-          const contentY = midY + container.scrollTop;
-          
-          zoom = targetZoom;
-          tick().then(() => {
-            container.scrollLeft = contentX * (targetZoom / oldZoom) - midX;
-            container.scrollTop = contentY * (targetZoom / oldZoom) - midY;
-          });
-        }
+        zoom = targetZoom;
+        tick().then(() => {
+          container.scrollLeft = contentX * (targetZoom / oldZoom) - containerMidX;
+          container.scrollTop = contentY * (targetZoom / oldZoom) - containerMidY;
+        });
+      } else {
+        // Drag scrolling with two fingers
+        container.scrollLeft = touchStartScrollLeft - deltaX;
+        container.scrollTop = touchStartScrollTop - deltaY;
       }
     }
   }

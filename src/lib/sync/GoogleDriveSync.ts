@@ -229,7 +229,7 @@ export class GoogleDriveSync {
     // Filter only markdown files that belong to our root folder tree
     const driveFiles: DriveFileMeta[] = [];
     for (const item of allItems) {
-      if (item.mimeType !== 'application/vnd.google-apps.folder' && (item.name.toLowerCase().endsWith('.html') || item.name.toLowerCase().endsWith('.md'))) {
+      if (item.mimeType !== 'application/vnd.google-apps.folder' && (item.name.toLowerCase().endsWith('.html') || item.name.toLowerCase().endsWith('.md') || item.name.toLowerCase().endsWith('.notebook.json'))) {
         const relativePath = resolvePath(item.id);
         if (relativePath !== null) {
           driveFiles.push({
@@ -271,7 +271,12 @@ export class GoogleDriveSync {
     const delimiter = `\r\n--${boundary}\r\n`;
     const closeDelimiter = `\r\n--${boundary}--`;
 
-    const contentType = filename.toLowerCase().endsWith('.html') ? 'text/html' : 'text/markdown';
+    let contentType = 'text/markdown';
+    if (filename.toLowerCase().endsWith('.html')) {
+      contentType = 'text/html';
+    } else if (filename.toLowerCase().endsWith('.notebook.json')) {
+      contentType = 'application/json';
+    }
     const multipartBody = 
       delimiter +
       'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
