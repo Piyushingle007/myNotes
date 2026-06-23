@@ -466,7 +466,7 @@
 	let canvasBackground = $state<CanvasBackground>('blank');
 
 	$effect(() => {
-		const rawContent = $activeNote?.content || '';
+		const rawContent = $activeNote?.raw || '';
 		untrack(() => {
 			const parsed = extractCanvasData(rawContent);
 			canvasStrokes = parsed.strokes;
