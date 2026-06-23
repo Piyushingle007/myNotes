@@ -73,6 +73,8 @@
     return 'none';
   });
 
+  const activeTouchAction = $derived(isDrawing ? 'none' : touchAction);
+
   // Coordinates translation helper
   function getPointerCoords(e: PointerEvent): { x: number; y: number } {
     if (!canvasElement) return { x: 0, y: 0 };
@@ -403,7 +405,7 @@
 <div
   class="notebook-page-container bg-{page.background}"
   class:active
-  style="--page-bg: {pageBg}; --border-color: {borderCol}; --shadow-color: {shadowCol}; --pattern-color: {isLight ? '#e5e7eb' : '#2a2f38'}; touch-action: {touchAction};"
+  style="--page-bg: {pageBg}; --border-color: {borderCol}; --shadow-color: {shadowCol}; --pattern-color: {isLight ? '#e5e7eb' : '#2a2f38'}; touch-action: {activeTouchAction};"
   oncontextmenu={handleContextMenu}
   onpointerdown={startLongPressTimer}
   onpointermove={checkLongPressMove}
@@ -413,6 +415,7 @@
   {#if visible}
     <canvas
       bind:this={canvasElement}
+      style="touch-action: {activeTouchAction};"
       onpointerdown={handlePointerDown}
       onpointermove={handlePointerMove}
       onpointerup={handlePointerUp}
