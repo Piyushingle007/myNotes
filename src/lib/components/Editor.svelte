@@ -44,6 +44,78 @@
 	import MetricsBlock from './MetricsBlock.svelte';
 	import { renderDiagramSVG, decodeDiagram } from '../utils/diagram';
 	import ErrorBanner from './ErrorBanner.svelte';
+	import CanvasEditor from './CanvasEditor.svelte';
+	import type { Stroke, CanvasBackground } from '../utils/canvasTypes';
+
+	function extractCanvasData(html: string): { strokes: Stroke[], background: CanvasBackground } {
+		const result = { strokes: [] as Stroke[], background: 'blank' as CanvasBackground };
+		if (!html) return result;
+		
+		if (typeof DOMParser !== 'undefined') {
+			try {
+				const parser = new DOMParser();
+				const doc = parser.parseFromString(html, 'text/html');
+				const scriptTag = doc.getElementById('canvas-data');
+				if (scriptTag && scriptTag.textContent) {
+					const data = JSON.parse(scriptTag.textContent);
+					if (data.strokes) result.strokes = data.strokes;
+					if (data.background) result.background = data.background;
+				}
+			} catch (e) {
+				console.error('Failed to extract canvas data:', e);
+			}
+		} else {
+			// Regex fallback (broken up <script> to avoid Svelte compiler parsing errors)
+			const match = html.match(new RegExp('<' + 'script\\s+id="canvas-data"\\s+type="application/json">([\\s\\S]*?)</' + 'script>', 'i'));
+			if (match && match[1]) {
+				try {
+					const data = JSON.parse(match[1]);
+					if (data.strokes) result.strokes = data.strokes;
+					if (data.background) result.background = data.background;
+				} catch (e) {
+					console.error('Failed to parse regex-extracted canvas data:', e);
+				}
+			}
+		}
+		return result;
+	}
+
+	function injectCanvasData(html: string, strokes: Stroke[], background: CanvasBackground): string {
+		const dataString = JSON.stringify({ strokes, background });
+		const scriptTag = '<' + 'script id="canvas-data" type="application/json">' + dataString + '</' + 'script>';
+		
+		if (typeof DOMParser !== 'undefined') {
+			try {
+				const parser = new DOMParser();
+				const doc = parser.parseFromString(html, 'text/html');
+				const existingScript = doc.getElementById('canvas-data');
+				if (existingScript) {
+					existingScript.textContent = dataString;
+				} else {
+					const head = doc.head || doc.getElementsByTagName('head')[0];
+					if (head) {
+						const newScript = doc.createElement('script');
+						newScript.id = 'canvas-data';
+						newScript.type = 'application/json';
+						newScript.textContent = dataString;
+						head.appendChild(newScript);
+					}
+				}
+				return doc.documentElement.outerHTML;
+			} catch (e) {
+				console.error('Failed to inject canvas data using DOMParser:', e);
+			}
+		}
+		
+		// Regex fallback (broken up script tags to avoid Svelte compiler parsing errors)
+		const cleanHtml = html.replace(new RegExp('<' + 'script\\s+id="canvas-data"\\s+type="application/json">([\\s\\S]*?)</' + 'script>', 'gi'), '');
+		if (cleanHtml.includes('</head>')) {
+			return cleanHtml.replace('</head>', scriptTag + '\n</head>');
+		} else if (cleanHtml.includes('<body>')) {
+			return cleanHtml.replace('<body>', '<body>\n' + scriptTag);
+		}
+		return cleanHtml + '\n' + scriptTag;
+	}
 
 	let resolvedAssetsMap = new Map<string, string>(); // relative path -> blob URL
 
@@ -389,6 +461,33 @@
 			activeNote.set(null);
 		}
 	});
+
+	let canvasStrokes = $state<Stroke[]>([]);
+	let canvasBackground = $state<CanvasBackground>('blank');
+
+	$effect(() => {
+		const rawContent = $activeNote?.content || '';
+		untrack(() => {
+			const parsed = extractCanvasData(rawContent);
+			canvasStrokes = parsed.strokes;
+			canvasBackground = parsed.background;
+		});
+	});
+
+	async function handleCanvasSave(strokes: Stroke[], background: CanvasBackground, thumbnail: string) {
+		if (get(viewerNote)) return; // viewer files are never written back
+		if (!$activeNote || !$activeNotePath) return;
+
+		const bodyHtml = $sourceMode ? sourceContent : (editor ? editor.getHTML() : '');
+		$activeNote.meta.thumbnail = thumbnail;
+		
+		let fullHtml = generateHtmlNote($activeNote.meta, bodyHtml);
+		fullHtml = injectCanvasData(fullHtml, strokes, background);
+		
+		$activeNote.content = fullHtml;
+		await saveNote($activeNotePath, $activeNote.meta, fullHtml);
+		$editorDirty = false;
+	}
 
 	$effect(() => {
 		const unsubscribe = editorDirty.subscribe(dirty => {
@@ -7504,6 +7603,35 @@
 						{/if}
 					</div>
 
+					<!-- Mobile Text/Canvas Mode Toggle -->
+					<div class="mode-segmented-control mobile" style="margin-left: 4px;">
+						<button
+							type="button"
+							class="mode-segment-btn"
+							class:active={appState.editorMode === 'text'}
+							onclick={() => { void appState.switchEditorMode('text'); }}
+							title="Text Mode"
+						>
+							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+								<polyline points="4 7 4 4 20 4 20 7"/>
+								<line x1="9" y1="20" x2="15" y2="20"/>
+								<line x1="12" y1="4" x2="12" y2="20"/>
+							</svg>
+						</button>
+						<button
+							type="button"
+							class="mode-segment-btn"
+							class:active={appState.editorMode === 'canvas'}
+							onclick={() => { void appState.switchEditorMode('canvas'); }}
+							title="Canvas Mode"
+						>
+							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+								<path d="M12 20h9"/>
+								<path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>
+							</svg>
+						</button>
+					</div>
+
 					<!-- Mobile Read/Edit Mode Toggle -->
 					<div class="mode-segmented-control mobile" style="margin-left: 4px;">
 						<button
@@ -7589,6 +7717,43 @@
 				</div>
 				<span class="toolbar-sep" aria-hidden="true"></span>
 				{/if}
+
+				<!-- Group: Editor Mode (Text / Canvas) -->
+				<div class="mode-segmented-control" role="radiogroup" aria-label="Editor mode">
+					<button
+						type="button"
+						class="mode-segment-btn"
+						class:active={appState.editorMode === 'text'}
+						role="radio"
+						aria-checked={appState.editorMode === 'text'}
+						onclick={() => { void appState.switchEditorMode('text'); }}
+						title="Text Editor"
+					>
+						<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+							<polyline points="4 7 4 4 20 4 20 7"/>
+							<line x1="9" y1="20" x2="15" y2="20"/>
+							<line x1="12" y1="4" x2="12" y2="20"/>
+						</svg>
+						<span>Text</span>
+					</button>
+					<button
+						type="button"
+						class="mode-segment-btn"
+						class:active={appState.editorMode === 'canvas'}
+						role="radio"
+						aria-checked={appState.editorMode === 'canvas'}
+						onclick={() => { void appState.switchEditorMode('canvas'); }}
+						title="Drawing Canvas"
+					>
+						<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+							<path d="M12 20h9"/>
+							<path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>
+						</svg>
+						<span>Canvas</span>
+					</button>
+				</div>
+
+				<span class="toolbar-sep" aria-hidden="true"></span>
 
 				<!-- Group: Editing Mode (Edit / Read) -->
 				<div class="mode-segmented-control" role="radiogroup" aria-label="Editing mode">
@@ -7811,6 +7976,7 @@
 		</div>
 		{/if}
 
+		{#if appState.editorMode !== 'canvas'}
 		<div class="note-meta-bar" class:focus-mode={appState.focusModeEnabled}>
 			{#if !appState.focusModeEnabled}
 				<span class="note-folder" class:unfiled={!noteFolder}>
@@ -7932,6 +8098,7 @@
 				{/if}
 			</div>
 		</div>
+		{/if}
 
 		<div class="editor-body-wrapper">
 			{#if noteSearchOpen}
@@ -7970,7 +8137,7 @@
 			{/if}
 			<div class="editor-body-row">
 			<div class="editor-body" class:readonly={$readOnly} class:focus-mode-active={!$readOnly && appState.focusModeEnabled} class:typewriter-active={!$readOnly && appState.typewriterScrollEnabled}>
-				{#if isMobile}
+				{#if isMobile && appState.editorMode !== 'canvas'}
 					<div class="mobile-note-title-container" class:focus-mode={appState.focusModeEnabled}>
 						<input
 							type="text"
@@ -7986,7 +8153,7 @@
 					<!-- Mobile: both views always in DOM, toggled via display to avoid slow editor re-creation -->
 					<textarea
 						class="source-editor"
-						style={$sourceMode ? '' : 'display:none'}
+						style={$sourceMode && appState.editorMode !== 'canvas' ? '' : 'display:none'}
 						bind:this={sourceElement}
 						bind:value={sourceContent}
 						readonly={$readOnly}
@@ -8028,117 +8195,129 @@
 						spellcheck="false"
 					></textarea>
 					<!-- svelte-ignore a11y_no_static_element_interactions -->
-					<div class="tiptap-wrapper" class:large-doc={isLargeDoc} style={$sourceMode ? 'display:none' : ''} spellcheck="false" bind:this={editorElement} onclick={(e) => { closeLinkContextMenu(); handleEditorClick(e); showOutline = false; }}></div>
+					<div class="tiptap-wrapper" class:large-doc={isLargeDoc} style={!$sourceMode && appState.editorMode !== 'canvas' ? '' : 'display:none'} spellcheck="false" bind:this={editorElement} onclick={(e) => { closeLinkContextMenu(); handleEditorClick(e); showOutline = false; }}></div>
 				{:else}
-					<!-- Desktop: conditional rendering with line numbers -->
-					{#if $sourceMode}
-						{#if $appConfig?.show_line_numbers}
-							<div class="line-numbers-clip" aria-hidden="true">
-								<div class="line-numbers">
-									{#each sourceContent.split('\n') as _, i}
-										<span>{i + 1}</span>
-									{/each}
+					<div class="desktop-text-editor-container" style={appState.editorMode === 'text' ? 'display: contents;' : 'display: none;'}>
+						<!-- Desktop: conditional rendering with line numbers -->
+						{#if $sourceMode}
+							{#if $appConfig?.show_line_numbers}
+								<div class="line-numbers-clip" aria-hidden="true">
+									<div class="line-numbers">
+										{#each sourceContent.split('\n') as _, i}
+											<span>{i + 1}</span>
+										{/each}
+									</div>
 								</div>
-							</div>
-						{/if}
-						<textarea
-							class="source-editor"
-							class:with-line-numbers={$appConfig?.show_line_numbers}
-							bind:this={sourceElement}
-							bind:value={sourceContent}
-							readonly={$readOnly}
-							onclick={() => { showOutline = false; }}
-							oninput={() => {
-								$editorDirty = true;
-								autoSave();
-								pushSourceHistoryDebounced();
-							}}
-							onkeydown={(e) => {
-								const mod = e.ctrlKey || e.metaKey;
-								// Shift+Enter: insert two trailing spaces + newline for markdown hard break
-								if (e.key === 'Enter' && e.shiftKey && !mod) {
-									e.preventDefault();
-									const ta = sourceElement;
-									const start = ta.selectionStart;
-									const end = ta.selectionEnd;
-									const val = ta.value;
-									sourceContent = val.slice(0, start) + '  \n' + val.slice(end);
-									tick().then(() => {
-										const newPos = start + 3;
-										ta.setSelectionRange(newPos, newPos);
-									});
+							{/if}
+							<textarea
+								class="source-editor"
+								class:with-line-numbers={$appConfig?.show_line_numbers}
+								bind:this={sourceElement}
+								bind:value={sourceContent}
+								readonly={$readOnly}
+								onclick={() => { showOutline = false; }}
+								oninput={() => {
 									$editorDirty = true;
 									autoSave();
 									pushSourceHistoryDebounced();
-									return;
-								}
-								// Undo
-								if (mod && (e.key === 'z' || e.key === 'Z') && !e.shiftKey) {
-									e.preventDefault();
-									sourceUndo();
-									return;
-								}
-								// Redo
-								if ((mod && (e.key === 'z' || e.key === 'Z') && e.shiftKey) || (mod && (e.key === 'y' || e.key === 'Y'))) {
-									e.preventDefault();
-									sourceRedo();
-									return;
-								}
-								if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
-									e.preventDefault();
-									pushSourceHistoryImmediate();
-									const ta = sourceElement;
-									const val = ta.value;
-									const start = ta.selectionStart;
-									const lines = val.split('\n');
-									// Find current line index
-									let pos = 0;
-									let curLine = 0;
-									for (let i = 0; i < lines.length; i++) {
-										if (pos + lines[i].length >= start) { curLine = i; break; }
-										pos += lines[i].length + 1;
-									}
-									if (e.key === 'ArrowUp' && curLine > 0) {
-										const tmp = lines[curLine];
-										lines[curLine] = lines[curLine - 1];
-										lines[curLine - 1] = tmp;
-										sourceContent = lines.join('\n');
+								}}
+								onkeydown={(e) => {
+									const mod = e.ctrlKey || e.metaKey;
+									// Shift+Enter: insert two trailing spaces + newline for markdown hard break
+									if (e.key === 'Enter' && e.shiftKey && !mod) {
+										e.preventDefault();
+										const ta = sourceElement;
+										const start = ta.selectionStart;
+										const end = ta.selectionEnd;
+										const val = ta.value;
+										sourceContent = val.slice(0, start) + '  \n' + val.slice(end);
 										tick().then(() => {
-											const newPos = lines.slice(0, curLine - 1).join('\n').length + 1 + (start - pos);
+											const newPos = start + 3;
 											ta.setSelectionRange(newPos, newPos);
-											pushSourceHistoryImmediate();
 										});
-									} else if (e.key === 'ArrowDown' && curLine < lines.length - 1) {
-										const tmp = lines[curLine];
-										lines[curLine] = lines[curLine + 1];
-										lines[curLine + 1] = tmp;
-										sourceContent = lines.join('\n');
-										tick().then(() => {
-											const newPos = lines.slice(0, curLine + 1).join('\n').length + 1 + (start - pos);
-											ta.setSelectionRange(newPos, newPos);
-											pushSourceHistoryImmediate();
-										});
+										$editorDirty = true;
+										autoSave();
+										pushSourceHistoryDebounced();
+										return;
 									}
-									$editorDirty = true;
-									autoSave();
-								}
-							}}
-							onscroll={() => {
-								if ($appConfig?.show_line_numbers) {
-									const clip = sourceElement?.previousElementSibling as HTMLElement;
-									const gutter = clip?.firstElementChild as HTMLElement;
-									if (gutter) {
-										gutter.style.transform = `translateY(-${sourceElement.scrollTop}px)`;
+									// Undo
+									if (mod && (e.key === 'z' || e.key === 'Z') && !e.shiftKey) {
+										e.preventDefault();
+										sourceUndo();
+										return;
 									}
-								}
-							}}
-							spellcheck="false"
-						></textarea>
-					{:else}
-						<!-- svelte-ignore a11y_no_static_element_interactions -->
-						<div class="tiptap-wrapper" class:large-doc={isLargeDoc} spellcheck="false" bind:this={editorElement} onclick={(e) => { closeLinkContextMenu(); handleEditorClick(e); showOutline = false; }} oncontextmenu={handleEditorContextMenu}></div>
-					{/if}
+									// Redo
+									if ((mod && (e.key === 'z' || e.key === 'Z') && e.shiftKey) || (mod && (e.key === 'y' || e.key === 'Y'))) {
+										e.preventDefault();
+										sourceRedo();
+										return;
+									}
+									if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+										e.preventDefault();
+										pushSourceHistoryImmediate();
+										const ta = sourceElement;
+										const val = ta.value;
+										const start = ta.selectionStart;
+										const lines = val.split('\n');
+										// Find current line index
+										let pos = 0;
+										let curLine = 0;
+										for (let i = 0; i < lines.length; i++) {
+											if (pos + lines[i].length >= start) { curLine = i; break; }
+											pos += lines[i].length + 1;
+										}
+										if (e.key === 'ArrowUp' && curLine > 0) {
+											const tmp = lines[curLine];
+											lines[curLine] = lines[curLine - 1];
+											lines[curLine - 1] = tmp;
+											sourceContent = lines.join('\n');
+											tick().then(() => {
+												const newPos = lines.slice(0, curLine - 1).join('\n').length + 1 + (start - pos);
+												ta.setSelectionRange(newPos, newPos);
+												pushSourceHistoryImmediate();
+											});
+										} else if (e.key === 'ArrowDown' && curLine < lines.length - 1) {
+											const tmp = lines[curLine];
+											lines[curLine] = lines[curLine + 1];
+											lines[curLine + 1] = tmp;
+											sourceContent = lines.join('\n');
+											tick().then(() => {
+												const newPos = lines.slice(0, curLine + 1).join('\n').length + 1 + (start - pos);
+												ta.setSelectionRange(newPos, newPos);
+												pushSourceHistoryImmediate();
+											});
+										}
+										$editorDirty = true;
+										autoSave();
+									}
+								}}
+								onscroll={() => {
+									if ($appConfig?.show_line_numbers) {
+										const clip = sourceElement?.previousElementSibling as HTMLElement;
+										const gutter = clip?.firstElementChild as HTMLElement;
+										if (gutter) {
+											gutter.style.transform = `translateY(-${sourceElement.scrollTop}px)`;
+										}
+									}
+								}}
+								spellcheck="false"
+							></textarea>
+						{:else}
+							<!-- svelte-ignore a11y_no_static_element_interactions -->
+							<div class="tiptap-wrapper" class:large-doc={isLargeDoc} spellcheck="false" bind:this={editorElement} onclick={(e) => { closeLinkContextMenu(); handleEditorClick(e); showOutline = false; }} oncontextmenu={handleEditorContextMenu}></div>
+						{/if}
+					</div>
 				{/if}
+
+				<!-- Canvas Mode Editor -->
+				<div class="canvas-editor-wrapper" style={appState.editorMode === 'canvas' ? 'display: block; position: absolute; inset: 0; z-index: 1;' : 'display: none;'}>
+					<CanvasEditor 
+						notePath={$activeNotePath || ''}
+						initialStrokes={canvasStrokes}
+						initialBackground={canvasBackground}
+						onSave={handleCanvasSave}
+					/>
+				</div>
 				
 				<!-- Floating Bubble Menu -->
 				{#if showBubbleMenu && bubbleMenuCoords}
@@ -8249,7 +8428,7 @@
 			</div>
 		</div>
 
-		{#if editorReady && !$sourceMode && !$viewerNote && !$readOnly}
+		{#if editorReady && !$sourceMode && !$viewerNote && !$readOnly && appState.editorMode !== 'canvas'}
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<div class="editor-formatting-bar" 
 				style={isMobile ? `${keyboardHeight > 0 ? `bottom: ${keyboardHeight}px;` : ''}${anyDropdownOpen ? 'overflow: visible;' : ''}` : ''} 

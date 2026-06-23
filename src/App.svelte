@@ -14,6 +14,9 @@
     let newHash = '';
     if (appState.activeNotePath) {
       newHash = `#/note/${encodeURIComponent(appState.activeNotePath)}`;
+      if (appState.editorMode === 'canvas') {
+        newHash += '?mode=canvas';
+      }
     } else if (appState.activeTab === 'daily') {
       newHash = `#/daily`;
     } else if (appState.activeTab === 'library') {
@@ -41,9 +44,26 @@
     const hash = window.location.hash;
 
     if (hash.startsWith('#/note/')) {
-      const notePath = decodeURIComponent(hash.slice('#/note/'.length));
+      const queryIdx = hash.indexOf('?');
+      let notePathPart = hash;
+      let modeParam = 'text';
+
+      if (queryIdx !== -1) {
+        notePathPart = hash.substring(0, queryIdx);
+        const queryStr = hash.substring(queryIdx + 1);
+        const params = new URLSearchParams(queryStr);
+        if (params.get('mode') === 'canvas') {
+          modeParam = 'canvas';
+        }
+      }
+
+      const notePath = decodeURIComponent(notePathPart.slice('#/note/'.length));
       if (appState.activeNotePath !== notePath) {
         appState.selectNote(notePath);
+      }
+
+      if (appState.editorMode !== modeParam) {
+        appState.editorMode = modeParam as 'text' | 'canvas';
       }
     } else {
       if (appState.activeNotePath !== null) {
@@ -105,6 +125,7 @@
       const _notePath = appState.activeNotePath;
       const _notebook = appState.activeNotebook;
       const _tag = appState.selectedTag;
+      const _editorMode = appState.editorMode;
 
       syncStateToHash();
     }
