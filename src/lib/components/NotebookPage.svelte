@@ -65,11 +65,6 @@
   // Touch action determination
   const touchAction = $derived.by(() => {
     if (tool === 'hand') return 'pan-x pan-y';
-    if (inputMode === 'touchDraw') return 'none';
-    if (inputMode === 'penOnly') return 'pan-y';
-    if (inputMode === 'auto') {
-      return hasStylus ? 'pan-y' : 'none';
-    }
     return 'none';
   });
 
