@@ -7,6 +7,15 @@
 
 
 
+  function getNoteThumbnail(content: string): string {
+    if (!content) return '';
+    try {
+      return parseHtmlMetadata(content).meta.thumbnail || '';
+    } catch (e) {
+      return '';
+    }
+  }
+
   function formatModified(timestamp: number): string {
     const diff = Date.now() - timestamp;
     const mins = Math.floor(diff / 60000);
@@ -439,6 +448,7 @@
       {/each}
     {:else}
       {#each appState.filteredNotes as note, index}
+        {@const thumb = getNoteThumbnail(note.content)}
         <div 
           class="note-row flex-row"
           class:active={appState.activeNotePath === note.path}
@@ -494,8 +504,12 @@
           {/if}
           
           <div class="col-title flex-row">
-            <div class="track-icon">
-              <FileText size={18} />
+            <div class="track-icon" style="display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; flex-shrink: 0;">
+              {#if thumb}
+                <img src={thumb} alt="preview" style="width: 20px; height: 20px; object-fit: cover; border-radius: var(--radius-standard); border: 1px solid var(--border-color);" />
+              {:else}
+                <FileText size={18} />
+              {/if}
             </div>
             <div class="track-info flex-col">
               <span class="track-name">{note.name}</span>

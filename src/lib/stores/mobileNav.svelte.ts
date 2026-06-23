@@ -139,6 +139,11 @@ class MobileNav {
     if (this.overlays.length > 0) {
       return this.dismissTopOverlay();
     }
+    // Switch from canvas mode to text mode before closing the editor
+    if (appState.activeNotePath && appState.editorMode === 'canvas') {
+      appState.editorMode = 'text';
+      return true;
+    }
     // 2 → close editor overlay (retains the sub-view it was opened from).
     if (appState.activeNotePath) {
       await this.closeEditor();

@@ -33,7 +33,8 @@ export function parseHtmlMetadata(html: string): { meta: any; content: string } 
     tags: [],
     pinned: false,
     created: '',
-    modified: ''
+    modified: '',
+    thumbnail: ''
   };
   let content = html;
   if (typeof DOMParser !== 'undefined') {
@@ -53,6 +54,7 @@ export function parseHtmlMetadata(html: string): { meta: any; content: string } 
           }
           else if (name === 'created') meta.created = contentVal;
           else if (name === 'modified') meta.modified = contentVal;
+          else if (name === 'thumbnail') meta.thumbnail = contentVal;
         }
       });
       if (doc.body) {
@@ -74,6 +76,7 @@ export function parseHtmlMetadata(html: string): { meta: any; content: string } 
     meta.tags = tagsVal ? tagsVal.split(',').map(t => t.trim()).filter(Boolean) : [];
     meta.created = getMeta('created');
     meta.modified = getMeta('modified');
+    meta.thumbnail = getMeta('thumbnail');
     const bodyMatch = html.match(/<body>([\s\S]*)<\/body>/i);
     if (bodyMatch) content = bodyMatch[1];
   }
@@ -86,6 +89,7 @@ export function generateHtmlNote(meta: any, bodyContent: string): string {
   const idEscaped = (meta.id || '').replace(/"/g, '&quot;');
   const createdEscaped = (meta.created || '').replace(/"/g, '&quot;');
   const modifiedEscaped = (meta.modified || '').replace(/"/g, '&quot;');
+  const thumbnailEscaped = (meta.thumbnail || '').replace(/"/g, '&quot;');
   
   return `<!DOCTYPE html>
 <html>
@@ -97,6 +101,7 @@ export function generateHtmlNote(meta: any, bodyContent: string): string {
 <meta name="pinned" content="${meta.pinned ? 'true' : 'false'}">
 <meta name="created" content="${createdEscaped}">
 <meta name="modified" content="${modifiedEscaped}">
+<meta name="thumbnail" content="${thumbnailEscaped}">
 <title>${meta.title || 'Untitled'}</title>
 </head>
 <body>
@@ -166,6 +171,7 @@ class AppState {
   isReadOnly = $state<boolean>(false);
   sourceMode = $state<boolean>(localStorage.getItem('mynotes_editor_source_mode') === 'true');
   editorDirty = $state<boolean>(false);
+  editorMode = $state<'text' | 'canvas'>('text');
   selectMode = $state<boolean>(false);
   selectedNotes = $state<Set<string>>(new Set());
   autoPruneTags = $state<boolean>(localStorage.getItem('mynotes_tags_auto_prune') === 'true');
@@ -220,6 +226,14 @@ class AppState {
   setDiagramEditorType(type: 'native' | 'drawio' | 'mermaid') {
     this.diagramEditorType = type;
     localStorage.setItem('mynotes_diagram_editor', type);
+  }
+
+  async switchEditorMode(mode: 'text' | 'canvas') {
+    if (this.editorMode === mode) return;
+    if (this.editorDirty && this.activeNotePath) {
+      await this.saveActiveNote(true);
+    }
+    this.editorMode = mode;
   }
 
   setSourceMode(val: boolean) {
@@ -2009,6 +2023,7 @@ class AppState {
       this.activeNotePath = path;
       this.activeNoteContent = note.content;
       this.activeNoteTitle = note.name;
+      this.editorMode = 'text';
       this.editorDirty = false;
       this.setEditorCollapsed(false); // auto-expand editor on note selection
     }

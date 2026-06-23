@@ -1030,6 +1030,26 @@
                 </button>
               {/if}
 
+              <!-- 2.5. Text/Canvas Mode Switcher -->
+              {#if !appState.isReadOnly}
+                <button
+                  class="menu-item flex-row"
+                  onclick={() => {
+                    const nextMode = appState.editorMode === 'canvas' ? 'text' : 'canvas';
+                    void appState.switchEditorMode(nextMode);
+                    showMobileMoreMenu = false;
+                  }}
+                >
+                  {#if appState.editorMode === 'canvas'}
+                    <FileText size={15} class="menu-item-icon" />
+                    <span>Switch to Text Mode</span>
+                  {:else}
+                    <Palette size={15} class="menu-item-icon" />
+                    <span>Switch to Canvas Mode</span>
+                  {/if}
+                </button>
+              {/if}
+
               <div class="menu-divider"></div>
 
               <!-- 3. Export HTML -->
