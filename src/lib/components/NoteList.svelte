@@ -1,6 +1,6 @@
 <script lang="ts">
   import { appState, parseHtmlMetadata } from '../stores/appState.svelte';
-  import { FileText, Plus, Trash2, Edit2, Search, Clock, CalendarDays, X, Menu, FolderInput, CheckSquare } from 'lucide-svelte';
+  import { FileText, Plus, Trash2, Edit2, Search, Clock, CalendarDays, X, Menu, FolderInput, CheckSquare, BookOpen } from 'lucide-svelte';
   import { fly } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
   import ErrorBanner from './ErrorBanner.svelte';
@@ -10,9 +10,24 @@
   function getNoteThumbnail(content: string): string {
     if (!content) return '';
     try {
+      const trimmed = content.trim();
+      if (trimmed.startsWith('{')) {
+        const parsed = JSON.parse(trimmed);
+        return parsed.thumbnail || '';
+      }
       return parseHtmlMetadata(content).meta.thumbnail || '';
     } catch (e) {
       return '';
+    }
+  }
+
+  function getPageCount(note: any): number {
+    if (!note || !note.content) return 0;
+    try {
+      const doc = JSON.parse(note.content);
+      return doc.pages ? doc.pages.length : 1;
+    } catch (e) {
+      return 1;
     }
   }
 
@@ -42,6 +57,21 @@
         const trimmed = title.trim();
         if (trimmed) {
           appState.createNote(trimmed, appState.activeNotebook);
+        }
+      }
+    });
+  }
+
+  function handleCreateNotebookNote() {
+    appState.showPrompt({
+      title: 'New Handwriting Notebook',
+      message: 'Enter name for the new notebook:',
+      value: 'Untitled Notebook',
+      placeholder: 'Notebook name...',
+      onConfirm: (name) => {
+        const trimmed = name.trim();
+        if (trimmed) {
+          appState.createNotebookNote(trimmed, appState.activeNotebook);
         }
       }
     });
@@ -259,7 +289,7 @@
         {/if}
       </span>
       
-      <div class="flex-row" style="gap: var(--spacing-xs); align-items: center;">
+      <div class="flex-row" style="gap: var(--spacing-xs); align-items: center; flex-wrap: wrap; justify-content: flex-end;">
         <button 
           class="btn-pill btn-pill-outline" 
           onclick={() => appState.toggleUiDensity()}
@@ -286,6 +316,10 @@
         >
           <CheckSquare size={14} />
           <span>{appState.selectMode ? 'Cancel' : 'Select'}</span>
+        </button>
+        <button class="btn-pill btn-pill-outline add-note-btn" onclick={handleCreateNotebookNote} style="gap: var(--spacing-2xs); height: 32px;">
+          <BookOpen size={14} />
+          <span>Add Notebook</span>
         </button>
         <button class="btn-pill btn-pill-primary add-note-btn" onclick={handleCreateNote}>
           <Plus size={16} />
@@ -447,7 +481,7 @@
         </div>
       {/each}
     {:else}
-      {#each appState.filteredNotes as note, index}
+      {#each appState.filteredNotes as note, index (note.path)}
         {@const thumb = getNoteThumbnail(note.content)}
         <div 
           class="note-row flex-row"
@@ -504,15 +538,25 @@
           {/if}
           
           <div class="col-title flex-row">
-            <div class="track-icon" style="display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; flex-shrink: 0;">
+            <div class="track-icon" style="display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; flex-shrink: 0; position: relative;">
               {#if thumb}
                 <img src={thumb} alt="preview" style="width: 20px; height: 20px; object-fit: cover; border-radius: var(--radius-standard); border: 1px solid var(--border-color);" />
+                {#if note.path.endsWith('.notebook.json')}
+                  <div class="mini-notebook-overlay" style="position: absolute; bottom: -2px; right: -2px; background: var(--accent); border-radius: 50%; width: 10px; height: 10px; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 3px rgba(0,0,0,0.3); border: 0.5px solid #ffffff;">
+                    <span style="font-size: 6px; color: #ffffff; font-weight: bold; line-height: 1; transform: scale(0.85);">N</span>
+                  </div>
+                {/if}
+              {:else if note.path.endsWith('.notebook.json')}
+                <BookOpen size={18} style="color: var(--accent);" />
               {:else}
                 <FileText size={18} />
               {/if}
             </div>
             <div class="track-info flex-col">
               <span class="track-name">{note.name}</span>
+              {#if note.path.endsWith('.notebook.json')}
+                <span class="notebook-badge" style="font-size: 10px; color: var(--accent); opacity: 0.8; font-weight: 500; margin-top: 2px;">📓 {getPageCount(note)} pages</span>
+              {/if}
             </div>
           </div>
 

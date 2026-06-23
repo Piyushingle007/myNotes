@@ -37,6 +37,27 @@ export function parseHtmlMetadata(html: string): { meta: any; content: string } 
     thumbnail: ''
   };
   let content = html;
+
+  if (html && html.trim().startsWith('{')) {
+    try {
+      const doc = JSON.parse(html);
+      return {
+        meta: {
+          id: doc.id || '',
+          title: doc.title || '',
+          tags: doc.tags || [],
+          pinned: doc.pinned || false,
+          created: doc.createdAt || '',
+          modified: doc.updatedAt || '',
+          thumbnail: doc.thumbnail || ''
+        },
+        content: html
+      };
+    } catch (e) {
+      console.warn('Failed to parse notebook JSON metadata:', e);
+    }
+  }
+
   if (typeof DOMParser !== 'undefined') {
     try {
       const parser = new DOMParser();
@@ -171,7 +192,7 @@ class AppState {
   isReadOnly = $state<boolean>(false);
   sourceMode = $state<boolean>(localStorage.getItem('mynotes_editor_source_mode') === 'true');
   editorDirty = $state<boolean>(false);
-  editorMode = $state<'text' | 'canvas'>('text');
+  editorMode = $state<'text' | 'canvas' | 'notebook'>('text');
   selectMode = $state<boolean>(false);
   selectedNotes = $state<Set<string>>(new Set());
   autoPruneTags = $state<boolean>(localStorage.getItem('mynotes_tags_auto_prune') === 'true');
@@ -230,7 +251,7 @@ class AppState {
     localStorage.setItem('mynotes_diagram_editor', type);
   }
 
-  async switchEditorMode(mode: 'text' | 'canvas') {
+  async switchEditorMode(mode: 'text' | 'canvas' | 'notebook') {
     if (this.editorMode === mode) return;
     if (this.editorMode === 'canvas') {
       if (this.onForceSave) {
@@ -1350,8 +1371,10 @@ class AppState {
     }
   }
 
-  async refreshNotes() {
-    this.loadingNotes = true;
+  async refreshNotes(silent = false) {
+    if (!silent) {
+      this.loadingNotes = true;
+    }
     try {
       const list = await this.storage.listNotes();
       this.notes = list;
@@ -1415,7 +1438,9 @@ class AppState {
         await this.refreshCalcTags();
       }
     } finally {
-      this.loadingNotes = false;
+      if (!silent) {
+        this.loadingNotes = false;
+      }
     }
   }
 
@@ -2044,7 +2069,11 @@ class AppState {
       this.activeNotePath = path;
       this.activeNoteContent = note.content;
       this.activeNoteTitle = note.name;
-      this.editorMode = 'text';
+      if (path.endsWith('.notebook.json')) {
+        this.editorMode = 'notebook';
+      } else {
+        this.editorMode = 'text';
+      }
       this.editorDirty = false;
       this.setEditorCollapsed(false); // auto-expand editor on note selection
     }
@@ -2090,7 +2119,7 @@ class AppState {
       await this.storage.writeNote(this.activeNotePath, this.activeNoteContent);
       this.saveError = null;
       this.editorDirty = false;
-      await this.refreshNotes();
+      await this.refreshNotes(true);
 
       // Trigger auto background sync
       console.log('Checking sync pre-requisites: syncEnabled:', this.syncEnabled, 'googleConnected:', this.googleConnected);
@@ -2151,8 +2180,55 @@ class AppState {
     }
   }
 
+  async createNotebookNote(title: string, folder: string | null = null) {
+    const cleanTitle = title.trim() || 'Untitled Notebook';
+    let path = `${cleanTitle}.notebook.json`;
+    if (folder) {
+      path = `${folder}/${cleanTitle}.notebook.json`;
+    }
+    
+    // Ensure unique path
+    let version = 1;
+    let finalPath = path;
+    while (this.notes.some(n => n.path === finalPath)) {
+      finalPath = folder 
+        ? `${folder}/${cleanTitle} (${version}).notebook.json`
+        : `${cleanTitle} (${version}).notebook.json`;
+      version++;
+    }
+
+    const doc = {
+      version: 1,
+      id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2),
+      title: cleanTitle,
+      pages: [
+        {
+          id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2),
+          index: 0,
+          background: 'lined',
+          strokes: [],
+          width: 800,
+          height: 1130
+        }
+      ],
+      defaultBackground: 'lined',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    const initialContent = JSON.stringify(doc);
+    await this.storage.writeNote(finalPath, initialContent);
+    await this.refreshNotes();
+    this.selectNote(finalPath);
+
+    // Trigger auto background sync
+    if (this.syncEnabled && this.googleConnected) {
+      this.syncNotes();
+    }
+  }
+
   async deleteNote(path: string) {
-    const noteName = path.split('/').pop()?.replace(/\.(md|html)$/, '') || path;
+    const noteName = path.split('/').pop()?.replace(/\.(md|html|notebook\.json)$/, '') || path;
     
     // Read mapping before deleting note to enable deleting on Drive
     const mappings = JSON.parse(localStorage.getItem('mynotes_drive_mappings') || '{}');

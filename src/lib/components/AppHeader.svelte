@@ -3,7 +3,8 @@
   import { appState } from '../stores/appState.svelte';
   import { 
     Search, Plus, Settings, Cloud, CloudOff, X, 
-    Folder, Tag, Calendar, ChevronRight, FileText, Menu
+    Folder, Tag, Calendar, ChevronRight, FileText, Menu,
+    ChevronDown, BookOpen
   } from 'lucide-svelte';
   import GoogleLogo from './GoogleLogo.svelte';
   import CommandPalette from './CommandPalette.svelte';
@@ -11,6 +12,25 @@
 
   let searchInputEl = $state<HTMLInputElement | null>(null);
   let showSyncPopover = $state(false);
+  let showCreateDropdown = $state(false);
+  let dropdownEl = $state<HTMLDivElement | null>(null);
+
+  function handleDropdownOutsideClick(e: MouseEvent) {
+    if (dropdownEl && !dropdownEl.contains(e.target as Node)) {
+      const target = e.target as HTMLElement;
+      if (target.closest('.quick-create-wrapper')) return;
+      showCreateDropdown = false;
+    }
+  }
+
+  $effect(() => {
+    if (showCreateDropdown) {
+      document.addEventListener('mousedown', handleDropdownOutsideClick, true);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleDropdownOutsideClick, true);
+    };
+  });
 
   // Global keyboard shortcut to toggle command search palette (Ctrl+K or Cmd+K)
   function handleGlobalKeydown(e: KeyboardEvent) {
@@ -51,6 +71,21 @@
         const trimmed = title.trim();
         if (trimmed) {
           appState.createNote(trimmed, appState.activeNotebook);
+        }
+      }
+    });
+  }
+
+  function handleCreateNotebookNote() {
+    appState.showPrompt({
+      title: 'New Handwriting Notebook',
+      message: 'Enter name for the new notebook document:',
+      value: 'Untitled Notebook',
+      placeholder: 'Notebook name...',
+      onConfirm: (name) => {
+        const trimmed = name.trim();
+        if (trimmed) {
+          appState.createNotebookNote(trimmed, appState.activeNotebook);
         }
       }
     });
@@ -145,16 +180,63 @@
 
   <!-- Right Side: Action Controls & Status -->
   <div class="header-right flex-row">
-    <!-- Quick Create Button -->
-    <button 
-      class="quick-create-btn flex-row" 
-      onclick={handleCreateNote}
-      title="Create new note"
-      aria-label="Create new note"
-    >
-      <Plus size={16} />
-      <span>New Note</span>
-    </button>
+    <!-- Quick Create Button Wrapper -->
+    <div class="quick-create-wrapper" style="position: relative; display: flex; align-items: center; border-radius: var(--radius-standard); overflow: visible; background-color: var(--accent);">
+      <button 
+        class="quick-create-btn main-btn flex-row" 
+        onclick={handleCreateNote}
+        title="Create new text/sketch note"
+        aria-label="Create new note"
+        style="border-top-right-radius: 0; border-bottom-right-radius: 0; border-right: 1px solid rgba(255,255,255,0.25);"
+      >
+        <Plus size={16} />
+        <span>New Note</span>
+      </button>
+      <button
+        class="quick-create-btn arrow-btn flex-row"
+        onclick={() => showCreateDropdown = !showCreateDropdown}
+        title="More creation options"
+        aria-label="More creation options"
+        style="border-top-left-radius: 0; border-bottom-left-radius: 0; padding: 0 var(--spacing-xs); height: 32px;"
+      >
+        <ChevronDown size={14} />
+      </button>
+
+      {#if showCreateDropdown}
+        <div 
+          class="create-dropdown"
+          bind:this={dropdownEl}
+          style="position: absolute; top: 100%; right: 0; margin-top: 6px; background-color: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-standard); box-shadow: var(--shadow-md); z-index: 1000; min-width: 260px; padding: var(--spacing-2xs) 0;"
+        >
+          <button 
+            class="dropdown-item flex-row"
+            onclick={() => { handleCreateNote(); showCreateDropdown = false; }}
+            style="width: 100%; text-align: left; padding: var(--spacing-sm) var(--spacing-md); background: none; border: none; font-family: inherit; font-size: var(--font-size-sm); color: var(--text-primary); cursor: pointer; gap: var(--spacing-sm); align-items: center;"
+            onmouseover={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-mid-dark)'}
+            onmouseout={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+          >
+            <FileText size={16} style="color: var(--text-secondary); flex-shrink: 0;" />
+            <div class="flex-col" style="align-items: flex-start; gap: 2px;">
+              <span style="font-weight: 600;">New HTML Note</span>
+              <span style="font-size: var(--font-size-2xs); color: var(--text-tertiary); white-space: nowrap;">Rich text, checkboxes, sketch pad</span>
+            </div>
+          </button>
+          <button 
+            class="dropdown-item flex-row"
+            onclick={() => { handleCreateNotebookNote(); showCreateDropdown = false; }}
+            style="width: 100%; text-align: left; padding: var(--spacing-sm) var(--spacing-md); background: none; border: none; font-family: inherit; font-size: var(--font-size-sm); color: var(--text-primary); cursor: pointer; gap: var(--spacing-sm); align-items: center; border-top: 1px solid var(--border-color);"
+            onmouseover={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-mid-dark)'}
+            onmouseout={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+          >
+            <BookOpen size={16} style="color: var(--accent); flex-shrink: 0;" />
+            <div class="flex-col" style="align-items: flex-start; gap: 2px;">
+              <span style="font-weight: 600; color: var(--accent);">New Handwriting Notebook</span>
+              <span style="font-size: var(--font-size-2xs); color: var(--text-tertiary); white-space: nowrap;">Multi-page vertical scroll card engine</span>
+            </div>
+          </button>
+        </div>
+      {/if}
+    </div>
 
     <div class="right-divider"></div>
 
@@ -499,5 +581,11 @@
 
   :global(.pulse-icon) {
     animation: pulse 1.8s infinite ease-in-out;
+  }
+
+  @media (max-width: 768px) {
+    .quick-create-wrapper {
+      display: none !important;
+    }
   }
 </style>

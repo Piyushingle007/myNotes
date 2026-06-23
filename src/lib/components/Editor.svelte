@@ -45,6 +45,7 @@
 	import { renderDiagramSVG, decodeDiagram } from '../utils/diagram';
 	import ErrorBanner from './ErrorBanner.svelte';
 	import CanvasEditor from './CanvasEditor.svelte';
+	import NotebookEditor from './NotebookEditor.svelte';
 	import type { Stroke, CanvasBackground } from '../utils/canvasTypes';
 
 	function extractCanvasData(html: string): { strokes: Stroke[], background: CanvasBackground } {
@@ -482,6 +483,16 @@
 		
 		$activeNote.content = fullHtml;
 		await saveNote($activeNotePath, $activeNote.meta, fullHtml);
+		$editorDirty = false;
+	}
+
+	async function handleNotebookSave(content: string, thumbnail: string) {
+		if (get(viewerNote)) return;
+		if (!$activeNote || !$activeNotePath) return;
+
+		$activeNote.meta.thumbnail = thumbnail;
+		$activeNote.content = content;
+		await saveNote($activeNotePath, $activeNote.meta, content);
 		$editorDirty = false;
 	}
 
@@ -4927,6 +4938,12 @@
 		clearResolvedAssets();
 		content = content || '';
 		loadedPath = path;
+		
+		if (path.endsWith('.notebook.json') || appState.editorMode === 'notebook') {
+			isLoadingNote = false;
+			return;
+		}
+
 		lastSourceMode = $sourceMode;
 		isLoadingNote = true;
 		isLargeDoc = content.length > LARGE_DOC_CHARS;
@@ -7598,33 +7615,35 @@
 					</div>
 
 					<!-- Mobile Text/Canvas Mode Toggle -->
-					<div class="mode-segmented-control mobile" style="margin-left: 4px;">
-						<button
-							type="button"
-							class="mode-segment-btn"
-							class:active={appState.editorMode === 'text'}
-							onclick={() => { void appState.switchEditorMode('text'); }}
-							title="Text Mode"
-						>
-							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-								<polyline points="4 7 4 4 20 4 20 7"/>
-								<line x1="9" y1="20" x2="15" y2="20"/>
-								<line x1="12" y1="4" x2="12" y2="20"/>
-							</svg>
-						</button>
-						<button
-							type="button"
-							class="mode-segment-btn"
-							class:active={appState.editorMode === 'canvas'}
-							onclick={() => { void appState.switchEditorMode('canvas'); }}
-							title="Canvas Mode"
-						>
-							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-								<path d="M12 20h9"/>
-								<path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>
-							</svg>
-						</button>
-					</div>
+					{#if appState.editorMode !== 'notebook'}
+						<div class="mode-segmented-control mobile" style="margin-left: 4px;">
+							<button
+								type="button"
+								class="mode-segment-btn"
+								class:active={appState.editorMode === 'text'}
+								onclick={() => { void appState.switchEditorMode('text'); }}
+								title="Text Mode"
+							>
+								<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+									<polyline points="4 7 4 4 20 4 20 7"/>
+									<line x1="9" y1="20" x2="15" y2="20"/>
+									<line x1="12" y1="4" x2="12" y2="20"/>
+								</svg>
+							</button>
+							<button
+								type="button"
+								class="mode-segment-btn"
+								class:active={appState.editorMode === 'canvas'}
+								onclick={() => { void appState.switchEditorMode('canvas'); }}
+								title="Canvas Mode"
+							>
+								<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+									<path d="M12 20h9"/>
+									<path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>
+								</svg>
+							</button>
+						</div>
+					{/if}
 
 					<!-- Mobile Read/Edit Mode Toggle -->
 					<div class="mode-segmented-control mobile" style="margin-left: 4px;">
@@ -7713,39 +7732,41 @@
 				{/if}
 
 				<!-- Group: Editor Mode (Text / Canvas) -->
-				<div class="mode-segmented-control" role="radiogroup" aria-label="Editor mode">
-					<button
-						type="button"
-						class="mode-segment-btn"
-						class:active={appState.editorMode === 'text'}
-						role="radio"
-						aria-checked={appState.editorMode === 'text'}
-						onclick={() => { void appState.switchEditorMode('text'); }}
-						title="Text Editor"
-					>
-						<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-							<polyline points="4 7 4 4 20 4 20 7"/>
-							<line x1="9" y1="20" x2="15" y2="20"/>
-							<line x1="12" y1="4" x2="12" y2="20"/>
-						</svg>
-						<span>Text</span>
-					</button>
-					<button
-						type="button"
-						class="mode-segment-btn"
-						class:active={appState.editorMode === 'canvas'}
-						role="radio"
-						aria-checked={appState.editorMode === 'canvas'}
-						onclick={() => { void appState.switchEditorMode('canvas'); }}
-						title="Drawing Canvas"
-					>
-						<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-							<path d="M12 20h9"/>
-							<path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>
-						</svg>
-						<span>Canvas</span>
-					</button>
-				</div>
+				{#if appState.editorMode !== 'notebook'}
+					<div class="mode-segmented-control" role="radiogroup" aria-label="Editor mode">
+						<button
+							type="button"
+							class="mode-segment-btn"
+							class:active={appState.editorMode === 'text'}
+							role="radio"
+							aria-checked={appState.editorMode === 'text'}
+							onclick={() => { void appState.switchEditorMode('text'); }}
+							title="Text Editor"
+						>
+							<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+								<polyline points="4 7 4 4 20 4 20 7"/>
+								<line x1="9" y1="20" x2="15" y2="20"/>
+								<line x1="12" y1="4" x2="12" y2="20"/>
+							</svg>
+							<span>Text</span>
+						</button>
+						<button
+							type="button"
+							class="mode-segment-btn"
+							class:active={appState.editorMode === 'canvas'}
+							role="radio"
+							aria-checked={appState.editorMode === 'canvas'}
+							onclick={() => { void appState.switchEditorMode('canvas'); }}
+							title="Drawing Canvas"
+						>
+							<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+								<path d="M12 20h9"/>
+								<path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>
+							</svg>
+							<span>Canvas</span>
+						</button>
+					</div>
+				{/if}
 
 				<span class="toolbar-sep" aria-hidden="true"></span>
 
@@ -8131,7 +8152,7 @@
 			{/if}
 			<div class="editor-body-row">
 			<div class="editor-body" class:readonly={$readOnly} class:focus-mode-active={!$readOnly && appState.focusModeEnabled} class:typewriter-active={!$readOnly && appState.typewriterScrollEnabled}>
-				{#if isMobile && appState.editorMode !== 'canvas'}
+				{#if isMobile && appState.editorMode === 'text'}
 					<div class="mobile-note-title-container" class:focus-mode={appState.focusModeEnabled}>
 						<input
 							type="text"
@@ -8147,7 +8168,7 @@
 					<!-- Mobile: both views always in DOM, toggled via display to avoid slow editor re-creation -->
 					<textarea
 						class="source-editor"
-						style={$sourceMode && appState.editorMode !== 'canvas' ? '' : 'display:none'}
+						style={$sourceMode && appState.editorMode === 'text' ? '' : 'display:none'}
 						bind:this={sourceElement}
 						bind:value={sourceContent}
 						readonly={$readOnly}
@@ -8189,7 +8210,7 @@
 						spellcheck="false"
 					></textarea>
 					<!-- svelte-ignore a11y_no_static_element_interactions -->
-					<div class="tiptap-wrapper" class:large-doc={isLargeDoc} style={!$sourceMode && appState.editorMode !== 'canvas' ? '' : 'display:none'} spellcheck="false" bind:this={editorElement} onclick={(e) => { closeLinkContextMenu(); handleEditorClick(e); showOutline = false; }}></div>
+					<div class="tiptap-wrapper" class:large-doc={isLargeDoc} style={!$sourceMode && appState.editorMode === 'text' ? '' : 'display:none'} spellcheck="false" bind:this={editorElement} onclick={(e) => { closeLinkContextMenu(); handleEditorClick(e); showOutline = false; }}></div>
 				{:else}
 					<div class="desktop-text-editor-container" style={appState.editorMode === 'text' ? 'display: contents;' : 'display: none;'}>
 						<!-- Desktop: conditional rendering with line numbers -->
@@ -8315,6 +8336,17 @@
 						/>
 					</div>
 				{/if}
+
+				<!-- Notebook Mode Editor -->
+				{#if appState.editorMode === 'notebook' && appState.activeNoteContent}
+					<div class="notebook-editor-wrapper" style="display: block; position: absolute; inset: 0; z-index: 1;">
+						<NotebookEditor 
+							notePath={$activeNotePath || ''}
+							initialContent={appState.activeNoteContent}
+							onSave={handleNotebookSave}
+						/>
+					</div>
+				{/if}
 				
 				<!-- Floating Bubble Menu -->
 				{#if showBubbleMenu && bubbleMenuCoords}
@@ -8425,7 +8457,7 @@
 			</div>
 		</div>
 
-		{#if editorReady && !$sourceMode && !$viewerNote && !$readOnly && appState.editorMode !== 'canvas'}
+		{#if editorReady && !$sourceMode && !$viewerNote && !$readOnly && appState.editorMode !== 'canvas' && appState.editorMode !== 'notebook'}
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<div class="editor-formatting-bar" 
 				style={isMobile ? `${keyboardHeight > 0 ? `bottom: ${keyboardHeight}px;` : ''}${anyDropdownOpen ? 'overflow: visible;' : ''}` : ''} 

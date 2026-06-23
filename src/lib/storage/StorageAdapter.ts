@@ -74,7 +74,7 @@ export class IndexedDBAdapter implements StorageAdapter {
     const now = Date.now();
     const note: NoteFile = {
       path,
-      name: path.split('/').pop()?.replace(/\.(md|html)$/, '') || 'Untitled',
+      name: path.split('/').pop()?.replace(/\.(md|html|notebook\.json)$/, '') || 'Untitled',
       content,
       modified: now,
       created: existing ? existing.created : now
@@ -251,12 +251,13 @@ export class FileSystemAccessAdapter implements StorageAdapter {
     for await (const entry of dirHandle.values()) {
       const relativePath = currentPath ? `${currentPath}/${entry.name}` : entry.name;
       
-      if (entry.kind === 'file' && entry.name.endsWith('.html')) {
+      if (entry.kind === 'file' && (entry.name.endsWith('.html') || entry.name.endsWith('.notebook.json'))) {
         const file = await entry.getFile();
         const content = await file.text();
+        const isNotebook = entry.name.endsWith('.notebook.json');
         results.push({
           path: relativePath,
-          name: entry.name.replace(/\.html$/, ''),
+          name: isNotebook ? entry.name.replace(/\.notebook\.json$/, '') : entry.name.replace(/\.html$/, ''),
           content,
           modified: file.lastModified,
           created: file.lastModified // File System Access API does not expose file creation date easily
