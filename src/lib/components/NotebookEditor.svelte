@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, onDestroy, tick } from 'svelte';
+  import { onMount, onDestroy, tick, untrack } from 'svelte';
   import { scale, slide, fade, fly } from 'svelte/transition';
   import { 
     Pen, 
@@ -109,7 +109,6 @@
   let showMobilePageIndicatorPopover = $state(false);
 
   // Epic 3 States: Thumbnails & Context Menus
-  let cachedThumbnails = $state<Record<string, string>>({});
   let showThumbnailsSidePanel = $state(localStorage.getItem('mynotes_notebook_show_thumbnails') === 'true');
   let showMobileThumbnailsSheet = $state(false);
   let contextMenuState = $state<{ show: boolean; x: number; y: number; pageId: string }>({
@@ -160,8 +159,14 @@
     const content = initialContent;
     const path = notePath;
     
-    // Skip reload if this update is from our own internal save or the content hasn't changed
-    if (path === currentLoadedPath && (content === lastSavedContent || (notebook && content === serializeNotebook(notebook)))) {
+    // Skip reload if this update is from our own internal save or the content hasn't changed.
+    // Wrap access to the notebook object in untrack() so Svelte 5 does not
+    // register the entire deep reactive document tree as a dependency.
+    const isSameNotebook = untrack(() => {
+      return notebook && content === serializeNotebook(notebook);
+    });
+
+    if (path === currentLoadedPath && (content === lastSavedContent || isSameNotebook)) {
       return;
     }
     
@@ -187,16 +192,6 @@
       notebook = createEmptyNotebook(path.split('/').pop()?.replace(/\.notebook\.json$/, '') || 'Notebook');
       activePageId = notebook.pages[0].id;
     }
-
-    // Generate thumbnails for all pages after notebook updates
-    tick().then(() => {
-      cachedThumbnails = {};
-      if (notebook) {
-        notebook.pages.forEach(p => {
-          generatePageThumbnailImmediate(p.id);
-        });
-      }
-    });
   });
 
   // Track tool changes to update local color & size settings
@@ -300,12 +295,18 @@
 
     const handleBlurOrUnload = () => {
       if (appState.editorDirty) {
+        if (saveTimeout) clearTimeout(saveTimeout);
+        if (pendingIdleCallback !== null) {
+          cancelIdleCallback(pendingIdleCallback);
+          pendingIdleCallback = null;
+        }
         performSaveImmediate();
       }
     };
 
     window.addEventListener('blur', handleBlurOrUnload);
     window.addEventListener('beforeunload', handleBlurOrUnload);
+    document.addEventListener('visibilitychange', handleBlurOrUnload);
     window.addEventListener('touchstart', handleTouchStartEdgeBlock, { passive: false });
 
     if (scrollContainer) {
@@ -318,6 +319,7 @@
     return () => {
       window.removeEventListener('blur', handleBlurOrUnload);
       window.removeEventListener('beforeunload', handleBlurOrUnload);
+      document.removeEventListener('visibilitychange', handleBlurOrUnload);
       window.removeEventListener('touchstart', handleTouchStartEdgeBlock);
       if (scrollContainer) {
         scrollContainer.removeEventListener('touchstart', handleTouchStart);
@@ -393,115 +395,7 @@
     };
   });
 
-  // Thumbnail generation functions
-  let thumbnailDebounceTimeouts: Record<string, ReturnType<typeof setTimeout>> = {};
 
-  function triggerPageThumbnailUpdate(pageId: string) {
-    if (thumbnailDebounceTimeouts[pageId]) {
-      clearTimeout(thumbnailDebounceTimeouts[pageId]);
-    }
-    thumbnailDebounceTimeouts[pageId] = setTimeout(() => {
-      generatePageThumbnailImmediate(pageId);
-      delete thumbnailDebounceTimeouts[pageId];
-    }, 500);
-  }
-
-  function generatePageThumbnailImmediate(pageId: string) {
-    if (!notebook) return;
-    const page = notebook.pages.find(p => p.id === pageId);
-    if (!page) return;
-
-    const canvas = document.createElement('canvas');
-    canvas.width = 120;
-    canvas.height = 170;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    // Draw background
-    ctx.fillStyle = pageBg;
-    ctx.fillRect(0, 0, 120, 170);
-
-    const scale = 170 / 1130;
-    ctx.save();
-    ctx.scale(scale, scale);
-
-    // Draw background template pattern
-    if (page.background !== 'blank') {
-      const patternCol = isLight ? '#e5e7eb' : '#2a2f38';
-      ctx.strokeStyle = patternCol;
-      ctx.fillStyle = patternCol;
-      ctx.lineWidth = 1;
-
-      if (page.background === 'lined') {
-        const lineGap = 28;
-        ctx.beginPath();
-        for (let y = lineGap; y < page.height; y += lineGap) {
-          ctx.moveTo(0, y);
-          ctx.lineTo(page.width, y);
-        }
-        ctx.stroke();
-      } else if (page.background === 'grid') {
-        const gridGap = 30;
-        ctx.beginPath();
-        for (let x = gridGap; x < page.width; x += gridGap) {
-          ctx.moveTo(x, 0);
-          ctx.lineTo(x, page.height);
-        }
-        for (let y = gridGap; y < page.height; y += gridGap) {
-          ctx.moveTo(0, y);
-          ctx.lineTo(page.width, y);
-        }
-        ctx.stroke();
-      } else if (page.background === 'dotted') {
-        const dotGap = 24;
-        const dotRadius = 1.25;
-        for (let x = dotGap; x < page.width; x += dotGap) {
-          for (let y = dotGap; y < page.height; y += dotGap) {
-            ctx.beginPath();
-            ctx.arc(x, y, dotRadius, 0, Math.PI * 2);
-            ctx.fill();
-          }
-        }
-      }
-    }
-
-    // Draw strokes
-    for (const stroke of page.strokes) {
-      if (stroke.points.length === 0) continue;
-      if (stroke.tool === 'eraser') continue;
-
-      const isStylusStroke = stroke.points.some(p => p.pressure !== 0.5 && p.pressure !== 0 && p.pressure !== 1);
-      const simulate = !isStylusStroke;
-
-      const pointsArray = stroke.points.map(p => [p.x, p.y, p.pressure]);
-      const strokeOutlinePoints = getStroke(pointsArray, {
-        size: stroke.size,
-        thinning: stroke.tool === 'highlighter' ? 0.05 : 0.6,
-        smoothing: 0.5,
-        streamline: 0.5,
-        simulatePressure: simulate,
-        last: true
-      });
-
-      if (strokeOutlinePoints.length === 0) continue;
-
-      ctx.save();
-      ctx.beginPath();
-      ctx.moveTo(strokeOutlinePoints[0][0], strokeOutlinePoints[0][1]);
-      for (let i = 1; i < strokeOutlinePoints.length; i++) {
-        ctx.lineTo(strokeOutlinePoints[i][0], strokeOutlinePoints[i][1]);
-      }
-      ctx.closePath();
-
-      ctx.fillStyle = stroke.color;
-      ctx.globalAlpha = stroke.opacity;
-      ctx.fill();
-      ctx.restore();
-    }
-
-    ctx.restore(); // Restore context scale
-    cachedThumbnails[pageId] = canvas.toDataURL('image/jpeg', 0.7);
-  }
 
   // Scroll to a specific page card
   function scrollToPage(pageId: string) {
@@ -580,13 +474,6 @@
     });
 
     notebook.pages = newPages;
-    
-    // Regenerate thumbnails for moved pages
-    tick().then(() => {
-      notebook?.pages.forEach(p => {
-        generatePageThumbnailImmediate(p.id);
-      });
-    });
 
     triggerSave();
     draggingIndex = null;
@@ -618,7 +505,6 @@
     });
     
     notebook.pages = newPages;
-    generatePageThumbnailImmediate(newPage.id);
     triggerSave();
     
     tick().then(() => {
@@ -665,7 +551,6 @@
     });
 
     notebook.pages = newPages;
-    generatePageThumbnailImmediate(newPage.id);
     triggerSave();
 
     tick().then(() => {
@@ -699,10 +584,6 @@
         activePageId = newPages[nextActiveIdx].id;
       }
 
-      if (cachedThumbnails[pageId]) {
-        delete cachedThumbnails[pageId];
-      }
-
       triggerSave();
       
       tick().then(() => {
@@ -734,11 +615,6 @@
     });
 
     notebook.pages = newPages;
-    
-    // Regenerate thumbnails for moved pages
-    generatePageThumbnailImmediate(pageId);
-    generatePageThumbnailImmediate(notebook.pages[index].id);
-
     triggerSave();
 
     tick().then(() => {
@@ -797,7 +673,6 @@
     
     redoStack.push(entry);
     scrollToPage(entry.pageId);
-    triggerPageThumbnailUpdate(entry.pageId);
     triggerSave();
   }
 
@@ -821,7 +696,6 @@
     
     undoStack.push(entry);
     scrollToPage(entry.pageId);
-    triggerPageThumbnailUpdate(entry.pageId);
     triggerSave();
   }
 
@@ -834,10 +708,10 @@
     appState.editorDirty = true;
     if (saveTimeout) clearTimeout(saveTimeout);
 
-    // Use a longer debounce during active drawing to avoid blocking strokes.
-    // After drawing stops, the shorter debounce kicks in.
-    const recentlyDrawing = Date.now() - lastStrokeTime < 1000;
-    const debounceMs = recentlyDrawing ? 2000 : 500;
+    // Use a much longer debounce during active drawing to avoid blocking strokes.
+    // 15 seconds after active drawing, or 2 seconds when not drawing.
+    const recentlyDrawing = Date.now() - lastStrokeTime < 5000;
+    const debounceMs = recentlyDrawing ? 15000 : 2000;
 
     saveTimeout = setTimeout(() => {
       // Use requestIdleCallback so the save yields to any pending
@@ -847,7 +721,7 @@
         pendingIdleCallback = requestIdleCallback(() => {
           pendingIdleCallback = null;
           performSaveImmediate();
-        }, { timeout: 3000 });
+        }, { timeout: 5000 });
       } else {
         performSaveImmediate();
       }
@@ -857,30 +731,20 @@
   function performSaveImmediate() {
     if (!notebook) return;
     notebook.updatedAt = new Date().toISOString();
-
-    // Defer expensive thumbnail generation if we were drawing very recently
-    const recentlyDrawing = Date.now() - lastStrokeTime < 500;
-    let thumbnail = notebook.thumbnail || '';
-    if (!recentlyDrawing) {
-      thumbnail = generateFirstPageThumbnail();
-      notebook.thumbnail = thumbnail;
-    } else {
-      // Schedule a deferred thumbnail generation
-      setTimeout(() => {
-        if (notebook) {
-          notebook.thumbnail = generateFirstPageThumbnail();
-        }
-      }, 2000);
-    }
+    notebook.thumbnail = ''; // Thumbnails removed
 
     const contentStr = serializeNotebook(notebook);
     lastSavedContent = contentStr;
-    onSave(contentStr, thumbnail);
+    onSave(contentStr, '');
     appState.editorDirty = false;
   }
 
   onDestroy(() => {
     if (saveTimeout) clearTimeout(saveTimeout);
+    if (pendingIdleCallback !== null) {
+      cancelIdleCallback(pendingIdleCallback);
+      pendingIdleCallback = null;
+    }
     if (appState.editorDirty) {
       performSaveImmediate();
     }
@@ -912,14 +776,12 @@
         if (notebook.pages.length < 100) {
           const newPage = createEmptyPage(notebook.pages.length, notebook.defaultBackground);
           notebook.pages = [...notebook.pages, newPage];
-          generatePageThumbnailImmediate(newPage.id);
         } else {
           appState.showToast('Maximum page limit (100) reached.', 'warning', 3000);
         }
       }
     }
 
-    triggerPageThumbnailUpdate(pageId);
     triggerSave();
   }
 
@@ -941,7 +803,6 @@
         strokes: erasedStrokes
       });
       notebook.pages[idx].strokes = newStrokes;
-      triggerPageThumbnailUpdate(pageId);
       triggerSave();
     }
   }
@@ -963,7 +824,6 @@
     if (idx === -1) return;
 
     notebook.pages[idx].background = bg;
-    generatePageThumbnailImmediate(targetId);
     triggerSave();
     showSettingsDropdown = false;
   }
@@ -982,7 +842,6 @@
         strokes: [...notebook.pages[idx].strokes]
       });
       notebook.pages[idx].strokes = [];
-      generatePageThumbnailImmediate(activePageId);
       triggerSave();
     }
     showSettingsDropdown = false;
@@ -1422,122 +1281,7 @@
     URL.revokeObjectURL(url);
   }
 
-  // Off-screen first page thumbnail rendering
-  function generateFirstPageThumbnail(): string {
-    if (!notebook || notebook.pages.length === 0) return '';
-    const firstPage = notebook.pages[0];
-    
-    const offscreen = document.createElement('canvas');
-    offscreen.width = 200;
-    offscreen.height = 150;
-    const oCtx = offscreen.getContext('2d');
-    if (!oCtx) return '';
 
-    const margin = 6;
-    const pageHeight = 150 - margin * 2;
-    const pageWidth = pageHeight * (firstPage.width / firstPage.height);
-    const offsetX = (200 - pageWidth) / 2;
-    const offsetY = margin;
-    const scale = pageWidth / firstPage.width;
-
-    oCtx.fillStyle = workspaceBg;
-    oCtx.fillRect(0, 0, 200, 150);
-
-    oCtx.save();
-    oCtx.fillStyle = pageBg;
-    oCtx.shadowColor = 'rgba(0, 0, 0, 0.15)';
-    oCtx.shadowBlur = 4;
-    oCtx.shadowOffsetY = 2;
-    oCtx.beginPath();
-    oCtx.roundRect(offsetX, offsetY, pageWidth, pageHeight, 2);
-    oCtx.fill();
-    oCtx.restore();
-
-    oCtx.save();
-    oCtx.beginPath();
-    oCtx.roundRect(offsetX, offsetY, pageWidth, pageHeight, 2);
-    oCtx.clip();
-
-    oCtx.translate(offsetX, offsetY);
-    oCtx.scale(scale, scale);
-
-    // Draw background
-    if (firstPage.background !== 'blank') {
-      const patternCol = isLight ? '#f3f4f6' : '#272d37';
-      oCtx.strokeStyle = patternCol;
-      oCtx.fillStyle = patternCol;
-      oCtx.lineWidth = 1;
-      if (firstPage.background === 'lined') {
-        const lineGap = 28;
-        oCtx.beginPath();
-        for (let y = lineGap; y < firstPage.height; y += lineGap) {
-          oCtx.moveTo(0, y);
-          oCtx.lineTo(firstPage.width, y);
-        }
-        oCtx.stroke();
-      } else if (firstPage.background === 'grid') {
-        const gridGap = 30;
-        oCtx.beginPath();
-        for (let x = gridGap; x < firstPage.width; x += gridGap) {
-          oCtx.moveTo(x, 0);
-          oCtx.lineTo(x, firstPage.height);
-        }
-        for (let y = gridGap; y < firstPage.height; y += gridGap) {
-          oCtx.moveTo(0, y);
-          oCtx.lineTo(firstPage.width, y);
-        }
-        oCtx.stroke();
-      } else if (firstPage.background === 'dotted') {
-        const dotGap = 24;
-        for (let x = dotGap; x < firstPage.width; x += dotGap) {
-          for (let y = dotGap; y < firstPage.height; y += dotGap) {
-            oCtx.beginPath();
-            oCtx.arc(x, y, 0.8, 0, Math.PI * 2);
-            oCtx.fill();
-          }
-        }
-      }
-    }
-
-    // Draw strokes
-    for (const stroke of firstPage.strokes) {
-      if (stroke.tool !== 'eraser' && stroke.points.length > 0) {
-        const pointsArray = stroke.points.map(p => [p.x, p.y, p.pressure]);
-        const strokeOutlinePoints = getStroke(pointsArray, {
-          size: stroke.size,
-          thinning: stroke.tool === 'highlighter' ? 0.05 : 0.6,
-          smoothing: 0.5,
-          streamline: 0.5,
-          simulatePressure: !stroke.points.some(p => p.pressure !== 0.5 && p.pressure !== 0 && p.pressure !== 1),
-          last: true
-        });
-
-        if (strokeOutlinePoints.length > 0) {
-          oCtx.save();
-          oCtx.beginPath();
-          oCtx.moveTo(strokeOutlinePoints[0][0], strokeOutlinePoints[0][1]);
-          for (let i = 1; i < strokeOutlinePoints.length; i++) {
-            oCtx.lineTo(strokeOutlinePoints[i][0], strokeOutlinePoints[i][1]);
-          }
-          oCtx.closePath();
-          oCtx.fillStyle = stroke.color;
-          oCtx.globalAlpha = stroke.opacity;
-          oCtx.fill();
-          oCtx.restore();
-        }
-      }
-    }
-
-    oCtx.restore(); // restore clip
-
-    oCtx.strokeStyle = borderCol;
-    oCtx.lineWidth = 1;
-    oCtx.beginPath();
-    oCtx.roundRect(offsetX, offsetY, pageWidth, pageHeight, 2);
-    oCtx.stroke();
-
-    return offscreen.toDataURL('image/jpeg', 0.85);
-  }
 
   // Fit Width and Fit Page
   function fitWidth() {
@@ -2211,11 +1955,10 @@
                 onclick={() => scrollToPage(page.id)}
               >
                 <div class="thumbnail-wrapper">
-                  {#if cachedThumbnails[page.id]}
-                    <img src={cachedThumbnails[page.id]} alt="Page {idx + 1}" />
-                  {:else}
-                    <div class="thumbnail-placeholder font-mono">Page {idx + 1}</div>
-                  {/if}
+                  <div class="thumbnail-placeholder flex-col font-mono">
+                    <BookOpen size={20} style="margin-bottom: 4px; opacity: 0.7;" />
+                    <span>Page {idx + 1}</span>
+                  </div>
                   
                   <div class="thumbnail-overlay flex-row" onclick={(e) => e.stopPropagation()}>
                     <button class="overlay-btn" onclick={() => movePage(page.id, -1)} disabled={idx === 0} title="Move Up">
@@ -2433,11 +2176,10 @@
                 onclick={() => { scrollToPage(page.id); showMobileThumbnailsSheet = false; }}
               >
                 <div class="mobile-thumbnail-wrapper">
-                  {#if cachedThumbnails[page.id]}
-                    <img src={cachedThumbnails[page.id]} alt="Page {idx + 1}" />
-                  {:else}
-                    <div class="thumbnail-placeholder font-mono">Pg {idx + 1}</div>
-                  {/if}
+                  <div class="thumbnail-placeholder flex-col font-mono" style="font-size: 10px;">
+                    <BookOpen size={16} style="margin-bottom: 2px; opacity: 0.7;" />
+                    <span>Pg {idx + 1}</span>
+                  </div>
                 </div>
                 <div class="mobile-thumbnail-info flex-row" onclick={(e) => e.stopPropagation()}>
                   <span class="mobile-thumbnail-number font-mono">Page {idx + 1}</span>
@@ -2495,11 +2237,10 @@
                 class:force-white-preview={exportOptions.forceWhite}
                 style="--preview-bg: {exportOptions.forceWhite ? '#ffffff' : pageBg}; --pattern-color: {(exportOptions.forceWhite || isLight) ? '#e5e7eb' : '#2a2f38'};"
               >
-                {#if cachedThumbnails[notebook.pages[0].id]}
-                  <img src={cachedThumbnails[notebook.pages[0].id]} alt="First Page Preview" class:force-white-img={exportOptions.forceWhite} />
-                {:else}
-                  <div class="thumbnail-placeholder font-mono">Page 1</div>
-                {/if}
+                <div class="thumbnail-placeholder flex-col font-mono" style="width: 100%; height: 100%; min-height: 120px;">
+                  <BookOpen size={32} style="margin-bottom: 8px; opacity: 0.7;" />
+                  <span>Page 1</span>
+                </div>
               </div>
             </div>
           {/if}
@@ -3410,13 +3151,20 @@
 
   .thumbnail-placeholder {
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
     width: 100%;
     height: 100%;
     color: var(--text-secondary);
     font-size: 11px;
-    opacity: 0.7;
+    background-color: var(--page-bg);
+    border-radius: 4px;
+    border: 1px solid var(--border-color);
+    box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.05);
+    background-image: linear-gradient(to bottom, transparent 92%, var(--border-color) 8%);
+    background-size: 100% 12px;
+    transition: all 0.2s ease;
   }
 
   .thumbnail-overlay {
