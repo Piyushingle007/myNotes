@@ -468,6 +468,7 @@
 	});
 	const canvasStrokes = $derived(canvasData.strokes);
 	const canvasBackground = $derived(canvasData.background);
+	let canvasPerformSaveImmediate = $state<(() => void) | undefined>(undefined);
 
 	async function handleCanvasSave(strokes: Stroke[], background: CanvasBackground, thumbnail: string) {
 		if (get(viewerNote)) return; // viewer files are never written back
@@ -4752,6 +4753,14 @@
 		if (get(viewerNote)) return; // viewer files are never written back
 		if (!$activeNote || !$activeNotePath) return;
 		await fixingBlobsPromise;
+
+		if (appState.editorMode === 'canvas') {
+			if (canvasPerformSaveImmediate) {
+				canvasPerformSaveImmediate();
+			}
+			return;
+		}
+
 		try {
 			const bodyHtml = $sourceMode ? sourceContent : (editor ? editor.getHTML() : '');
 			const textOnly = bodyHtml.replace(/<[^>]+>/g, '').trim();
@@ -8295,14 +8304,17 @@
 				{/if}
 
 				<!-- Canvas Mode Editor -->
-				<div class="canvas-editor-wrapper" style={appState.editorMode === 'canvas' ? 'display: block; position: absolute; inset: 0; z-index: 1;' : 'display: none;'}>
-					<CanvasEditor 
-						notePath={$activeNotePath || ''}
-						initialStrokes={canvasStrokes}
-						initialBackground={canvasBackground}
-						onSave={handleCanvasSave}
-					/>
-				</div>
+				{#if appState.editorMode === 'canvas' && appState.activeNoteContent}
+					<div class="canvas-editor-wrapper" style="display: block; position: absolute; inset: 0; z-index: 1;">
+						<CanvasEditor 
+							notePath={$activeNotePath || ''}
+							initialStrokes={canvasStrokes}
+							initialBackground={canvasBackground}
+							onSave={handleCanvasSave}
+							bind:performSaveImmediate={canvasPerformSaveImmediate}
+						/>
+					</div>
+				{/if}
 				
 				<!-- Floating Bubble Menu -->
 				{#if showBubbleMenu && bubbleMenuCoords}

@@ -232,6 +232,11 @@ class AppState {
 
   async switchEditorMode(mode: 'text' | 'canvas') {
     if (this.editorMode === mode) return;
+    if (this.editorMode === 'canvas') {
+      if (this.onForceSave) {
+        await this.onForceSave();
+      }
+    }
     if (this.editorDirty && this.activeNotePath) {
       await this.saveActiveNote(true);
     }
