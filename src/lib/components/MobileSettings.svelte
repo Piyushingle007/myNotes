@@ -487,6 +487,20 @@
           </div>
         </div>
 
+        <div class="ms-group flex-col" style="margin-top: var(--spacing-md);">
+          <span class="ms-group-title">Layout Settings</span>
+          <div class="ms-row flex-row">
+            <div class="ms-section-text flex-col">
+              <span class="ms-field-label">Force Mobile UI</span>
+              <span class="ms-field-desc">Force the application to use mobile layout regardless of screen size</span>
+            </div>
+            <label class="switch-container">
+              <input type="checkbox" checked={appState.forceMobileUi} onchange={() => appState.toggleForceMobileUi()} />
+              <span class="slider"></span>
+            </label>
+          </div>
+        </div>
+
       {:else if activeSection === 'editor'}
         <!-- ============ EDITOR & FILES ============ -->
         <div class="ms-group flex-col">

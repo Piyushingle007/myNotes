@@ -28,6 +28,9 @@
     Viewport
   } from '../utils/canvasTypes';
 
+  const PAGE_WIDTH = 800;
+  const PAGE_HEIGHT = 1130;
+
   // Component Props
   interface Props {
     // Current active note path/id to handle resets on switch
@@ -53,7 +56,7 @@
   let colorInputEl = $state<HTMLInputElement | null>(null);
 
   // Mobile and Fullscreen states
-  let isMobile = $state(false);
+  let isMobile = $derived(appState.isMobile);
   let isFullscreen = $state(false);
   let activeMobilePopup = $state<'none' | 'color' | 'size' | 'menu'>('none');
   let containerElement = $state<HTMLDivElement | null>(null);
@@ -83,21 +86,13 @@
     }
   }
 
-  // Monitor mobile layout and fullscreen status
+  // Monitor fullscreen status
   $effect(() => {
-    isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
-    const handleResize = () => {
-      isMobile = window.innerWidth < 768;
-    };
     const handleFullscreenChange = () => {
       isFullscreen = document.fullscreenElement === containerElement;
     };
-
-    window.addEventListener('resize', handleResize);
     document.addEventListener('fullscreenchange', handleFullscreenChange);
-
     return () => {
-      window.removeEventListener('resize', handleResize);
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
     };
   });
@@ -156,22 +151,56 @@
     { value: 'dotted', label: 'Dotted' }
   ];
 
+  // Reactive Theme Card colors
+  const activeThemeObj = $derived(appState.themes.find(t => t.id === appState.theme));
+  const isLight = $derived(activeThemeObj?.category === 'light');
+  const workspaceBg = $derived(isLight ? '#eef0f3' : (activeThemeObj?.bg || '#111317'));
+  const pageBg = $derived(isLight ? '#ffffff' : (appState.theme === 'black' ? '#121212' : '#1c1c1e'));
+  const borderCol = $derived(isLight ? '#d1d5db' : '#2d333b');
+  const shadowCol = $derived(isLight ? 'rgba(0, 0, 0, 0.06)' : 'rgba(0, 0, 0, 0.4)');
+
+  let minZoom = $state(0.25);
+
+  function fitPageToScreen() {
+    if (!canvasElement || !wrapperElement) return;
+    const rect = wrapperElement.getBoundingClientRect();
+    const margin = 16;
+    const availableWidth = rect.width - margin * 2;
+
+    const scaleVal = Math.max(0.1, Math.min(4.0, availableWidth / PAGE_WIDTH));
+
+    // Limit minimum zoom based on mobile view to keep it readable and writable
+    if (isMobile) {
+      minZoom = scaleVal;
+    } else {
+      minZoom = 0.25;
+    }
+
+    viewport.zoom = scaleVal;
+    viewport.x = (rect.width - PAGE_WIDTH * scaleVal) / 2;
+    viewport.y = margin;
+    
+    redrawAll();
+  }
+
   // Reset canvas state when notePath changes
+  let lastLoadedPath = $state('');
   $effect(() => {
-    const _path = notePath; // establish reactive dependency
-    untrack(() => {
-      strokes = [...initialStrokes];
-      currentBackground = initialBackground;
-      undoStack = [];
-      redoStack = [];
-      viewport = { x: 0, y: 0, zoom: 1 };
-      
-      // Request redraw
-      tick().then(() => {
-        resizeCanvas();
-        redrawAll();
+    const path = notePath;
+    if (path && path !== lastLoadedPath) {
+      untrack(() => {
+        strokes = [...initialStrokes];
+        currentBackground = initialBackground;
+        undoStack = [];
+        redoStack = [];
+        lastLoadedPath = path;
+        
+        tick().then(() => {
+          resizeCanvas();
+          fitPageToScreen();
+        });
       });
-    });
+    }
   });
 
   // Restore input mode preferences
@@ -231,101 +260,123 @@
 
   // Generate a compressed 200x150 JPEG thumbnail preview of the strokes
   function generateThumbnail(): string {
-    if (strokes.length === 0) return '';
-    
     const offscreen = document.createElement('canvas');
     offscreen.width = 200;
     offscreen.height = 150;
     const oCtx = offscreen.getContext('2d');
     if (!oCtx) return '';
-    
-    // Check if dark mode is active to fill thumbnail background accordingly
-    const isDark = document.documentElement.classList.contains('dark') || document.body.classList.contains('dark') || (typeof appState !== 'undefined' && appState.theme?.includes('dark'));
-    oCtx.fillStyle = isDark ? '#1e1e1e' : '#ffffff';
+
+    // Fill workspace background
+    oCtx.fillStyle = workspaceBg;
     oCtx.fillRect(0, 0, 200, 150);
-    
-    // Find boundaries of drawing to crop/center it
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    for (const stroke of strokes) {
-      for (const p of stroke.points) {
-        if (p.x < minX) minX = p.x;
-        if (p.y < minY) minY = p.y;
-        if (p.x > maxX) maxX = p.x;
-        if (p.y > maxY) maxY = p.y;
-      }
-    }
-    
-    if (minX === Infinity) return '';
-    
-    const strokeWidth = maxX - minX;
-    const strokeHeight = maxY - minY;
-    const margin = 10;
-    const drawWidth = 200 - margin * 2;
-    const drawHeight = 150 - margin * 2;
-    
-    const scale = Math.min(drawWidth / (strokeWidth || 1), drawHeight / (strokeHeight || 1));
-    const offsetX = margin + (drawWidth - strokeWidth * scale) / 2 - minX * scale;
-    const offsetY = margin + (drawHeight - strokeHeight * scale) / 2 - minY * scale;
-    
+
+    // Fit A4 page to the 200x150 thumbnail area
+    const margin = 6;
+    const pageHeight = 150 - margin * 2;
+    const pageWidth = pageHeight * (PAGE_WIDTH / PAGE_HEIGHT);
+    const offsetX = (200 - pageWidth) / 2;
+    const offsetY = margin;
+    const scale = pageWidth / PAGE_WIDTH;
+
+    // Draw shadow
     oCtx.save();
+    oCtx.fillStyle = pageBg;
+    oCtx.shadowColor = shadowCol;
+    oCtx.shadowBlur = 4;
+    oCtx.shadowOffsetX = 0;
+    oCtx.shadowOffsetY = 2;
+    oCtx.beginPath();
+    oCtx.roundRect(offsetX, offsetY, pageWidth, pageHeight, 2);
+    oCtx.fill();
+    oCtx.restore();
+
+    // Draw page background
+    oCtx.fillStyle = pageBg;
+    oCtx.beginPath();
+    oCtx.roundRect(offsetX, offsetY, pageWidth, pageHeight, 2);
+    oCtx.fill();
+
+    // Clip to the page
+    oCtx.save();
+    oCtx.beginPath();
+    oCtx.roundRect(offsetX, offsetY, pageWidth, pageHeight, 2);
+    oCtx.clip();
+
+    // Apply scale and translation for content
     oCtx.translate(offsetX, offsetY);
     oCtx.scale(scale, scale);
-    
-    for (const stroke of strokes) {
-      const pointsArray = stroke.points.map(p => [p.x, p.y, p.pressure]);
-      const strokeOutlinePoints = getStroke(pointsArray, {
-        size: stroke.size,
-        thinning: stroke.tool === 'highlighter' ? 0.05 : 0.6,
-        smoothing: 0.5,
-        streamline: 0.5,
-        simulatePressure: !stroke.points.some(p => p.pressure !== 0.5 && p.pressure !== 0 && p.pressure !== 1),
-        last: true
-      });
-      if (strokeOutlinePoints.length === 0) continue;
-      
+
+    // Draw background pattern if not blank
+    if (currentBackground !== 'blank') {
+      const patternCol = isLight ? '#f3f4f6' : '#272d37';
       oCtx.save();
-      oCtx.beginPath();
-      oCtx.moveTo(strokeOutlinePoints[0][0], strokeOutlinePoints[0][1]);
-      for (let i = 1; i < strokeOutlinePoints.length; i++) {
-        oCtx.lineTo(strokeOutlinePoints[i][0], strokeOutlinePoints[i][1]);
+      oCtx.strokeStyle = patternCol;
+      oCtx.fillStyle = patternCol;
+      oCtx.lineWidth = 1;
+      if (currentBackground === 'lined') {
+        const lineGap = 28;
+        oCtx.beginPath();
+        for (let y = lineGap; y < PAGE_HEIGHT; y += lineGap) {
+          oCtx.moveTo(0, y);
+          oCtx.lineTo(PAGE_WIDTH, y);
+        }
+        oCtx.stroke();
+      } else if (currentBackground === 'grid') {
+        const gridGap = 30;
+        oCtx.beginPath();
+        for (let x = gridGap; x < PAGE_WIDTH; x += gridGap) {
+          oCtx.moveTo(x, 0);
+          oCtx.lineTo(x, PAGE_HEIGHT);
+        }
+        for (let y = gridGap; y < PAGE_HEIGHT; y += gridGap) {
+          oCtx.moveTo(0, y);
+          oCtx.lineTo(PAGE_WIDTH, y);
+        }
+        oCtx.stroke();
+      } else if (currentBackground === 'dotted') {
+        const dotGap = 24;
+        for (let x = dotGap; x < PAGE_WIDTH; x += dotGap) {
+          for (let y = dotGap; y < PAGE_HEIGHT; y += dotGap) {
+            oCtx.beginPath();
+            oCtx.arc(x, y, 0.8, 0, Math.PI * 2);
+            oCtx.fill();
+          }
+        }
       }
-      oCtx.closePath();
-      oCtx.fillStyle = stroke.color;
-      oCtx.globalAlpha = stroke.opacity;
-      oCtx.fill();
       oCtx.restore();
     }
-    
-    oCtx.restore();
-    return offscreen.toDataURL('image/jpeg', 0.8);
+
+    // Draw completed highlighter strokes first
+    for (const stroke of strokes) {
+      if (stroke.tool === 'highlighter') {
+        drawStroke(oCtx, stroke);
+      }
+    }
+
+    // Draw completed pen strokes next
+    for (const stroke of strokes) {
+      if (stroke.tool === 'pen') {
+        drawStroke(oCtx, stroke);
+      }
+    }
+
+    oCtx.restore(); // Restore clip
+
+    // Draw border
+    oCtx.strokeStyle = borderCol;
+    oCtx.lineWidth = 1;
+    oCtx.beginPath();
+    oCtx.roundRect(offsetX, offsetY, pageWidth, pageHeight, 2);
+    oCtx.stroke();
+
+    return offscreen.toDataURL('image/jpeg', 0.85);
   }
 
   // Export current canvas drawings to high-res PNG file
   async function exportAsPng() {
-    if (strokes.length === 0) {
-      alert('Cannot export an empty canvas.');
-      return;
-    }
-
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    for (const stroke of strokes) {
-      for (const p of stroke.points) {
-        if (p.x < minX) minX = p.x;
-        if (p.y < minY) minY = p.y;
-        if (p.x > maxX) maxX = p.x;
-        if (p.y > maxY) maxY = p.y;
-      }
-    }
-
-    if (minX === Infinity) return;
-
-    const margin = 20;
-    const strokeWidth = maxX - minX;
-    const strokeHeight = maxY - minY;
-    
     const exportScale = 2;
-    const exportWidth = (strokeWidth + margin * 2) * exportScale;
-    const exportHeight = (strokeHeight + margin * 2) * exportScale;
+    const exportWidth = PAGE_WIDTH * exportScale;
+    const exportHeight = PAGE_HEIGHT * exportScale;
 
     const exportCanvas = document.createElement('canvas');
     exportCanvas.width = exportWidth;
@@ -334,58 +385,71 @@
     const eCtx = exportCanvas.getContext('2d');
     if (!eCtx) return;
 
-    const includeBg = currentBackground !== 'blank' && confirm('Include the background pattern in the exported image? (Click Cancel for transparent background)');
+    const includeBg = confirm('Include the page background color and template pattern in the exported image? (Cancel for transparent background)');
 
     if (includeBg) {
-      const isDark = document.documentElement.classList.contains('dark') || document.body.classList.contains('dark') || (typeof appState !== 'undefined' && appState.theme?.includes('dark'));
-      eCtx.fillStyle = isDark ? '#1e1e1e' : '#ffffff';
+      // Fill page background color
+      eCtx.fillStyle = pageBg;
       eCtx.fillRect(0, 0, exportWidth, exportHeight);
 
+      // Draw background template patterns
       eCtx.save();
       eCtx.scale(exportScale, exportScale);
-      eCtx.translate(-minX + margin, -minY + margin);
       
-      const oldViewport = { ...viewport };
-      viewport.x = (-minX + margin) * exportScale;
-      viewport.y = (-minY + margin) * exportScale;
-      viewport.zoom = exportScale;
-      
-      drawBackground(eCtx, exportWidth, exportHeight);
-      
-      viewport.x = oldViewport.x;
-      viewport.y = oldViewport.y;
-      viewport.zoom = oldViewport.zoom;
-      
+      const patternCol = isLight ? '#e5e7eb' : '#2a2f38';
+      eCtx.strokeStyle = patternCol;
+      eCtx.fillStyle = patternCol;
+      eCtx.lineWidth = 1;
+
+      if (currentBackground === 'lined') {
+        const lineGap = 28;
+        eCtx.beginPath();
+        for (let y = lineGap; y < PAGE_HEIGHT; y += lineGap) {
+          eCtx.moveTo(0, y);
+          eCtx.lineTo(PAGE_WIDTH, y);
+        }
+        eCtx.stroke();
+      } else if (currentBackground === 'grid') {
+        const gridGap = 30;
+        eCtx.beginPath();
+        for (let x = gridGap; x < PAGE_WIDTH; x += gridGap) {
+          eCtx.moveTo(x, 0);
+          eCtx.lineTo(x, PAGE_HEIGHT);
+        }
+        for (let y = gridGap; y < PAGE_HEIGHT; y += gridGap) {
+          eCtx.moveTo(0, y);
+          eCtx.lineTo(PAGE_WIDTH, y);
+        }
+        eCtx.stroke();
+      } else if (currentBackground === 'dotted') {
+        const dotGap = 24;
+        for (let x = dotGap; x < PAGE_WIDTH; x += dotGap) {
+          for (let y = dotGap; y < PAGE_HEIGHT; y += dotGap) {
+            eCtx.beginPath();
+            eCtx.arc(x, y, 1, 0, Math.PI * 2);
+            eCtx.fill();
+          }
+        }
+      }
       eCtx.restore();
     }
 
+    // Draw strokes scaled
     eCtx.save();
     eCtx.scale(exportScale, exportScale);
-    eCtx.translate(-minX + margin, -minY + margin);
 
+    // Draw completed highlighter strokes first
     for (const stroke of strokes) {
-      const pointsArray = stroke.points.map(p => [p.x, p.y, p.pressure]);
-      const strokeOutlinePoints = getStroke(pointsArray, {
-        size: stroke.size,
-        thinning: stroke.tool === 'highlighter' ? 0.05 : 0.6,
-        smoothing: 0.5,
-        streamline: 0.5,
-        simulatePressure: !stroke.points.some(p => p.pressure !== 0.5 && p.pressure !== 0 && p.pressure !== 1),
-        last: true
-      });
-      if (strokeOutlinePoints.length === 0) continue;
-
-      eCtx.save();
-      eCtx.beginPath();
-      eCtx.moveTo(strokeOutlinePoints[0][0], strokeOutlinePoints[0][1]);
-      for (let i = 1; i < strokeOutlinePoints.length; i++) {
-        eCtx.lineTo(strokeOutlinePoints[i][0], strokeOutlinePoints[i][1]);
+      if (stroke.tool === 'highlighter') {
+        drawStroke(eCtx, stroke);
       }
-      eCtx.closePath();
-      eCtx.fillStyle = stroke.color;
-      eCtx.globalAlpha = stroke.opacity;
-      eCtx.fill();
-      eCtx.restore();
+    }
+
+    // Draw completed pen strokes next
+    for (const stroke of strokes) {
+      if (stroke.tool === 'pen') {
+        drawStroke(eCtx, stroke);
+      }
     }
 
     eCtx.restore();
@@ -456,16 +520,42 @@
 
     const rect = canvasElement.getBoundingClientRect();
 
-    // Clear
+    // Clear and fill workspace background
     ctx.clearRect(0, 0, rect.width, rect.height);
+    ctx.fillStyle = workspaceBg;
+    ctx.fillRect(0, 0, rect.width, rect.height);
 
     ctx.save();
     // Apply viewport transform
     ctx.translate(viewport.x, viewport.y);
     ctx.scale(viewport.zoom, viewport.zoom);
 
-    // Draw background
-    drawBackground(ctx, rect.width, rect.height);
+    // 1. Draw page card shadow
+    ctx.save();
+    ctx.fillStyle = pageBg;
+    ctx.shadowColor = shadowCol;
+    ctx.shadowBlur = 12 * viewport.zoom;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 4 * viewport.zoom;
+    ctx.beginPath();
+    ctx.roundRect(0, 0, PAGE_WIDTH, PAGE_HEIGHT, 8);
+    ctx.fill();
+    ctx.restore();
+
+    // 2. Draw page card background
+    ctx.fillStyle = pageBg;
+    ctx.beginPath();
+    ctx.roundRect(0, 0, PAGE_WIDTH, PAGE_HEIGHT, 8);
+    ctx.fill();
+
+    // 3. Clip subsequent drawing to page card rounded rectangle
+    ctx.save();
+    ctx.beginPath();
+    ctx.roundRect(0, 0, PAGE_WIDTH, PAGE_HEIGHT, 8);
+    ctx.clip();
+
+    // Draw background pattern
+    drawBackground(ctx);
 
     // Draw completed highlighter strokes first
     for (const stroke of strokes) {
@@ -507,6 +597,15 @@
       drawStroke(ctx, activeStroke);
     }
 
+    ctx.restore(); // Restore clip region
+
+    // 4. Draw page card border on top (outside clip for crisp outline)
+    ctx.strokeStyle = borderCol;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.roundRect(0, 0, PAGE_WIDTH, PAGE_HEIGHT, 8);
+    ctx.stroke();
+
     // Eraser cursor preview (drawn in world space inside the transform)
     if (currentTool === 'eraser' && lastCursorPos) {
       ctx.beginPath();
@@ -517,66 +616,48 @@
       ctx.stroke();
     }
 
-    ctx.restore();
+    ctx.restore(); // Restore viewport transform
   }
 
   // Draw background patterns
-  function drawBackground(ctx: CanvasRenderingContext2D, width: number, height: number) {
+  function drawBackground(ctx: CanvasRenderingContext2D) {
     if (currentBackground === 'blank') return;
 
-    ctx.save();
-    ctx.strokeStyle = 'var(--border-color)';
-    ctx.fillStyle = 'var(--border-color)';
-    ctx.lineWidth = 1 / viewport.zoom;
+    const patternCol = isLight ? '#e5e7eb' : '#2a2f38';
 
-    // Calculate visible boundaries in world space
-    const minX = -viewport.x / viewport.zoom;
-    const maxX = (width - viewport.x) / viewport.zoom;
-    const minY = -viewport.y / viewport.zoom;
-    const maxY = (height - viewport.y) / viewport.zoom;
+    ctx.save();
+    ctx.strokeStyle = patternCol;
+    ctx.fillStyle = patternCol;
+    ctx.lineWidth = 1;
 
     if (currentBackground === 'lined') {
       const lineGap = 28;
-      const startY = Math.floor(minY / lineGap) * lineGap;
-      const endY = Math.ceil(maxY / lineGap) * lineGap;
-
       ctx.beginPath();
-      for (let y = startY; y <= endY; y += lineGap) {
-        ctx.moveTo(minX, y);
-        ctx.lineTo(maxX, y);
+      for (let y = lineGap; y < PAGE_HEIGHT; y += lineGap) {
+        ctx.moveTo(0, y);
+        ctx.lineTo(PAGE_WIDTH, y);
       }
       ctx.stroke();
     } else if (currentBackground === 'grid') {
       const gridGap = 30;
-      const startX = Math.floor(minX / gridGap) * gridGap;
-      const endX = Math.ceil(maxX / gridGap) * gridGap;
-      const startY = Math.floor(minY / gridGap) * gridGap;
-      const endY = Math.ceil(maxY / gridGap) * gridGap;
-
       ctx.beginPath();
       // Verticals
-      for (let x = startX; x <= endX; x += gridGap) {
-        ctx.moveTo(x, minY);
-        ctx.lineTo(x, maxY);
+      for (let x = gridGap; x < PAGE_WIDTH; x += gridGap) {
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, PAGE_HEIGHT);
       }
       // Horizontals
-      for (let y = startY; y <= endY; y += gridGap) {
-        ctx.moveTo(minX, y);
-        ctx.lineTo(maxX, y);
+      for (let y = gridGap; y < PAGE_HEIGHT; y += gridGap) {
+        ctx.moveTo(0, y);
+        ctx.lineTo(PAGE_WIDTH, y);
       }
       ctx.stroke();
     } else if (currentBackground === 'dotted') {
       const dotGap = 24;
-      const startX = Math.floor(minX / dotGap) * dotGap;
-      const endX = Math.ceil(maxX / dotGap) * dotGap;
-      const startY = Math.floor(minY / dotGap) * dotGap;
-      const endY = Math.ceil(maxY / dotGap) * dotGap;
+      const dotRadius = 1;
 
-      // Maintain dot size consistent on screen (radius ~1px)
-      const dotRadius = Math.max(0.5, 1 / viewport.zoom);
-
-      for (let x = startX; x <= endX; x += dotGap) {
-        for (let y = startY; y <= endY; y += dotGap) {
+      for (let x = dotGap; x < PAGE_WIDTH; x += dotGap) {
+        for (let y = dotGap; y < PAGE_HEIGHT; y += dotGap) {
           ctx.beginPath();
           ctx.arc(x, y, dotRadius, 0, Math.PI * 2);
           ctx.fill();
@@ -584,7 +665,6 @@
       }
     }
 
-    ctx.restore();
   }
 
   // Render a stroke on canvas
@@ -762,7 +842,7 @@
       if (initialPinchDistance > 0 && currentDistance > 0) {
         const zoomRatio = currentDistance / initialPinchDistance;
         newZoom = initialViewport.zoom * zoomRatio;
-        newZoom = Math.max(0.25, Math.min(4.0, newZoom));
+        newZoom = Math.max(minZoom, Math.min(4.0, newZoom));
       }
 
       const dx = currentMidpoint.x - initialMidpoint.x;
@@ -1000,7 +1080,7 @@
 
     const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
     let newZoom = viewport.zoom * zoomFactor;
-    newZoom = Math.max(0.25, Math.min(4.0, newZoom));
+    newZoom = Math.max(minZoom, Math.min(4.0, newZoom));
 
     if (newZoom === viewport.zoom) return;
 
@@ -1017,7 +1097,7 @@
 
 <svelte:window onkeydown={handleKeyDown} />
 
-<div class="canvas-editor-container" bind:this={containerElement}>
+<div class="canvas-editor-container" style="background-color: {workspaceBg};" bind:this={containerElement}>
   {#if isMobile}
     <!-- Beautiful Compact Mobile Toolbar -->
     <div class="canvas-toolbar mobile flex-row">
@@ -1182,34 +1262,54 @@
       {/if}
 
       {#if activeMobilePopup === 'menu'}
-        <div class="mobile-popup menu-popup flex-col" transition:scale={{ duration: 150, start: 0.95, easing: cubicOut }}>
-          <div class="menu-item flex-row">
+        <div class="mobile-popup menu-popup flex-col" transition:scale={{ duration: 150, start: 0.95, easing: cubicOut }} style="width: 220px; padding: var(--spacing-sm); gap: var(--spacing-sm);">
+          <div class="menu-item flex-col" style="align-items: flex-start; gap: var(--spacing-2xs); width: 100%;">
             <span class="menu-label">Background</span>
-            <select 
-              class="canvas-select" 
-              value={currentBackground} 
-              onchange={(e) => { setBackground((e.target as HTMLSelectElement).value as CanvasBackground); activeMobilePopup = 'none'; }}
-            >
+            <div class="segmented-control flex-row" style="width: 100%; display: flex; background: var(--bg-card-hover); border-radius: var(--radius-standard); padding: 2px; border: 1px solid var(--border-color);">
               {#each backgroundOptions as option}
-                <option value={option.value}>{option.label}</option>
+                <button
+                  type="button"
+                  class="segment-btn"
+                  class:active={currentBackground === option.value}
+                  onclick={() => { setBackground(option.value); activeMobilePopup = 'none'; }}
+                  style="flex: 1; text-align: center; border: none; background: transparent; padding: 4px 2px; font-size: 10px; font-weight: 600; border-radius: var(--radius-standard); color: {currentBackground === option.value ? 'var(--text-primary)' : 'var(--text-secondary)'}; cursor: pointer; transition: all var(--motion-duration-fast);"
+                >
+                  {option.label}
+                </button>
               {/each}
-            </select>
+            </div>
           </div>
           
-          <div class="menu-item flex-row">
+          <div class="menu-item flex-col" style="align-items: flex-start; gap: var(--spacing-2xs); width: 100%;">
             <span class="menu-label">Stylus Input</span>
-            <select 
-              class="canvas-select" 
-              bind:value={inputMode} 
-              onchange={() => { activeMobilePopup = 'none'; }}
-            >
-              <option value="auto">Auto</option>
-              <option value="penOnly">Pen Only</option>
-              <option value="touchDraw">Touch Draw</option>
-            </select>
+            <div class="segmented-control flex-row" style="width: 100%; display: flex; background: var(--bg-card-hover); border-radius: var(--radius-standard); padding: 2px; border: 1px solid var(--border-color);">
+              {#each [
+                { value: 'auto', label: 'Auto' },
+                { value: 'penOnly', label: 'Pen' },
+                { value: 'touchDraw', label: 'Touch' }
+              ] as mode}
+                <button
+                  type="button"
+                  class="segment-btn"
+                  class:active={inputMode === mode.value}
+                  onclick={() => { inputMode = mode.value as InputMode; activeMobilePopup = 'none'; }}
+                  style="flex: 1; text-align: center; border: none; background: transparent; padding: 4px 2px; font-size: 10px; font-weight: 600; border-radius: var(--radius-standard); color: {inputMode === mode.value ? 'var(--text-primary)' : 'var(--text-secondary)'}; cursor: pointer; transition: all var(--motion-duration-fast);"
+                >
+                  {mode.label}
+                </button>
+              {/each}
+            </div>
           </div>
 
-          <div class="menu-divider" style="width: 100%; height: 1px; background-color: var(--border-color); margin: var(--spacing-2xs) 0;"></div>
+          <div class="menu-divider" style="width: 100%; height: 1px; background-color: var(--border-color); margin: 2px 0;"></div>
+
+          <button 
+            class="menu-btn flex-row" 
+            onclick={() => { fitPageToScreen(); activeMobilePopup = 'none'; }} 
+          >
+            <Eye size={14} style="margin-right: var(--spacing-xs);" />
+            <span>Fit Page to Screen</span>
+          </button>
 
           <button 
             class="menu-btn flex-row" 
@@ -1403,6 +1503,13 @@
               <path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3M10 14l-7 7M14 10l7-7"/>
             </svg>
           {/if}
+        </button>
+        <button 
+          class="action-btn flex-row" 
+          onclick={fitPageToScreen} 
+          title="Fit Page to Screen"
+        >
+          <Eye size={16} />
         </button>
         <button 
           class="action-btn flex-row" 

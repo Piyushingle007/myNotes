@@ -462,17 +462,12 @@
 		}
 	});
 
-	let canvasStrokes = $state<Stroke[]>([]);
-	let canvasBackground = $state<CanvasBackground>('blank');
-
-	$effect(() => {
-		const rawContent = $activeNote?.content || '';
-		untrack(() => {
-			const parsed = extractCanvasData(rawContent);
-			canvasStrokes = parsed.strokes;
-			canvasBackground = parsed.background;
-		});
+	const canvasData = $derived.by(() => {
+		const rawContent = appState.activeNoteContent || '';
+		return extractCanvasData(rawContent);
 	});
+	const canvasStrokes = $derived(canvasData.strokes);
+	const canvasBackground = $derived(canvasData.background);
 
 	async function handleCanvasSave(strokes: Stroke[], background: CanvasBackground, thumbnail: string) {
 		if (get(viewerNote)) return; // viewer files are never written back
@@ -533,17 +528,7 @@
 
 
 	const modKey = navigator.platform.startsWith('Mac') ? '⌘' : 'Ctrl';
-	let isMobile = $state(false);
-	$effect(() => {
-		if (typeof window !== 'undefined') {
-			const updateMobile = () => {
-				isMobile = /android|iphone|ipad|ipod/i.test(navigator.userAgent) || window.innerWidth < 768;
-			};
-			updateMobile();
-			window.addEventListener('resize', updateMobile);
-			return () => window.removeEventListener('resize', updateMobile);
-		}
-	});
+	let isMobile = $derived(appState.isMobile);
 
 	// Track virtual keyboard height on mobile via visualViewport
 	let keyboardHeight = $state(0);

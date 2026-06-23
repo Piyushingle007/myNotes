@@ -27,7 +27,7 @@
   import { LONG_PRESS_MS, TOUCH_MOVE_TOLERANCE, edgeSwipeBack } from '../actions/touch';
 
   // Responsive state
-  let isMobile = $state(false);
+  let isMobile = $derived(appState.isMobile);
   let mobileSearchInput = $state('');
   let newMobileFolder = $state('');
   let showMobileFolderForm = $state(false);
@@ -90,10 +90,7 @@
     return 'Good evening';
   });
 
-  // Handle window resizing
-  function handleResize() {
-    isMobile = /android|iphone|ipad|ipod/i.test(navigator.userAgent) || window.innerWidth < 768;
-  }
+
 
   // Mobile Folder Creation
   async function createMobileFolder(e: SubmitEvent) {
@@ -276,11 +273,8 @@
   }
 
   onMount(() => {
-    handleResize();
-    window.addEventListener('resize', handleResize);
     window.addEventListener('keydown', handleLayoutKeydown);
     return () => {
-      window.removeEventListener('resize', handleResize);
       window.removeEventListener('keydown', handleLayoutKeydown);
     };
   });

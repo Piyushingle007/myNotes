@@ -605,15 +605,7 @@
 		showSettings = !showSettings;
 	}
 
-	// MB-012: detect mobile viewport so dropdowns/popovers can render as bottom sheets
-	let isMobile = $state(false);
-	$effect(() => {
-		const mq = window.matchMedia('(max-width: 600px)');
-		const update = () => { isMobile = mq.matches; };
-		update();
-		mq.addEventListener('change', update);
-		return () => mq.removeEventListener('change', update);
-	});
+	let isMobile = $derived(appState.isMobile);
 
 	// MB-005: open the row tag picker, computing fixed coordinates that escape the
 	// scrollable card body and auto-flip above the button when near the viewport bottom.

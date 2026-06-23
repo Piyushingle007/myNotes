@@ -176,6 +176,7 @@ class AppState {
   selectedNotes = $state<Set<string>>(new Set());
   autoPruneTags = $state<boolean>(localStorage.getItem('mynotes_tags_auto_prune') === 'true');
   theme = $state<string>(localStorage.getItem('mynotes_theme') || 'steel');
+  forceMobileUi = $state<boolean>(localStorage.getItem('mynotes_force_mobile_ui') === 'true');
   defaultCurrency = $state<string>(localStorage.getItem('mynotes_calc_currency') || '₹');
   defaultIncomeLabel = $state<string>(localStorage.getItem('mynotes_calc_income_label') || 'Income');
   customDriveFolderId = $state<string | null>(localStorage.getItem('mynotes_custom_drive_folder_id') || null);
@@ -263,6 +264,15 @@ class AppState {
 
   toggleReadMode() {
     this.isReadOnly = !this.isReadOnly;
+  }
+
+  get isMobile(): boolean {
+    return this.forceMobileUi || (typeof window !== 'undefined' && (/android|iphone|ipad|ipod/i.test(navigator.userAgent) || window.innerWidth < 768));
+  }
+
+  toggleForceMobileUi() {
+    this.forceMobileUi = !this.forceMobileUi;
+    localStorage.setItem('mynotes_force_mobile_ui', String(this.forceMobileUi));
   }
 
   showCommandPalette = $state<boolean>(false);
