@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy, tick, untrack } from 'svelte';
-  import { scale } from 'svelte/transition';
+  import { scale, slide, fly, fade } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
   import { getStroke } from 'perfect-freehand';
   import { 
@@ -28,6 +28,10 @@
     Viewport
   } from '../utils/canvasTypes';
 
+  const PAGE_WIDTH = 800;
+  const PAGE_HEIGHT = 1130;
+  const MAX_ZOOM = 3.0;
+
   // Component Props
   interface Props {
     // Current active note path/id to handle resets on switch
@@ -38,13 +42,16 @@
     initialBackground?: CanvasBackground;
     // Callback when strokes change (autosave)
     onSave?: (strokes: Stroke[], background: CanvasBackground, thumbnail: string) => void;
+    // Expose performSaveImmediate function to parent
+    performSaveImmediate?: () => void;
   }
 
   let { 
     notePath = '',
     initialStrokes = [], 
     initialBackground = 'blank',
-    onSave 
+    onSave,
+    performSaveImmediate = $bindable()
   }: Props = $props();
 
   // Elements
@@ -53,17 +60,39 @@
   let colorInputEl = $state<HTMLInputElement | null>(null);
 
   // Mobile and Fullscreen states
-  let isMobile = $state(false);
+  let isMobile = $derived(appState.isMobile);
   let isFullscreen = $state(false);
-  let activeMobilePopup = $state<'none' | 'color' | 'size' | 'menu'>('none');
   let containerElement = $state<HTMLDivElement | null>(null);
 
-  function toggleMobilePopup(type: 'color' | 'size' | 'menu') {
-    if (activeMobilePopup === type) {
-      activeMobilePopup = 'none';
-    } else {
-      activeMobilePopup = type;
+  // Mobile Redesign UI States
+  let toolOptionsVisible = $state(false);
+  let moreMenuVisible = $state(false);
+
+  // Bottom sheet drag-to-dismiss variables
+  let sheetY = $state(0);
+  let isDraggingSheet = false;
+  let startTouchY = 0;
+
+  function handleTouchStart(e: TouchEvent) {
+    isDraggingSheet = true;
+    startTouchY = e.touches[0].clientY;
+  }
+
+  function handleTouchMove(e: TouchEvent) {
+    if (!isDraggingSheet) return;
+    const currentY = e.touches[0].clientY;
+    const deltaY = currentY - startTouchY;
+    if (deltaY > 0) {
+      sheetY = deltaY;
     }
+  }
+
+  function handleTouchEnd() {
+    isDraggingSheet = false;
+    if (sheetY > 80) {
+      moreMenuVisible = false;
+    }
+    sheetY = 0;
   }
 
   function toggleFullscreen() {
@@ -83,21 +112,13 @@
     }
   }
 
-  // Monitor mobile layout and fullscreen status
+  // Monitor fullscreen status
   $effect(() => {
-    isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
-    const handleResize = () => {
-      isMobile = window.innerWidth < 768;
-    };
     const handleFullscreenChange = () => {
       isFullscreen = document.fullscreenElement === containerElement;
     };
-
-    window.addEventListener('resize', handleResize);
     document.addEventListener('fullscreenchange', handleFullscreenChange);
-
     return () => {
-      window.removeEventListener('resize', handleResize);
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
     };
   });
@@ -111,6 +132,7 @@
   let inputMode = $state<InputMode>('auto');
   let hasStylus = $state(false);
   let viewport = $state<Viewport>({ x: 0, y: 0, zoom: 1 });
+  let hasDoneInitialFit = $state(false);
 
   // Tool settings
   let currentSize = $state(4);
@@ -142,10 +164,10 @@
     '#000000', // Black/Dark
     '#ff5c5c', // Red
     '#ffc83b', // Yellow
-    '#4caf50', // Green
-    '#3b82f6', // Blue
-    '#a78bfa', // Purple
-    '#f472b6'  // Pink
+    '#55f055', // Green
+    '#3ba3ff', // Blue
+    '#a25cff', // Purple
+    '#ff7bf0'  // Pink
   ];
 
   // Background Options
@@ -156,22 +178,139 @@
     { value: 'dotted', label: 'Dotted' }
   ];
 
-  // Reset canvas state when notePath changes
+  // Reactive Theme Card colors
+  const activeThemeObj = $derived(appState.themes.find(t => t.id === appState.theme));
+  const isLight = $derived(activeThemeObj?.category === 'light');
+  const workspaceBg = $derived(isLight ? '#eef0f3' : (activeThemeObj?.bg || '#111317'));
+  const pageBg = $derived(isLight ? '#ffffff' : (appState.theme === 'black' ? '#121212' : '#1c1c1e'));
+  const borderCol = $derived(isLight ? '#d1d5db' : '#2d333b');
+  const shadowCol = $derived(isLight ? 'rgba(0, 0, 0, 0.06)' : 'rgba(0, 0, 0, 0.4)');
+
+  // Limit minimum zoom to keep the page aligned with screen/container width
+  let wrapperWidth = $state(0);
+  let wrapperHeight = $state(0);
+
+  const fitScale = $derived.by(() => {
+    if (wrapperWidth <= 0) return 1.0;
+    const margin = isMobile ? 4 : 16;
+    const availableWidth = wrapperWidth - margin * 2;
+    if (availableWidth <= 0) return 1.0;
+    return Math.max(0.1, Math.min(MAX_ZOOM, availableWidth / PAGE_WIDTH));
+  });
+
+  let minZoom = $derived(fitScale);
+
+  let oldMinZoom = 0.25;
   $effect(() => {
-    const _path = notePath; // establish reactive dependency
-    untrack(() => {
-      strokes = [...initialStrokes];
-      currentBackground = initialBackground;
-      undoStack = [];
-      redoStack = [];
-      viewport = { x: 0, y: 0, zoom: 1 };
-      
-      // Request redraw
-      tick().then(() => {
-        resizeCanvas();
+    const currentMin = minZoom;
+    const wasFitting = Math.abs(viewport.zoom - oldMinZoom) < 0.01;
+    if (wasFitting || viewport.zoom < currentMin) {
+      untrack(() => {
+        viewport.zoom = currentMin;
+        if (wrapperWidth > 0) {
+          viewport.x = (wrapperWidth - PAGE_WIDTH * currentMin) / 2;
+          viewport.y = isMobile ? 0 : 16;
+        }
         redrawAll();
       });
-    });
+    }
+    oldMinZoom = currentMin;
+  });
+
+  function fitPageToScreen() {
+    if (!canvasElement || wrapperWidth <= 0) return;
+    const margin = isMobile ? 0 : 16;
+    const availableWidth = wrapperWidth - margin * 2;
+    if (availableWidth <= 0) return;
+
+    const scaleVal = Math.max(0.1, Math.min(MAX_ZOOM, availableWidth / PAGE_WIDTH));
+
+    viewport.zoom = scaleVal;
+    viewport.x = (wrapperWidth - PAGE_WIDTH * scaleVal) / 2;
+    viewport.y = isMobile ? 0 : 16;
+    
+    redrawAll();
+    hasDoneInitialFit = true;
+  }
+
+  // Reset canvas state when notePath changes
+  let lastLoadedPath = $state('');
+  $effect(() => {
+    const path = notePath;
+    if (path && path !== lastLoadedPath) {
+      untrack(() => {
+        strokes = [...(initialStrokes || [])];
+        currentBackground = initialBackground || 'blank';
+        undoStack = [];
+        redoStack = [];
+        lastLoadedPath = path;
+        hasDoneInitialFit = false;
+        
+        tick().then(() => {
+          resizeCanvas();
+          
+          if (wrapperWidth > 0) {
+            const saved = localStorage.getItem(`mynotes_canvas_viewport_${path}`);
+            if (saved) {
+              try {
+                const { x, y, zoom } = JSON.parse(saved);
+                if (typeof x === 'number' && typeof y === 'number' && typeof zoom === 'number' && zoom >= minZoom) {
+                  viewport.zoom = zoom;
+                  viewport.x = x;
+                  viewport.y = y;
+                  redrawAll();
+                  hasDoneInitialFit = true;
+                  return;
+                }
+              } catch (e) {
+                console.warn('Failed to parse viewport state', e);
+              }
+            }
+            fitPageToScreen();
+          } else {
+            hasDoneInitialFit = false;
+          }
+        });
+      });
+    }
+  });
+
+  // Watch for late-arriving initialStrokes
+  $effect(() => {
+    const currentInitStrokes = initialStrokes;
+    const currentInitBg = initialBackground;
+    const path = notePath;
+    
+    if (path === lastLoadedPath && strokes.length === 0 && currentInitStrokes && currentInitStrokes.length > 0) {
+      untrack(() => {
+        strokes = [...currentInitStrokes];
+        if (currentInitBg) currentBackground = currentInitBg;
+        redrawAll();
+      });
+    }
+  });
+
+  // Save viewport state debounced to avoid excessive localStorage writes
+  let viewportSaveTimeout: ReturnType<typeof setTimeout> | null = null;
+  $effect(() => {
+    const x = viewport.x;
+    const y = viewport.y;
+    const zoom = viewport.zoom;
+    const path = notePath;
+
+    if (!path) return;
+
+    if (viewportSaveTimeout) clearTimeout(viewportSaveTimeout);
+    viewportSaveTimeout = setTimeout(() => {
+      localStorage.setItem(
+        `mynotes_canvas_viewport_${path}`,
+        JSON.stringify({ x, y, zoom })
+      );
+    }, 500);
+
+    return () => {
+      if (viewportSaveTimeout) clearTimeout(viewportSaveTimeout);
+    };
   });
 
   // Restore input mode preferences
@@ -231,101 +370,123 @@
 
   // Generate a compressed 200x150 JPEG thumbnail preview of the strokes
   function generateThumbnail(): string {
-    if (strokes.length === 0) return '';
-    
     const offscreen = document.createElement('canvas');
     offscreen.width = 200;
     offscreen.height = 150;
     const oCtx = offscreen.getContext('2d');
     if (!oCtx) return '';
-    
-    // Check if dark mode is active to fill thumbnail background accordingly
-    const isDark = document.documentElement.classList.contains('dark') || document.body.classList.contains('dark') || (typeof appState !== 'undefined' && appState.theme?.includes('dark'));
-    oCtx.fillStyle = isDark ? '#1e1e1e' : '#ffffff';
+
+    // Fill workspace background
+    oCtx.fillStyle = workspaceBg;
     oCtx.fillRect(0, 0, 200, 150);
-    
-    // Find boundaries of drawing to crop/center it
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    for (const stroke of strokes) {
-      for (const p of stroke.points) {
-        if (p.x < minX) minX = p.x;
-        if (p.y < minY) minY = p.y;
-        if (p.x > maxX) maxX = p.x;
-        if (p.y > maxY) maxY = p.y;
-      }
-    }
-    
-    if (minX === Infinity) return '';
-    
-    const strokeWidth = maxX - minX;
-    const strokeHeight = maxY - minY;
-    const margin = 10;
-    const drawWidth = 200 - margin * 2;
-    const drawHeight = 150 - margin * 2;
-    
-    const scale = Math.min(drawWidth / (strokeWidth || 1), drawHeight / (strokeHeight || 1));
-    const offsetX = margin + (drawWidth - strokeWidth * scale) / 2 - minX * scale;
-    const offsetY = margin + (drawHeight - strokeHeight * scale) / 2 - minY * scale;
-    
+
+    // Fit A4 page to the 200x150 thumbnail area
+    const margin = 6;
+    const pageHeight = 150 - margin * 2;
+    const pageWidth = pageHeight * (PAGE_WIDTH / PAGE_HEIGHT);
+    const offsetX = (200 - pageWidth) / 2;
+    const offsetY = margin;
+    const scale = pageWidth / PAGE_WIDTH;
+
+    // Draw shadow
     oCtx.save();
+    oCtx.fillStyle = pageBg;
+    oCtx.shadowColor = shadowCol;
+    oCtx.shadowBlur = 4;
+    oCtx.shadowOffsetX = 0;
+    oCtx.shadowOffsetY = 2;
+    oCtx.beginPath();
+    oCtx.roundRect(offsetX, offsetY, pageWidth, pageHeight, 2);
+    oCtx.fill();
+    oCtx.restore();
+
+    // Draw page background
+    oCtx.fillStyle = pageBg;
+    oCtx.beginPath();
+    oCtx.roundRect(offsetX, offsetY, pageWidth, pageHeight, 2);
+    oCtx.fill();
+
+    // Clip to the page
+    oCtx.save();
+    oCtx.beginPath();
+    oCtx.roundRect(offsetX, offsetY, pageWidth, pageHeight, 2);
+    oCtx.clip();
+
+    // Apply scale and translation for content
     oCtx.translate(offsetX, offsetY);
     oCtx.scale(scale, scale);
-    
-    for (const stroke of strokes) {
-      const pointsArray = stroke.points.map(p => [p.x, p.y, p.pressure]);
-      const strokeOutlinePoints = getStroke(pointsArray, {
-        size: stroke.size,
-        thinning: stroke.tool === 'highlighter' ? 0.05 : 0.6,
-        smoothing: 0.5,
-        streamline: 0.5,
-        simulatePressure: !stroke.points.some(p => p.pressure !== 0.5 && p.pressure !== 0 && p.pressure !== 1),
-        last: true
-      });
-      if (strokeOutlinePoints.length === 0) continue;
-      
+
+    // Draw background pattern if not blank
+    if (currentBackground !== 'blank') {
+      const patternCol = isLight ? '#f3f4f6' : '#272d37';
       oCtx.save();
-      oCtx.beginPath();
-      oCtx.moveTo(strokeOutlinePoints[0][0], strokeOutlinePoints[0][1]);
-      for (let i = 1; i < strokeOutlinePoints.length; i++) {
-        oCtx.lineTo(strokeOutlinePoints[i][0], strokeOutlinePoints[i][1]);
+      oCtx.strokeStyle = patternCol;
+      oCtx.fillStyle = patternCol;
+      oCtx.lineWidth = 1;
+      if (currentBackground === 'lined') {
+        const lineGap = 28;
+        oCtx.beginPath();
+        for (let y = lineGap; y < PAGE_HEIGHT; y += lineGap) {
+          oCtx.moveTo(0, y);
+          oCtx.lineTo(PAGE_WIDTH, y);
+        }
+        oCtx.stroke();
+      } else if (currentBackground === 'grid') {
+        const gridGap = 30;
+        oCtx.beginPath();
+        for (let x = gridGap; x < PAGE_WIDTH; x += gridGap) {
+          oCtx.moveTo(x, 0);
+          oCtx.lineTo(x, PAGE_HEIGHT);
+        }
+        for (let y = gridGap; y < PAGE_HEIGHT; y += gridGap) {
+          oCtx.moveTo(0, y);
+          oCtx.lineTo(PAGE_WIDTH, y);
+        }
+        oCtx.stroke();
+      } else if (currentBackground === 'dotted') {
+        const dotGap = 24;
+        for (let x = dotGap; x < PAGE_WIDTH; x += dotGap) {
+          for (let y = dotGap; y < PAGE_HEIGHT; y += dotGap) {
+            oCtx.beginPath();
+            oCtx.arc(x, y, 0.8, 0, Math.PI * 2);
+            oCtx.fill();
+          }
+        }
       }
-      oCtx.closePath();
-      oCtx.fillStyle = stroke.color;
-      oCtx.globalAlpha = stroke.opacity;
-      oCtx.fill();
       oCtx.restore();
     }
-    
-    oCtx.restore();
-    return offscreen.toDataURL('image/jpeg', 0.8);
+
+    // Draw completed highlighter strokes first
+    for (const stroke of strokes) {
+      if (stroke.tool === 'highlighter') {
+        drawStroke(oCtx, stroke);
+      }
+    }
+
+    // Draw completed pen strokes next
+    for (const stroke of strokes) {
+      if (stroke.tool === 'pen') {
+        drawStroke(oCtx, stroke);
+      }
+    }
+
+    oCtx.restore(); // Restore clip
+
+    // Draw border
+    oCtx.strokeStyle = borderCol;
+    oCtx.lineWidth = 1;
+    oCtx.beginPath();
+    oCtx.roundRect(offsetX, offsetY, pageWidth, pageHeight, 2);
+    oCtx.stroke();
+
+    return offscreen.toDataURL('image/jpeg', 0.85);
   }
 
   // Export current canvas drawings to high-res PNG file
   async function exportAsPng() {
-    if (strokes.length === 0) {
-      alert('Cannot export an empty canvas.');
-      return;
-    }
-
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    for (const stroke of strokes) {
-      for (const p of stroke.points) {
-        if (p.x < minX) minX = p.x;
-        if (p.y < minY) minY = p.y;
-        if (p.x > maxX) maxX = p.x;
-        if (p.y > maxY) maxY = p.y;
-      }
-    }
-
-    if (minX === Infinity) return;
-
-    const margin = 20;
-    const strokeWidth = maxX - minX;
-    const strokeHeight = maxY - minY;
-    
     const exportScale = 2;
-    const exportWidth = (strokeWidth + margin * 2) * exportScale;
-    const exportHeight = (strokeHeight + margin * 2) * exportScale;
+    const exportWidth = PAGE_WIDTH * exportScale;
+    const exportHeight = PAGE_HEIGHT * exportScale;
 
     const exportCanvas = document.createElement('canvas');
     exportCanvas.width = exportWidth;
@@ -334,58 +495,71 @@
     const eCtx = exportCanvas.getContext('2d');
     if (!eCtx) return;
 
-    const includeBg = currentBackground !== 'blank' && confirm('Include the background pattern in the exported image? (Click Cancel for transparent background)');
+    const includeBg = confirm('Include the page background color and template pattern in the exported image? (Cancel for transparent background)');
 
     if (includeBg) {
-      const isDark = document.documentElement.classList.contains('dark') || document.body.classList.contains('dark') || (typeof appState !== 'undefined' && appState.theme?.includes('dark'));
-      eCtx.fillStyle = isDark ? '#1e1e1e' : '#ffffff';
+      // Fill page background color
+      eCtx.fillStyle = pageBg;
       eCtx.fillRect(0, 0, exportWidth, exportHeight);
 
+      // Draw background template patterns
       eCtx.save();
       eCtx.scale(exportScale, exportScale);
-      eCtx.translate(-minX + margin, -minY + margin);
       
-      const oldViewport = { ...viewport };
-      viewport.x = (-minX + margin) * exportScale;
-      viewport.y = (-minY + margin) * exportScale;
-      viewport.zoom = exportScale;
-      
-      drawBackground(eCtx, exportWidth, exportHeight);
-      
-      viewport.x = oldViewport.x;
-      viewport.y = oldViewport.y;
-      viewport.zoom = oldViewport.zoom;
-      
+      const patternCol = isLight ? '#e5e7eb' : '#2a2f38';
+      eCtx.strokeStyle = patternCol;
+      eCtx.fillStyle = patternCol;
+      eCtx.lineWidth = 1;
+
+      if (currentBackground === 'lined') {
+        const lineGap = 28;
+        eCtx.beginPath();
+        for (let y = lineGap; y < PAGE_HEIGHT; y += lineGap) {
+          eCtx.moveTo(0, y);
+          eCtx.lineTo(PAGE_WIDTH, y);
+        }
+        eCtx.stroke();
+      } else if (currentBackground === 'grid') {
+        const gridGap = 30;
+        eCtx.beginPath();
+        for (let x = gridGap; x < PAGE_WIDTH; x += gridGap) {
+          eCtx.moveTo(x, 0);
+          eCtx.lineTo(x, PAGE_HEIGHT);
+        }
+        for (let y = gridGap; y < PAGE_HEIGHT; y += gridGap) {
+          eCtx.moveTo(0, y);
+          eCtx.lineTo(PAGE_WIDTH, y);
+        }
+        eCtx.stroke();
+      } else if (currentBackground === 'dotted') {
+        const dotGap = 24;
+        for (let x = dotGap; x < PAGE_WIDTH; x += dotGap) {
+          for (let y = dotGap; y < PAGE_HEIGHT; y += dotGap) {
+            eCtx.beginPath();
+            eCtx.arc(x, y, 1, 0, Math.PI * 2);
+            eCtx.fill();
+          }
+        }
+      }
       eCtx.restore();
     }
 
+    // Draw strokes scaled
     eCtx.save();
     eCtx.scale(exportScale, exportScale);
-    eCtx.translate(-minX + margin, -minY + margin);
 
+    // Draw completed highlighter strokes first
     for (const stroke of strokes) {
-      const pointsArray = stroke.points.map(p => [p.x, p.y, p.pressure]);
-      const strokeOutlinePoints = getStroke(pointsArray, {
-        size: stroke.size,
-        thinning: stroke.tool === 'highlighter' ? 0.05 : 0.6,
-        smoothing: 0.5,
-        streamline: 0.5,
-        simulatePressure: !stroke.points.some(p => p.pressure !== 0.5 && p.pressure !== 0 && p.pressure !== 1),
-        last: true
-      });
-      if (strokeOutlinePoints.length === 0) continue;
-
-      eCtx.save();
-      eCtx.beginPath();
-      eCtx.moveTo(strokeOutlinePoints[0][0], strokeOutlinePoints[0][1]);
-      for (let i = 1; i < strokeOutlinePoints.length; i++) {
-        eCtx.lineTo(strokeOutlinePoints[i][0], strokeOutlinePoints[i][1]);
+      if (stroke.tool === 'highlighter') {
+        drawStroke(eCtx, stroke);
       }
-      eCtx.closePath();
-      eCtx.fillStyle = stroke.color;
-      eCtx.globalAlpha = stroke.opacity;
-      eCtx.fill();
-      eCtx.restore();
+    }
+
+    // Draw completed pen strokes next
+    for (const stroke of strokes) {
+      if (stroke.tool === 'pen') {
+        drawStroke(eCtx, stroke);
+      }
     }
 
     eCtx.restore();
@@ -409,24 +583,65 @@
   }
 
   // Trigger parent save when strokes list updates
-  function triggerSave() {
-    if (onSave) {
-      const thumbnail = generateThumbnail();
-      onSave(strokes, currentBackground, thumbnail);
+  let hasUnsavedChanges = $state(false);
+  let saveTimeout: ReturnType<typeof setTimeout> | null = null;
+
+  function triggerSave(immediate = false) {
+    hasUnsavedChanges = true;
+    if (saveTimeout) clearTimeout(saveTimeout);
+
+    if (immediate) {
+      performSave();
+    } else {
+      saveTimeout = setTimeout(() => {
+        performSave();
+      }, 300);
     }
   }
 
+  function performSave() {
+    if (saveTimeout) clearTimeout(saveTimeout);
+    if (!onSave) return;
+    
+    const thumbnail = generateThumbnail();
+    onSave(strokes, currentBackground, thumbnail);
+    hasUnsavedChanges = false;
+  }
+
+  // Bind the immediate save function so parent can trigger it
+  $effect(() => {
+    performSaveImmediate = performSave;
+  });
+
+  // Listen to beforeunload to save unsaved changes immediately
+  $effect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (hasUnsavedChanges) {
+        performSave();
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      if (saveTimeout) clearTimeout(saveTimeout);
+      if (hasUnsavedChanges) {
+        performSave();
+      }
+    };
+  });
+
   // Resize handler
   function resizeCanvas() {
-    if (!canvasElement || !wrapperElement) return;
+    if (!canvasElement || wrapperWidth <= 0 || wrapperHeight <= 0) return;
 
-    const rect = wrapperElement.getBoundingClientRect();
     const dpr = window.devicePixelRatio || 1;
 
-    canvasElement.width = rect.width * dpr;
-    canvasElement.height = rect.height * dpr;
-    canvasElement.style.width = `${rect.width}px`;
-    canvasElement.style.height = `${rect.height}px`;
+    canvasElement.width = wrapperWidth * dpr;
+    canvasElement.height = wrapperHeight * dpr;
+    canvasElement.style.width = `${wrapperWidth}px`;
+    canvasElement.style.height = `${wrapperHeight}px`;
 
     const ctx = canvasElement.getContext('2d');
     if (ctx) {
@@ -438,8 +653,41 @@
   // Set up ResizeObserver
   $effect(() => {
     if (!wrapperElement) return;
-    const observer = new ResizeObserver(() => {
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (entry) {
+        wrapperWidth = entry.contentRect.width;
+        wrapperHeight = entry.contentRect.height;
+      }
       resizeCanvas();
+      if (!hasDoneInitialFit && wrapperWidth > 0) {
+        const path = notePath;
+        const saved = path ? localStorage.getItem(`mynotes_canvas_viewport_${path}`) : null;
+        let restored = false;
+        if (saved) {
+          try {
+            const { x, y, zoom } = JSON.parse(saved);
+            if (typeof x === 'number' && typeof y === 'number' && typeof zoom === 'number' && zoom >= minZoom) {
+              viewport.zoom = zoom;
+              viewport.x = x;
+              viewport.y = y;
+              redrawAll();
+              hasDoneInitialFit = true;
+              restored = true;
+            }
+          } catch (e) {
+            console.warn('Failed to parse viewport state', e);
+          }
+        }
+        if (!restored) {
+          fitPageToScreen();
+        }
+      } else if (hasDoneInitialFit && wrapperWidth > 0) {
+        if (viewport.zoom < minZoom) {
+          viewport.zoom = minZoom;
+          viewport.x = (wrapperWidth - PAGE_WIDTH * minZoom) / 2;
+        }
+      }
     });
     observer.observe(wrapperElement);
 
@@ -456,16 +704,42 @@
 
     const rect = canvasElement.getBoundingClientRect();
 
-    // Clear
+    // Clear and fill workspace background
     ctx.clearRect(0, 0, rect.width, rect.height);
+    ctx.fillStyle = workspaceBg;
+    ctx.fillRect(0, 0, rect.width, rect.height);
 
     ctx.save();
     // Apply viewport transform
     ctx.translate(viewport.x, viewport.y);
     ctx.scale(viewport.zoom, viewport.zoom);
 
-    // Draw background
-    drawBackground(ctx, rect.width, rect.height);
+    // 1. Draw page card shadow
+    ctx.save();
+    ctx.fillStyle = pageBg;
+    ctx.shadowColor = shadowCol;
+    ctx.shadowBlur = 12 * viewport.zoom;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 4 * viewport.zoom;
+    ctx.beginPath();
+    ctx.roundRect(0, 0, PAGE_WIDTH, PAGE_HEIGHT, 8);
+    ctx.fill();
+    ctx.restore();
+
+    // 2. Draw page card background
+    ctx.fillStyle = pageBg;
+    ctx.beginPath();
+    ctx.roundRect(0, 0, PAGE_WIDTH, PAGE_HEIGHT, 8);
+    ctx.fill();
+
+    // 3. Clip subsequent drawing to page card rounded rectangle
+    ctx.save();
+    ctx.beginPath();
+    ctx.roundRect(0, 0, PAGE_WIDTH, PAGE_HEIGHT, 8);
+    ctx.clip();
+
+    // Draw background pattern
+    drawBackground(ctx);
 
     // Draw completed highlighter strokes first
     for (const stroke of strokes) {
@@ -507,6 +781,15 @@
       drawStroke(ctx, activeStroke);
     }
 
+    ctx.restore(); // Restore clip region
+
+    // 4. Draw page card border on top (outside clip for crisp outline)
+    ctx.strokeStyle = borderCol;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.roundRect(0, 0, PAGE_WIDTH, PAGE_HEIGHT, 8);
+    ctx.stroke();
+
     // Eraser cursor preview (drawn in world space inside the transform)
     if (currentTool === 'eraser' && lastCursorPos) {
       ctx.beginPath();
@@ -517,73 +800,54 @@
       ctx.stroke();
     }
 
-    ctx.restore();
+    ctx.restore(); // Restore viewport transform
   }
 
   // Draw background patterns
-  function drawBackground(ctx: CanvasRenderingContext2D, width: number, height: number) {
+  function drawBackground(ctx: CanvasRenderingContext2D) {
     if (currentBackground === 'blank') return;
 
-    ctx.save();
-    ctx.strokeStyle = 'var(--border-color)';
-    ctx.fillStyle = 'var(--border-color)';
-    ctx.lineWidth = 1 / viewport.zoom;
+    const patternCol = isLight ? '#e5e7eb' : '#2a2f38';
 
-    // Calculate visible boundaries in world space
-    const minX = -viewport.x / viewport.zoom;
-    const maxX = (width - viewport.x) / viewport.zoom;
-    const minY = -viewport.y / viewport.zoom;
-    const maxY = (height - viewport.y) / viewport.zoom;
+    ctx.save();
+    ctx.strokeStyle = patternCol;
+    ctx.fillStyle = patternCol;
+    ctx.lineWidth = 1;
 
     if (currentBackground === 'lined') {
       const lineGap = 28;
-      const startY = Math.floor(minY / lineGap) * lineGap;
-      const endY = Math.ceil(maxY / lineGap) * lineGap;
-
       ctx.beginPath();
-      for (let y = startY; y <= endY; y += lineGap) {
-        ctx.moveTo(minX, y);
-        ctx.lineTo(maxX, y);
+      for (let y = lineGap; y < PAGE_HEIGHT; y += lineGap) {
+        ctx.moveTo(0, y);
+        ctx.lineTo(PAGE_WIDTH, y);
       }
       ctx.stroke();
     } else if (currentBackground === 'grid') {
       const gridGap = 30;
-      const startX = Math.floor(minX / gridGap) * gridGap;
-      const endX = Math.ceil(maxX / gridGap) * gridGap;
-      const startY = Math.floor(minY / gridGap) * gridGap;
-      const endY = Math.ceil(maxY / gridGap) * gridGap;
-
       ctx.beginPath();
       // Verticals
-      for (let x = startX; x <= endX; x += gridGap) {
-        ctx.moveTo(x, minY);
-        ctx.lineTo(x, maxY);
+      for (let x = gridGap; x < PAGE_WIDTH; x += gridGap) {
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, PAGE_HEIGHT);
       }
       // Horizontals
-      for (let y = startY; y <= endY; y += gridGap) {
-        ctx.moveTo(minX, y);
-        ctx.lineTo(maxX, y);
+      for (let y = gridGap; y < PAGE_HEIGHT; y += gridGap) {
+        ctx.moveTo(0, y);
+        ctx.lineTo(PAGE_WIDTH, y);
       }
       ctx.stroke();
     } else if (currentBackground === 'dotted') {
       const dotGap = 24;
-      const startX = Math.floor(minX / dotGap) * dotGap;
-      const endX = Math.ceil(maxX / dotGap) * dotGap;
-      const startY = Math.floor(minY / dotGap) * dotGap;
-      const endY = Math.ceil(maxY / dotGap) * dotGap;
+      const dotRadius = 1;
 
-      // Maintain dot size consistent on screen (radius ~1px)
-      const dotRadius = Math.max(0.5, 1 / viewport.zoom);
-
-      for (let x = startX; x <= endX; x += dotGap) {
-        for (let y = startY; y <= endY; y += dotGap) {
+      for (let x = dotGap; x < PAGE_WIDTH; x += dotGap) {
+        for (let y = dotGap; y < PAGE_HEIGHT; y += dotGap) {
           ctx.beginPath();
           ctx.arc(x, y, dotRadius, 0, Math.PI * 2);
           ctx.fill();
         }
       }
     }
-
     ctx.restore();
   }
 
@@ -713,6 +977,9 @@
     }
 
     isDrawing = true;
+    if (isMobile) {
+      toolOptionsVisible = false;
+    }
     activePointerId = e.pointerId;
     activePointerType = e.pointerType;
     
@@ -762,7 +1029,7 @@
       if (initialPinchDistance > 0 && currentDistance > 0) {
         const zoomRatio = currentDistance / initialPinchDistance;
         newZoom = initialViewport.zoom * zoomRatio;
-        newZoom = Math.max(0.25, Math.min(4.0, newZoom));
+        newZoom = Math.max(minZoom, Math.min(MAX_ZOOM, newZoom));
       }
 
       const dx = currentMidpoint.x - initialMidpoint.x;
@@ -965,7 +1232,17 @@
 
   // Toolbar Actions
   function selectTool(tool: CanvasTool) {
-    currentTool = tool;
+    if (isMobile && typeof navigator !== 'undefined' && navigator.vibrate) {
+      try {
+        navigator.vibrate(10);
+      } catch (e) {}
+    }
+    if (currentTool !== tool) {
+      currentTool = tool;
+      toolOptionsVisible = true;
+    } else {
+      toolOptionsVisible = !toolOptionsVisible;
+    }
   }
 
   function setBackground(bg: CanvasBackground) {
@@ -1000,7 +1277,7 @@
 
     const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
     let newZoom = viewport.zoom * zoomFactor;
-    newZoom = Math.max(0.25, Math.min(4.0, newZoom));
+    newZoom = Math.max(minZoom, Math.min(MAX_ZOOM, newZoom));
 
     if (newZoom === viewport.zoom) return;
 
@@ -1017,66 +1294,50 @@
 
 <svelte:window onkeydown={handleKeyDown} />
 
-<div class="canvas-editor-container" bind:this={containerElement}>
+<div class="canvas-editor-container" style="background-color: {workspaceBg};" bind:this={containerElement}>
   {#if isMobile}
-    <!-- Beautiful Compact Mobile Toolbar -->
-    <div class="canvas-toolbar mobile flex-row">
-      <!-- Tools selection group -->
+    <!-- Top-Docked Minimal Toolbar -->
+    <div class="mobile-top-toolbar flex-row">
+      <!-- Tool Selection Group -->
       <div class="toolbar-group flex-row">
         <button 
           class="tool-btn flex-row" 
           class:active={currentTool === 'pen'} 
-          onclick={() => { selectTool('pen'); activeMobilePopup = 'none'; }} 
+          onclick={() => selectTool('pen')} 
           title="Pen Tool"
         >
-          <Pen size={18} />
+          <Pen size={20} />
+          {#if currentTool === 'pen'}
+            <span class="active-indicator" style="background-color: {currentColor};"></span>
+          {/if}
         </button>
         <button 
           class="tool-btn flex-row" 
           class:active={currentTool === 'highlighter'} 
-          onclick={() => { selectTool('highlighter'); activeMobilePopup = 'none'; }} 
+          onclick={() => selectTool('highlighter')} 
           title="Highlighter"
         >
-          <Highlighter size={18} />
+          <Highlighter size={20} />
+          {#if currentTool === 'highlighter'}
+            <span class="active-indicator" style="background-color: {currentColor};"></span>
+          {/if}
         </button>
         <button 
           class="tool-btn flex-row" 
           class:active={currentTool === 'eraser'} 
-          onclick={() => { selectTool('eraser'); activeMobilePopup = 'none'; }} 
+          onclick={() => selectTool('eraser')} 
           title="Eraser Tool"
         >
-          <Eraser size={18} />
+          <Eraser size={20} />
+          {#if currentTool === 'eraser'}
+            <span class="active-indicator" style="background-color: var(--accent);"></span>
+          {/if}
         </button>
       </div>
 
-      <div class="toolbar-divider"></div>
+      <div class="toolbar-divider-vertical"></div>
 
-      <!-- Color trigger button (only if not eraser) -->
-      {#if currentTool !== 'eraser'}
-        <button
-          class="tool-btn flex-row color-trigger-btn"
-          class:active={activeMobilePopup === 'color'}
-          onclick={() => toggleMobilePopup('color')}
-          title="Brush Color"
-          style="padding: var(--spacing-2xs);"
-        >
-          <span class="color-dot" style="display: block; width: 18px; height: 18px; border-radius: 50%; background: {currentColor}; border: 1.5px solid var(--border-color);"></span>
-        </button>
-      {/if}
-
-      <!-- Size trigger button -->
-      <button
-        class="tool-btn flex-row size-trigger-btn"
-        class:active={activeMobilePopup === 'size'}
-        onclick={() => toggleMobilePopup('size')}
-        title="Brush Size"
-      >
-        <Sliders size={18} />
-      </button>
-
-      <div class="toolbar-divider"></div>
-
-      <!-- Undo & Redo group -->
+      <!-- Undo & Redo Group -->
       <div class="toolbar-group flex-row">
         <button 
           class="action-btn flex-row" 
@@ -1096,52 +1357,35 @@
         </button>
       </div>
 
-      <!-- Fullscreen toggle -->
-      <button
-        class="tool-btn flex-row fullscreen-btn"
-        onclick={toggleFullscreen}
-        title={isFullscreen ? "Exit Fullscreen" : "Go Fullscreen"}
-      >
-        {#if isFullscreen}
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M4 14h6v6M20 10h-6V4M14 10l7-7M10 14l-7 7"/>
-          </svg>
-        {:else}
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3M10 14l-7 7M14 10l7-7"/>
-          </svg>
-        {/if}
-      </button>
+      <div class="toolbar-divider-vertical"></div>
 
-      <!-- Settings / Actions Menu trigger -->
+      <!-- More Menu trigger -->
       <button
-        class="tool-btn flex-row menu-trigger-btn"
-        class:active={activeMobilePopup === 'menu'}
-        onclick={() => toggleMobilePopup('menu')}
+        class="tool-btn flex-row more-btn"
+        class:active={moreMenuVisible}
+        onclick={() => { moreMenuVisible = true; toolOptionsVisible = false; }}
         title="Canvas Settings"
       >
-        <Settings size={18} />
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="1"/>
+          <circle cx="12" cy="5" r="1"/>
+          <circle cx="12" cy="19" r="1"/>
+        </svg>
       </button>
+    </div>
 
-      <!-- Hidden Color Input for Custom Colors -->
-      <input 
-        type="color" 
-        bind:this={colorInputEl} 
-        bind:value={currentColor} 
-        oninput={updateToolSettings}
-        style="display: none;" 
-      />
-
-      <!-- --- MOBILE POPUPS --- -->
-      {#if activeMobilePopup === 'color'}
-        <div class="mobile-popup color-popup flex-row" transition:scale={{ duration: 150, start: 0.95, easing: cubicOut }}>
-          <div class="swatches flex-row" style="gap: var(--spacing-xs);">
+    <!-- Contextual Tool Options Bar -->
+    {#if toolOptionsVisible}
+      <div class="tool-options-bar flex-row" transition:slide={{ duration: 200, easing: cubicOut }}>
+        {#if currentTool !== 'eraser'}
+          <!-- Color Swatches & Custom Picker -->
+          <div class="color-swatches flex-row">
             {#each presetColors as color}
               <button 
-                class="color-btn flex-row" 
+                class="swatch-btn" 
                 class:active={currentColor === color} 
-                onclick={() => { currentColor = color; updateToolSettings(); activeMobilePopup = 'none'; }}
-                style="background-color: {color}; width: 22px; height: 22px;"
+                onclick={() => { currentColor = color; updateToolSettings(); }}
+                style="background-color: {color};"
               >
                 {#if currentColor === color}
                   <Check size={12} color={color === '#ffffff' ? '#000000' : '#ffffff'} />
@@ -1150,9 +1394,9 @@
             {/each}
             <!-- Custom Color button -->
             <button 
-              class="color-btn flex-row custom-color-picker-btn" 
+              class="swatch-btn custom-picker-btn" 
               class:active={!presetColors.includes(currentColor)}
-              style="background: linear-gradient(135deg, #ff5c5c, #ffc83b, #4caf50, #3b82f6, #a78bfa); width: 22px; height: 22px;"
+              style="background: linear-gradient(135deg, #ff5c5c, #ffc83b, #55f055, #3ba3ff, #a25cff);"
               onclick={() => colorInputEl?.click()}
               title="Custom Color"
             >
@@ -1161,76 +1405,154 @@
               {/if}
             </button>
           </div>
-        </div>
-      {/if}
+        {/if}
 
-      {#if activeMobilePopup === 'size'}
-        <div class="mobile-popup size-popup flex-row" transition:scale={{ duration: 150, start: 0.95, easing: cubicOut }}>
-          <div class="slider-container flex-row" style="margin: 0; width: 100%; justify-content: space-between; gap: var(--spacing-sm);">
-            <input 
-              type="range" 
-              min="1" 
-              max={currentTool === 'eraser' ? 80 : currentTool === 'highlighter' ? 60 : 30} 
-              bind:value={currentSize}
-              oninput={updateToolSettings}
-              class="size-slider"
-              style="width: 130px;"
-            />
-            <span class="size-label" style="font-size: var(--font-size-xs); width: auto; font-weight: bold; color: var(--text-primary);">{currentSize}px</span>
-          </div>
+        <!-- Size slider -->
+        <div class="options-size-slider flex-row">
+          <Sliders size={14} style="color: var(--text-secondary);" />
+          <input 
+            type="range" 
+            min="1" 
+            max={currentTool === 'eraser' ? 80 : currentTool === 'highlighter' ? 60 : 30} 
+            bind:value={currentSize}
+            oninput={updateToolSettings}
+            class="size-range-slider"
+          />
+          <span class="size-val-display">{currentSize}px</span>
         </div>
-      {/if}
+      </div>
+    {/if}
 
-      {#if activeMobilePopup === 'menu'}
-        <div class="mobile-popup menu-popup flex-col" transition:scale={{ duration: 150, start: 0.95, easing: cubicOut }}>
-          <div class="menu-item flex-row">
-            <span class="menu-label">Background</span>
-            <select 
-              class="canvas-select" 
-              value={currentBackground} 
-              onchange={(e) => { setBackground((e.target as HTMLSelectElement).value as CanvasBackground); activeMobilePopup = 'none'; }}
-            >
+    <!-- Hidden Color Input for Custom Colors -->
+    <input 
+      type="color" 
+      bind:this={colorInputEl} 
+      bind:value={currentColor} 
+      oninput={updateToolSettings}
+      style="display: none;" 
+    />
+
+    <!-- More Menu Bottom Sheet -->
+    {#if moreMenuVisible}
+      <!-- Backdrop -->
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <!-- svelte-ignore a11y_click_events_have_key_events -->
+      <div 
+        class="bottom-sheet-backdrop" 
+        onclick={() => moreMenuVisible = false}
+        transition:fade={{ duration: 150 }}
+      ></div>
+
+      <!-- Bottom Sheet -->
+      <div 
+        class="bottom-sheet flex-col" 
+        style="transform: translateY({sheetY}px); transition: {isDraggingSheet ? 'none' : 'transform 0.3s cubic-bezier(0.16, 1, 0.3, 1)'};"
+        transition:fly={{ y: 350, duration: 250, easing: cubicOut }}
+      >
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <div 
+          class="sheet-handle-container flex-row"
+          ontouchstart={handleTouchStart}
+          ontouchmove={handleTouchMove}
+          ontouchend={handleTouchEnd}
+        >
+          <span class="sheet-handle"></span>
+        </div>
+
+        <div class="sheet-header flex-row">
+          <h3>Canvas Settings</h3>
+          <button class="sheet-done-btn" onclick={() => moreMenuVisible = false}>Done</button>
+        </div>
+
+        <div class="sheet-content flex-col">
+          <!-- Background options -->
+          <div class="sheet-section flex-col">
+            <span class="section-title">Background Style</span>
+            <div class="sheet-segmented-control flex-row">
               {#each backgroundOptions as option}
-                <option value={option.value}>{option.label}</option>
+                <button
+                  type="button"
+                  class="segment-btn"
+                  class:active={currentBackground === option.value}
+                  onclick={() => setBackground(option.value)}
+                >
+                  {option.label}
+                </button>
               {/each}
-            </select>
+            </div>
           </div>
-          
-          <div class="menu-item flex-row">
-            <span class="menu-label">Stylus Input</span>
-            <select 
-              class="canvas-select" 
-              bind:value={inputMode} 
-              onchange={() => { activeMobilePopup = 'none'; }}
+
+          <!-- Input mode options -->
+          <div class="sheet-section flex-col">
+            <span class="section-title">Stylus & Touch Input</span>
+            <div class="sheet-segmented-control flex-row">
+              {#each [
+                { value: 'auto', label: 'Auto Detect' },
+                { value: 'penOnly', label: 'Stylus Only' },
+                { value: 'touchDraw', label: 'Draw with Touch' }
+              ] as mode}
+                <button
+                  type="button"
+                  class="segment-btn"
+                  class:active={inputMode === mode.value}
+                  onclick={() => { inputMode = mode.value as InputMode; }}
+                >
+                  {mode.label}
+                </button>
+              {/each}
+            </div>
+          </div>
+
+          <div class="sheet-divider"></div>
+
+          <!-- Actions list -->
+          <div class="sheet-actions flex-col">
+            <button 
+              class="sheet-action-row flex-row" 
+              onclick={() => { toggleFullscreen(); moreMenuVisible = false; }}
             >
-              <option value="auto">Auto</option>
-              <option value="penOnly">Pen Only</option>
-              <option value="touchDraw">Touch Draw</option>
-            </select>
+              {#if isFullscreen}
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M4 14h6v6M20 10h-6V4M14 10l7-7M10 14l-7 7"/>
+                </svg>
+                <span>Exit Fullscreen</span>
+              {:else}
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3M10 14l-7 7M14 10l7-7"/>
+                </svg>
+                <span>Go Fullscreen</span>
+              {/if}
+            </button>
+
+            <button 
+              class="sheet-action-row flex-row" 
+              onclick={() => { fitPageToScreen(); moreMenuVisible = false; }} 
+            >
+              <Eye size={18} />
+              <span>Fit Page to Screen</span>
+            </button>
+
+            <button 
+              class="sheet-action-row flex-row" 
+              onclick={() => { exportAsPng(); moreMenuVisible = false; }} 
+              disabled={strokes.length === 0}
+            >
+              <Download size={18} />
+              <span>Export Canvas as PNG</span>
+            </button>
+
+            <button 
+              class="sheet-action-row flex-row danger" 
+              onclick={() => { clearCanvas(); moreMenuVisible = false; }} 
+              disabled={strokes.length === 0}
+            >
+              <Trash2 size={18} />
+              <span>Clear Canvas</span>
+            </button>
           </div>
-
-          <div class="menu-divider" style="width: 100%; height: 1px; background-color: var(--border-color); margin: var(--spacing-2xs) 0;"></div>
-
-          <button 
-            class="menu-btn flex-row" 
-            onclick={() => { exportAsPng(); activeMobilePopup = 'none'; }} 
-            disabled={strokes.length === 0}
-          >
-            <Download size={14} style="margin-right: var(--spacing-xs);" />
-            <span>Export as PNG</span>
-          </button>
-
-          <button 
-            class="menu-btn flex-row danger" 
-            onclick={() => { clearCanvas(); activeMobilePopup = 'none'; }} 
-            disabled={strokes.length === 0}
-          >
-            <Trash2 size={14} style="margin-right: var(--spacing-xs);" />
-            <span>Clear Canvas</span>
-          </button>
         </div>
-      {/if}
-    </div>
+      </div>
+    {/if}
   {:else}
     <!-- Desktop Toolbar -->
     <div class="canvas-toolbar flex-row">
@@ -1403,6 +1725,13 @@
               <path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3M10 14l-7 7M14 10l7-7"/>
             </svg>
           {/if}
+        </button>
+        <button 
+          class="action-btn flex-row" 
+          onclick={fitPageToScreen} 
+          title="Fit Page to Screen"
+        >
+          <Eye size={16} />
         </button>
         <button 
           class="action-btn flex-row" 
@@ -1666,120 +1995,330 @@
 
   /* Mobile responsiveness */
   @media (max-width: 768px) {
-    .canvas-toolbar.mobile {
-      position: absolute;
-      top: var(--spacing-sm);
-      bottom: auto;
-      left: 50%;
-      transform: translateX(-50%);
+    /* Touch-optimized: ensure the canvas wrapper handles top padding */
+    :global(.canvas-wrapper) {
+      padding-top: 76px !important;
+      padding-bottom: 0 !important;
+      overscroll-behavior: none;
+    }
+
+    /* Top-docked minimal toolbar */
+    .mobile-top-toolbar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 64px;
+      padding-top: env(safe-area-inset-top, 0);
+      background: color-mix(in srgb, var(--bg-surface) 85%, transparent);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--border-color);
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
       display: flex;
-      justify-content: space-between;
+      justify-content: space-around;
       align-items: center;
-      width: 95%;
-      max-width: 480px;
-      padding: var(--spacing-xs) var(--spacing-sm);
-      box-sizing: border-box;
-      border-radius: var(--radius-large);
       z-index: var(--z-index-header);
-      background: color-mix(in srgb, var(--bg-surface) 80%, transparent);
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
-      border: 1px solid var(--border-color);
-      box-shadow: var(--shadow-heavy);
+      box-sizing: border-box;
     }
 
-    .toolbar-divider {
-      height: 16px;
-      width: 1px;
-      background-color: var(--border-color);
-      margin: 0 var(--spacing-2xs);
+    .mobile-top-toolbar .tool-btn,
+    .mobile-top-toolbar .action-btn {
+      position: relative;
+      background: transparent;
+      border: none;
+      color: var(--text-secondary);
+      width: 48px;
+      height: 48px;
+      border-radius: var(--radius-standard);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all var(--motion-duration-fast) cubic-bezier(0.16, 1, 0.3, 1);
     }
 
-    /* Mobile Popup Drawers */
-    .mobile-popup {
+    .mobile-top-toolbar .tool-btn:active,
+    .mobile-top-toolbar .action-btn:active {
+      transform: scale(0.92);
+      background-color: var(--bg-card-hover);
+    }
+
+    .mobile-top-toolbar .tool-btn.active {
+      color: var(--accent);
+    }
+
+    .mobile-top-toolbar .tool-btn:disabled,
+    .mobile-top-toolbar .action-btn:disabled {
+      opacity: 0.3;
+      pointer-events: none;
+    }
+
+    /* Underline active indicator with transition */
+    .active-indicator {
       position: absolute;
-      top: calc(100% + var(--spacing-xs));
-      left: 50%;
-      transform: translateX(-50%);
+      bottom: 6px;
+      left: 20%;
+      right: 20%;
+      height: 3px;
+      border-radius: 1.5px;
+      transition: background-color var(--motion-duration-slow) ease;
+    }
+
+    .toolbar-divider-vertical {
+      width: 1px;
+      height: 28px;
+      background-color: var(--border-color);
+      opacity: 0.5;
+    }
+
+    /* Contextual Options Bar styling - placed below top toolbar */
+    .tool-options-bar {
+      position: fixed;
+      top: 72px; /* Just below the top toolbar */
+      left: 12px;
+      right: 12px;
       background: color-mix(in srgb, var(--bg-surface) 92%, transparent);
       backdrop-filter: blur(16px);
       -webkit-backdrop-filter: blur(16px);
       border: 1px solid var(--border-color);
-      border-radius: var(--radius-standard);
+      border-radius: var(--radius-large);
+      padding: var(--spacing-sm) var(--spacing-md);
       box-shadow: var(--shadow-heavy);
-      z-index: calc(var(--z-index-header) + 10);
-      padding: var(--spacing-sm);
+      z-index: calc(var(--z-index-header) - 1);
       display: flex;
+      flex-direction: column;
+      gap: var(--spacing-sm);
       box-sizing: border-box;
     }
 
-    .color-popup {
-      width: auto;
-      max-width: 90vw;
+    .color-swatches {
+      display: flex;
+      flex-direction: row;
+      gap: var(--spacing-xs);
+      overflow-x: auto;
+      padding-bottom: var(--spacing-3xs);
+      width: 100%;
+      scrollbar-width: none;
+      align-items: center;
+      justify-content: flex-start;
+    }
+    
+    .color-swatches::-webkit-scrollbar {
+      display: none;
     }
 
-    .size-popup {
-      width: 200px;
+    .swatch-btn {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      border: 1.5px solid var(--border-color);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: transform var(--motion-duration-fast);
+      box-shadow: var(--shadow-light);
+    }
+
+    .swatch-btn:active {
+      transform: scale(0.85);
+    }
+
+    .swatch-btn.active {
+      transform: scale(1.1);
+      border-color: var(--accent);
+    }
+
+    .swatch-btn.custom-picker-btn {
+      position: relative;
+    }
+
+    /* Slider inside options bar */
+    .options-size-slider {
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-sm);
+      width: 100%;
+    }
+
+    .size-range-slider {
+      flex: 1;
+      height: 6px;
+      border-radius: 3px;
+      outline: none;
+      background: var(--border-color);
+      accent-color: var(--accent);
+    }
+
+    .size-val-display {
+      font-size: var(--font-size-xs);
+      font-weight: 700;
+      color: var(--text-primary);
+      min-width: 32px;
+      text-align: right;
+    }
+
+    /* Bottom Sheet Dialog */
+    .bottom-sheet-backdrop {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.4);
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
+      z-index: calc(var(--z-index-header) + 10);
+    }
+
+    .bottom-sheet {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: color-mix(in srgb, var(--bg-surface) 95%, transparent);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border-top: 1px solid var(--border-color);
+      border-radius: 20px 20px 0 0;
+      box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.15);
+      z-index: calc(var(--z-index-header) + 11);
+      padding: var(--spacing-sm) var(--spacing-md) calc(env(safe-area-inset-bottom, 0) + var(--spacing-md)) var(--spacing-md);
+      max-height: 70vh;
+      box-sizing: border-box;
+      overflow-y: auto;
+    }
+
+    .sheet-handle-container {
+      width: 100%;
+      height: 24px;
+      display: flex;
       justify-content: center;
       align-items: center;
+      margin-top: -8px;
+      cursor: grab;
     }
 
-    .menu-popup {
-      width: 180px;
-      flex-direction: column;
-      gap: var(--spacing-xs);
+    .sheet-handle {
+      width: 36px;
+      height: 4px;
+      background-color: var(--border-color);
+      border-radius: 2px;
+      opacity: 0.6;
     }
 
-    .menu-item {
-      display: flex;
+    .sheet-header {
       justify-content: space-between;
       align-items: center;
-      width: 100%;
-      gap: var(--spacing-sm);
+      margin-bottom: var(--spacing-md);
     }
 
-    .menu-label {
+    .sheet-header h3 {
+      font-size: var(--font-size-base);
+      font-weight: 700;
+      color: var(--text-primary);
+      margin: 0;
+    }
+
+    .sheet-done-btn {
+      background: transparent;
+      border: none;
+      color: var(--accent);
+      font-size: var(--font-size-sm);
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .sheet-content {
+      gap: var(--spacing-md);
+    }
+
+    .sheet-section {
+      align-items: flex-start;
+      gap: var(--spacing-2xs);
+      width: 100%;
+    }
+
+    .sheet-section .section-title {
       font-size: 11px;
       font-weight: 600;
       color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
     }
 
-    .menu-btn {
+    .sheet-segmented-control {
+      width: 100%;
+      background: var(--bg-card-hover);
+      border-radius: var(--radius-standard);
+      padding: 3px;
+      border: 1px solid var(--border-color);
+      box-sizing: border-box;
+    }
+
+    .sheet-segmented-control .segment-btn {
+      flex: 1;
+      text-align: center;
+      border: none;
+      background: transparent;
+      padding: var(--spacing-xs) var(--spacing-2xs);
+      font-size: var(--font-size-xs);
+      font-weight: 600;
+      border-radius: var(--radius-standard);
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all var(--motion-duration-fast) cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .sheet-segmented-control .segment-btn.active {
+      background: var(--bg-surface);
+      color: var(--text-primary);
+      box-shadow: var(--shadow-light);
+    }
+
+    .sheet-divider {
+      width: 100%;
+      height: 1px;
+      background-color: var(--border-color);
+      margin: var(--spacing-xs) 0;
+      opacity: 0.6;
+    }
+
+    .sheet-actions {
+      gap: var(--spacing-2xs);
+      width: 100%;
+    }
+
+    .sheet-action-row {
+      width: 100%;
       display: flex;
       align-items: center;
       background: transparent;
       border: none;
-      padding: var(--spacing-xs) var(--spacing-sm);
+      padding: var(--spacing-sm);
       border-radius: var(--radius-standard);
       color: var(--text-primary);
+      font-size: var(--font-size-sm);
+      font-weight: 600;
       cursor: pointer;
-      font-size: 12px;
-      font-weight: 500;
-      width: 100%;
       text-align: left;
+      gap: var(--spacing-md);
       transition: background-color var(--motion-duration-fast);
+      box-sizing: border-box;
     }
 
-    .menu-btn:hover:not(:disabled) {
+    .sheet-action-row:active {
       background-color: var(--bg-card-hover);
     }
 
-    .menu-btn.danger {
+    .sheet-action-row.danger {
       color: var(--semantic-error);
     }
 
-    .menu-btn.danger:hover:not(:disabled) {
-      background-color: color-mix(in srgb, var(--semantic-error) 10%, transparent);
-    }
-
-    .canvas-select {
-      background: var(--bg-card-hover);
-      color: var(--text-primary);
-      border: 1px solid var(--border-color);
-      padding: 2px var(--spacing-xs);
-      border-radius: var(--radius-standard);
-      font-size: 11px;
-      outline: none;
+    .sheet-action-row.danger:active {
+      background-color: color-mix(in srgb, var(--semantic-error) 8%, transparent);
     }
   }
 </style>

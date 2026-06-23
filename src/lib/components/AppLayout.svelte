@@ -27,7 +27,7 @@
   import { LONG_PRESS_MS, TOUCH_MOVE_TOLERANCE, edgeSwipeBack } from '../actions/touch';
 
   // Responsive state
-  let isMobile = $state(false);
+  let isMobile = $derived(appState.isMobile);
   let mobileSearchInput = $state('');
   let newMobileFolder = $state('');
   let showMobileFolderForm = $state(false);
@@ -90,10 +90,7 @@
     return 'Good evening';
   });
 
-  // Handle window resizing
-  function handleResize() {
-    isMobile = /android|iphone|ipad|ipod/i.test(navigator.userAgent) || window.innerWidth < 768;
-  }
+
 
   // Mobile Folder Creation
   async function createMobileFolder(e: SubmitEvent) {
@@ -276,11 +273,8 @@
   }
 
   onMount(() => {
-    handleResize();
-    window.addEventListener('resize', handleResize);
     window.addEventListener('keydown', handleLayoutKeydown);
     return () => {
-      window.removeEventListener('resize', handleResize);
       window.removeEventListener('keydown', handleLayoutKeydown);
     };
   });
@@ -432,6 +426,22 @@
         const trimmed = name.trim();
         if (trimmed) {
           await appState.createNotebook(trimmed);
+        }
+      }
+    });
+  }
+
+  function quickCreateNotebookNote() {
+    showQuickCreate = false;
+    appState.showPrompt({
+      title: 'New Handwriting Notebook',
+      message: 'Enter name for the new notebook document:',
+      value: 'Untitled Notebook',
+      placeholder: 'Notebook name...',
+      onConfirm: async (name) => {
+        const trimmed = name.trim();
+        if (trimmed) {
+          await appState.createNotebookNote(trimmed, appState.activeNotebook);
         }
       }
     });
@@ -1017,7 +1027,7 @@
               </button>
 
               <!-- 2. Code Mode Toggle -->
-              {#if !appState.isReadOnly}
+              {#if !appState.isReadOnly && appState.editorMode !== 'notebook'}
                 <button
                   class="menu-item flex-row"
                   onclick={() => {
@@ -1031,7 +1041,7 @@
               {/if}
 
               <!-- 2.5. Text/Canvas Mode Switcher -->
-              {#if !appState.isReadOnly}
+              {#if !appState.isReadOnly && appState.editorMode !== 'notebook'}
                 <button
                   class="menu-item flex-row"
                   onclick={() => {
@@ -2068,6 +2078,14 @@
           </span>
         </button>
 
+        <button type="button" class="quick-create-row flex-row" onclick={quickCreateNotebookNote}>
+          <span class="quick-create-icon flex-row" style="background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent);"><BookOpen size={18} /></span>
+          <span class="flex-col" style="align-items: flex-start; gap: 1px;">
+            <span class="quick-create-label">Handwriting Notebook</span>
+            <span class="quick-create-desc">Create a multi-page drawing note</span>
+          </span>
+        </button>
+
         <button type="button" class="quick-create-row flex-row" onclick={quickCreateDaily}>
           <span class="quick-create-icon flex-row" style="background: color-mix(in srgb, var(--semantic-info, #539df5) 16%, transparent); color: var(--semantic-info, #539df5);"><Calendar size={18} /></span>
           <span class="flex-col" style="align-items: flex-start; gap: 1px;">
@@ -2079,7 +2097,7 @@
         <button type="button" class="quick-create-row flex-row" onclick={quickCreateNotebook}>
           <span class="quick-create-icon flex-row" style="background: color-mix(in srgb, var(--semantic-warning, #ffa42b) 16%, transparent); color: var(--semantic-warning, #ffa42b);"><FolderPlus size={18} /></span>
           <span class="flex-col" style="align-items: flex-start; gap: 1px;">
-            <span class="quick-create-label">New Notebook</span>
+            <span class="quick-create-label">New Folder</span>
             <span class="quick-create-desc">Create a folder to organize notes</span>
           </span>
         </button>

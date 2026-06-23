@@ -16,6 +16,8 @@
       newHash = `#/note/${encodeURIComponent(appState.activeNotePath)}`;
       if (appState.editorMode === 'canvas') {
         newHash += '?mode=canvas';
+      } else if (appState.editorMode === 'notebook') {
+        newHash += '?mode=notebook';
       }
     } else if (appState.activeTab === 'daily') {
       newHash = `#/daily`;
@@ -54,6 +56,8 @@
         const params = new URLSearchParams(queryStr);
         if (params.get('mode') === 'canvas') {
           modeParam = 'canvas';
+        } else if (params.get('mode') === 'notebook') {
+          modeParam = 'notebook';
         }
       }
 
@@ -63,7 +67,7 @@
       }
 
       if (appState.editorMode !== modeParam) {
-        appState.editorMode = modeParam as 'text' | 'canvas';
+        appState.editorMode = modeParam as 'text' | 'canvas' | 'notebook';
       }
     } else {
       if (appState.activeNotePath !== null) {

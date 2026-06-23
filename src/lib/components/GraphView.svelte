@@ -8,7 +8,7 @@
 		onnavigate: (path: string, title: string) => void;
 	} = $props();
 
-	const isMobile = /android|iphone|ipad|ipod/i.test(navigator.userAgent);
+	let isMobile = $derived(appState.isMobile);
 
 	let canvas = $state<HTMLCanvasElement>(null!);
 	let loading = $state(true);

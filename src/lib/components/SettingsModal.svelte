@@ -500,6 +500,24 @@
           </div>
         </div>
 
+        <div class="section-group" style="margin-top: var(--spacing-md);">
+          <span class="section-title">Layout Settings</span>
+          <div class="setting-row">
+            <div class="setting-info">
+              <span class="setting-label">Force Mobile UI</span>
+              <span class="setting-desc">Force the application to use mobile layout regardless of screen size</span>
+            </div>
+            <label class="switch-container">
+              <input
+                type="checkbox"
+                checked={appState.forceMobileUi}
+                onchange={() => appState.toggleForceMobileUi()}
+              />
+              <span class="slider"></span>
+            </label>
+          </div>
+        </div>
+
       <!-- ==================== EDITOR & FILES PANEL ==================== -->
       {:else if appState.settingsActiveTab === 'editor'}
         <div class="section-group">
