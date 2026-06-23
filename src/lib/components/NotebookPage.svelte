@@ -42,18 +42,41 @@
     onLongPress
   }: Props = $props();
 
-  // Elements
-  let canvasElement = $state<HTMLCanvasElement | null>(null);
+  // ─── Dual-Layer Canvas Elements ────────────────────────────────────
+  // Static layer: completed strokes (only redrawn on stroke add/erase)
+  // Dynamic layer: active in-progress stroke + eraser cursor (redrawn on pointer-move)
+  let staticCanvas = $state<HTMLCanvasElement | null>(null);
+  let dynamicCanvas = $state<HTMLCanvasElement | null>(null);
 
   // Long press and Context Menu detection
   let longPressTimeout = $state<ReturnType<typeof setTimeout> | null>(null);
   let startPointerPos = $state<{ x: number; y: number } | null>(null);
 
-  // Drawing tracking
+  // ─── Drawing State (Plain JS — NOT reactive during drawing) ────────
+  // Using plain variables instead of $state to avoid Svelte reactivity
+  // overhead during the hot drawing loop. Only synced back on pointer-up.
+  let _isDrawing = false;
+  let _activePoints: StrokePoint[] = [];
+  let _activePointerId: number | null = null;
+  let _lastCursorPos: { x: number; y: number } | null = null;
+
+  // Reactive wrapper only for touch-action CSS binding
   let isDrawing = $state(false);
-  let activePoints = $state<StrokePoint[]>([]);
-  let activePointerId = $state<number | null>(null);
-  let lastCursorPos = $state<{ x: number; y: number } | null>(null);
+
+  // ─── Path2D Cache for Completed Strokes ────────────────────────────
+  // Maps stroke.id → { path: Path2D, color, opacity, pointCount }
+  // Avoids recomputing getStroke() for strokes that haven't changed.
+  interface CachedPath {
+    path: Path2D;
+    color: string;
+    opacity: number;
+    pointCount: number;
+  }
+  let pathCache = new Map<string, CachedPath>();
+
+  // ─── RAF Batching ─────────────────────────────────────────────────
+  let rafId: number | null = null;
+  let staticDirty = false;
 
   // Theme support
   const activeThemeObj = $derived(appState.themes.find(t => t.id === appState.theme));
@@ -72,8 +95,10 @@
 
   // Coordinates translation helper
   function getPointerCoords(e: PointerEvent): { x: number; y: number } {
-    if (!canvasElement) return { x: 0, y: 0 };
-    const rect = canvasElement.getBoundingClientRect();
+    // Use dynamicCanvas (topmost) for bounding rect
+    const canvas = dynamicCanvas || staticCanvas;
+    if (!canvas) return { x: 0, y: 0 };
+    const rect = canvas.getBoundingClientRect();
     const clientX = e.clientX - rect.left;
     const clientY = e.clientY - rect.top;
     
@@ -84,16 +109,17 @@
     };
   }
 
-  // Render a stroke on canvas
-  function drawStroke(ctx: CanvasRenderingContext2D, stroke: Stroke) {
-    if (stroke.points.length === 0) return;
-    if (stroke.tool === 'eraser') return;
+  // ─── Path2D Computation ────────────────────────────────────────────
+  // Compute a Path2D from a stroke's points using perfect-freehand
+  function computeStrokePath(stroke: Stroke): Path2D | null {
+    if (stroke.points.length === 0) return null;
+    if (stroke.tool === 'eraser') return null;
 
     const isStylusStroke = stroke.points.some(p => p.pressure !== 0.5 && p.pressure !== 0 && p.pressure !== 1);
     const simulate = !isStylusStroke;
 
     const pointsArray = stroke.points.map(p => [p.x, p.y, p.pressure]);
-    const strokeOutlinePoints = getStroke(pointsArray, {
+    const outlinePoints = getStroke(pointsArray, {
       size: stroke.size,
       thinning: stroke.tool === 'highlighter' ? 0.05 : 0.6,
       smoothing: 0.5,
@@ -102,88 +128,150 @@
       last: true
     });
 
-    if (strokeOutlinePoints.length === 0) return;
+    if (outlinePoints.length === 0) return null;
 
-    ctx.save();
-    ctx.beginPath();
-    ctx.moveTo(strokeOutlinePoints[0][0], strokeOutlinePoints[0][1]);
-    for (let i = 1; i < strokeOutlinePoints.length; i++) {
-      ctx.lineTo(strokeOutlinePoints[i][0], strokeOutlinePoints[i][1]);
+    const path = new Path2D();
+    path.moveTo(outlinePoints[0][0], outlinePoints[0][1]);
+    for (let i = 1; i < outlinePoints.length; i++) {
+      path.lineTo(outlinePoints[i][0], outlinePoints[i][1]);
     }
-    ctx.closePath();
-
-    ctx.fillStyle = stroke.color;
-    ctx.globalAlpha = stroke.opacity;
-    ctx.fill();
-    ctx.restore();
+    path.closePath();
+    return path;
   }
 
-  // Redraw the entire canvas
-  function redrawAll() {
-    if (!canvasElement) return;
-    const ctx = canvasElement.getContext('2d');
-    if (!ctx) return;
+  // Get or create a cached Path2D for a completed stroke
+  function getCachedPath(stroke: Stroke): CachedPath | null {
+    const existing = pathCache.get(stroke.id);
+    if (existing && existing.pointCount === stroke.points.length) {
+      return existing;
+    }
 
-    const rect = canvasElement.getBoundingClientRect();
-    if (rect.width === 0 || rect.height === 0) return;
+    const path = computeStrokePath(stroke);
+    if (!path) return null;
+
+    const cached: CachedPath = {
+      path,
+      color: stroke.color,
+      opacity: stroke.opacity,
+      pointCount: stroke.points.length
+    };
+    pathCache.set(stroke.id, cached);
+    return cached;
+  }
+
+  // Prune cache entries for strokes that no longer exist
+  function prunePathCache() {
+    const currentIds = new Set(page.strokes.map(s => s.id));
+    for (const id of pathCache.keys()) {
+      if (!currentIds.has(id)) {
+        pathCache.delete(id);
+      }
+    }
+  }
+
+  // ─── Canvas Setup Helper ──────────────────────────────────────────
+  function setupCanvasSize(canvas: HTMLCanvasElement): CanvasRenderingContext2D | null {
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return null;
 
     const dpr = window.devicePixelRatio || 1;
     const targetWidth = Math.round(rect.width * dpr);
     const targetHeight = Math.round(rect.height * dpr);
 
-    if (canvasElement.width !== targetWidth || canvasElement.height !== targetHeight) {
-      canvasElement.width = targetWidth;
-      canvasElement.height = targetHeight;
+    if (canvas.width !== targetWidth || canvas.height !== targetHeight) {
+      canvas.width = targetWidth;
+      canvas.height = targetHeight;
     }
+
+    return ctx;
+  }
+
+  // ─── Static Layer: Completed Strokes ──────────────────────────────
+  function redrawStatic() {
+    if (!staticCanvas) return;
+    const ctx = setupCanvasSize(staticCanvas);
+    if (!ctx) return;
+
+    const rect = staticCanvas.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
 
     ctx.save();
     ctx.scale(rect.width * dpr / PAGE_WIDTH, rect.height * dpr / PAGE_HEIGHT);
     ctx.clearRect(0, 0, PAGE_WIDTH, PAGE_HEIGHT);
 
-    // Draw completed highlighter strokes first
+    // Draw completed highlighter strokes first (below pen strokes)
     for (const stroke of page.strokes) {
       if (stroke.tool === 'highlighter') {
-        drawStroke(ctx, stroke);
+        const cached = getCachedPath(stroke);
+        if (cached) {
+          ctx.save();
+          ctx.fillStyle = cached.color;
+          ctx.globalAlpha = cached.opacity;
+          ctx.fill(cached.path);
+          ctx.restore();
+        }
       }
     }
 
-    // Draw active highlighter stroke (if drawing on this page)
-    if (isDrawing && activePoints.length > 0 && tool === 'highlighter') {
-      const activeStroke: Stroke = {
-        id: 'active',
-        tool: tool,
-        points: activePoints,
-        color: color,
-        size: size,
-        opacity: 0.3
-      };
-      drawStroke(ctx, activeStroke);
-    }
-
-    // Draw completed pen strokes next
+    // Draw completed pen strokes next (on top)
     for (const stroke of page.strokes) {
       if (stroke.tool === 'pen') {
-        drawStroke(ctx, stroke);
+        const cached = getCachedPath(stroke);
+        if (cached) {
+          ctx.save();
+          ctx.fillStyle = cached.color;
+          ctx.globalAlpha = cached.opacity;
+          ctx.fill(cached.path);
+          ctx.restore();
+        }
       }
     }
 
-    // Draw active pen stroke (if drawing on this page)
-    if (isDrawing && activePoints.length > 0 && tool === 'pen') {
+    ctx.restore();
+    prunePathCache();
+  }
+
+  // ─── Dynamic Layer: Active Stroke + Eraser Cursor ─────────────────
+  function redrawDynamic() {
+    if (!dynamicCanvas) return;
+    const ctx = setupCanvasSize(dynamicCanvas);
+    if (!ctx) return;
+
+    const rect = dynamicCanvas.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+
+    ctx.save();
+    ctx.scale(rect.width * dpr / PAGE_WIDTH, rect.height * dpr / PAGE_HEIGHT);
+    ctx.clearRect(0, 0, PAGE_WIDTH, PAGE_HEIGHT);
+
+    // Draw active stroke (if currently drawing)
+    if (_isDrawing && _activePoints.length > 0 && tool !== 'eraser') {
       const activeStroke: Stroke = {
         id: 'active',
         tool: tool,
-        points: activePoints,
+        points: _activePoints,
         color: color,
         size: size,
-        opacity: 1.0
+        opacity: tool === 'highlighter' ? 0.3 : 1.0
       };
-      drawStroke(ctx, activeStroke);
+
+      const path = computeStrokePath(activeStroke);
+      if (path) {
+        ctx.save();
+        ctx.fillStyle = activeStroke.color;
+        ctx.globalAlpha = activeStroke.opacity;
+        ctx.fill(path);
+        ctx.restore();
+      }
     }
 
     // Eraser preview cursor
-    if (active && tool === 'eraser' && lastCursorPos) {
+    if (active && tool === 'eraser' && _lastCursorPos) {
       ctx.beginPath();
-      ctx.arc(lastCursorPos.x, lastCursorPos.y, size / 2, 0, Math.PI * 2);
+      ctx.arc(_lastCursorPos.x, _lastCursorPos.y, size / 2, 0, Math.PI * 2);
       ctx.strokeStyle = isLight ? '#000000' : '#ffffff';
       ctx.lineWidth = 1;
       ctx.setLineDash([4, 4]);
@@ -193,9 +281,32 @@
     ctx.restore();
   }
 
-  // Reactive redraw triggers
+  // ─── Combined Redraw (for non-drawing scenarios) ──────────────────
+  function redrawAll() {
+    redrawStatic();
+    redrawDynamic();
+  }
+
+  // ─── RAF-Batched Render Scheduler ─────────────────────────────────
+  // During active drawing, we batch renders to once per animation frame.
+  function scheduleDrawingFrame() {
+    if (rafId !== null) return; // Already scheduled
+
+    rafId = requestAnimationFrame(() => {
+      rafId = null;
+
+      if (staticDirty) {
+        redrawStatic();
+        staticDirty = false;
+      }
+      redrawDynamic();
+    });
+  }
+
+  // ─── Reactive Redraw Triggers ─────────────────────────────────────
+  // Only triggers for non-drawing changes (theme, strokes added/removed externally, zoom)
   $effect(() => {
-    if (visible && canvasElement) {
+    if (visible && staticCanvas && dynamicCanvas) {
       // Establish Svelte 5 reactive dependencies
       const _strokes = page.strokes;
       const _bg = page.background;
@@ -236,28 +347,30 @@
 
     // Capture pointer to track dragging outside bounds
     try {
-      canvasElement?.setPointerCapture(e.pointerId);
+      dynamicCanvas?.setPointerCapture(e.pointerId);
     } catch (err) {
       console.warn('Pointer capture failed', err);
     }
 
-    isDrawing = true;
-    activePointerId = e.pointerId;
+    _isDrawing = true;
+    isDrawing = true; // Reactive wrapper for CSS touch-action
+    _activePointerId = e.pointerId;
     const coords = getPointerCoords(e);
-    lastCursorPos = coords;
+    _lastCursorPos = coords;
 
     if (tool === 'eraser') {
       eraseAt(coords.x, coords.y);
+      staticDirty = true;
+      scheduleDrawingFrame();
     } else {
-      activePoints = [{
+      _activePoints = [{
         x: coords.x,
         y: coords.y,
         pressure: e.pressure,
         timestamp: Date.now()
       }];
+      scheduleDrawingFrame();
     }
-
-    redrawAll();
   }
 
   function handlePointerMove(e: PointerEvent) {
@@ -266,45 +379,57 @@
     }
 
     const coords = getPointerCoords(e);
-    lastCursorPos = coords;
+    _lastCursorPos = coords;
 
-    if (!isDrawing || e.pointerId !== activePointerId) {
+    if (!_isDrawing || e.pointerId !== _activePointerId) {
       if (active && tool === 'eraser') {
-        redrawAll();
+        scheduleDrawingFrame();
       }
       return;
     }
 
     if (tool === 'eraser') {
-      eraseAt(coords.x, coords.y);
+      // Process coalesced events for smoother erasing
+      const coalescedEvents = e.getCoalescedEvents?.() || [e];
+      for (const ce of coalescedEvents) {
+        const ceCoords = getPointerCoords(ce);
+        eraseAt(ceCoords.x, ceCoords.y);
+      }
+      staticDirty = true;
     } else {
-      activePoints.push({
-        x: coords.x,
-        y: coords.y,
-        pressure: e.pressure,
-        timestamp: Date.now()
-      });
+      // Process coalesced events for smoother strokes
+      const coalescedEvents = e.getCoalescedEvents?.() || [e];
+      for (const ce of coalescedEvents) {
+        const ceCoords = getPointerCoords(ce);
+        _activePoints.push({
+          x: ceCoords.x,
+          y: ceCoords.y,
+          pressure: ce.pressure,
+          timestamp: Date.now()
+        });
+      }
     }
 
-    redrawAll();
+    scheduleDrawingFrame();
   }
 
   function handlePointerUp(e: PointerEvent) {
-    if (!isDrawing || e.pointerId !== activePointerId) return;
+    if (!_isDrawing || e.pointerId !== _activePointerId) return;
 
     try {
-      canvasElement?.releasePointerCapture(e.pointerId);
+      dynamicCanvas?.releasePointerCapture(e.pointerId);
     } catch (err) {}
 
-    isDrawing = false;
-    activePointerId = null;
-    lastCursorPos = null;
+    _isDrawing = false;
+    isDrawing = false; // Update reactive wrapper
+    _activePointerId = null;
+    _lastCursorPos = null;
 
-    if (tool !== 'eraser' && activePoints.length > 0) {
+    if (tool !== 'eraser' && _activePoints.length > 0) {
       const newStroke: Stroke = {
         id: crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2),
         tool: tool,
-        points: [...activePoints],
+        points: [..._activePoints],
         color: color,
         size: size,
         opacity: tool === 'highlighter' ? 0.3 : 1.0
@@ -312,7 +437,14 @@
       onStrokeAdd(newStroke);
     }
 
-    activePoints = [];
+    _activePoints = [];
+
+    // Cancel any pending RAF and do a full clean redraw
+    if (rafId !== null) {
+      cancelAnimationFrame(rafId);
+      rafId = null;
+    }
+    staticDirty = false;
     redrawAll();
   }
 
@@ -395,6 +527,16 @@
       onContextMenu(page.id, e.clientX, e.clientY);
     }
   }
+
+  // Cleanup pending RAF on unmount
+  onMount(() => {
+    return () => {
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
+    };
+  });
 </script>
 
 <div
@@ -408,8 +550,16 @@
   onpointercancel={cancelLongPress}
 >
   {#if visible}
+    <!-- Static layer: completed strokes (bottom) -->
     <canvas
-      bind:this={canvasElement}
+      bind:this={staticCanvas}
+      class="canvas-layer static-layer"
+      style="touch-action: {activeTouchAction};"
+    ></canvas>
+    <!-- Dynamic layer: active stroke + eraser cursor (top, receives events) -->
+    <canvas
+      bind:this={dynamicCanvas}
+      class="canvas-layer dynamic-layer"
       style="touch-action: {activeTouchAction};"
       onpointerdown={handlePointerDown}
       onpointermove={handlePointerMove}
@@ -463,10 +613,22 @@
     border-color: var(--accent);
   }
 
-  .notebook-page-container canvas {
+  /* Dual-layer canvas stacking */
+  .canvas-layer {
     display: block;
+    position: absolute;
+    top: 0;
+    left: 0;
     width: 100%;
     height: 100%;
+  }
+
+  .static-layer {
+    z-index: 0;
+  }
+
+  .dynamic-layer {
+    z-index: 1;
   }
 
   .notebook-page-placeholder {
