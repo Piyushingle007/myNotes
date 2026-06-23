@@ -160,7 +160,35 @@
   const borderCol = $derived(isLight ? '#d1d5db' : '#2d333b');
   const shadowCol = $derived(isLight ? 'rgba(0, 0, 0, 0.06)' : 'rgba(0, 0, 0, 0.4)');
 
-  let minZoom = $state(0.25);
+  // Limit minimum zoom to keep the page aligned with screen/container width
+  const fitScale = $derived.by(() => {
+    if (!wrapperElement) return 0.25;
+    const w = appState.windowWidth;
+    const rect = wrapperElement.getBoundingClientRect();
+    const margin = 16;
+    const availableWidth = rect.width - margin * 2;
+    if (availableWidth <= 0) return 0.25;
+    return Math.max(0.1, Math.min(4.0, availableWidth / PAGE_WIDTH));
+  });
+
+  let minZoom = $derived(fitScale);
+
+  let oldMinZoom = 0.25;
+  $effect(() => {
+    const currentMin = minZoom;
+    const wasFitting = Math.abs(viewport.zoom - oldMinZoom) < 0.01;
+    if (wasFitting || viewport.zoom < currentMin) {
+      untrack(() => {
+        viewport.zoom = currentMin;
+        if (wrapperElement) {
+          const rect = wrapperElement.getBoundingClientRect();
+          viewport.x = (rect.width - PAGE_WIDTH * currentMin) / 2;
+        }
+        redrawAll();
+      });
+    }
+    oldMinZoom = currentMin;
+  });
 
   function fitPageToScreen() {
     if (!canvasElement || !wrapperElement) return;
@@ -171,13 +199,6 @@
     if (availableWidth <= 0) return;
 
     const scaleVal = Math.max(0.1, Math.min(4.0, availableWidth / PAGE_WIDTH));
-
-    // Limit minimum zoom based on mobile view to keep it readable and writable
-    if (isMobile) {
-      minZoom = scaleVal;
-    } else {
-      minZoom = 0.25;
-    }
 
     viewport.zoom = scaleVal;
     viewport.x = (rect.width - PAGE_WIDTH * scaleVal) / 2;
