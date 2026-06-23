@@ -1,9 +1,21 @@
 <script lang="ts">
   import { appState, parseHtmlMetadata } from '../stores/appState.svelte';
-  import { FileText, Plus, Trash2, Edit2, Search, Clock, CalendarDays, X, Menu, FolderInput, CheckSquare, BookOpen } from 'lucide-svelte';
+  import { FileText, Plus, Trash2, Edit2, Search, Clock, CalendarDays, X, Menu, FolderInput, CheckSquare, BookOpen, Folder, Star, ChevronLeft } from 'lucide-svelte';
   import { fly } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
   import ErrorBanner from './ErrorBanner.svelte';
+
+  let { 
+    isPopover = false, 
+    onNoteSelect = null,
+    showBack = false,
+    onBack = null
+  }: { 
+    isPopover?: boolean; 
+    onNoteSelect?: (() => void) | null;
+    showBack?: boolean;
+    onBack?: (() => void) | null;
+  } = $props();
 
 
 
@@ -252,81 +264,142 @@
 <div 
   id="notelist-panel"
   class="note-list flex-col density-{appState.uiDensity}" 
-  class:collapsed={appState.notelistCollapsed}
-  style="width: {appState.notelistCollapsed ? 0 : appState.notelistWidth}px;"
-  tabindex={appState.notelistCollapsed ? -1 : 0}
+  class:popover-mode={isPopover}
+  class:collapsed={!isPopover && appState.notelistCollapsed}
+  style="width: {isPopover ? '100%' : (appState.notelistCollapsed ? '0px' : appState.notelistWidth + 'px')};"
+  tabindex={!isPopover && appState.notelistCollapsed ? -1 : 0}
 >
   <!-- Top Playlist Header -->
-  <div class="list-header flex-col" style="position: relative;">
-    <div class="flex-row" style="justify-content: space-between; align-items: center; width: 100%;">
-      <div class="meta-label">
-        {#if appState.vaultName}
-          DIRECTORY: {appState.vaultName.toUpperCase()}
-        {:else}
-          NOTEBOOK
-        {/if}
+  <div class="list-header flex-col" style="position: relative;" class:popover-header-container={isPopover}>
+    {#if isPopover}
+      <div class="popover-header-row flex-row" style="justify-content: space-between; align-items: center; width: 100%; margin-bottom: var(--spacing-2xs);">
+        <div class="flex-row" style="gap: var(--spacing-xs); align-items: center; min-width: 0; flex: 1;">
+          {#if showBack && onBack}
+            <button 
+              class="header-icon-action-btn" 
+              onclick={(e) => { e.stopPropagation(); onBack(); }}
+              title="Go back"
+              style="width: 26px; height: 26px; flex-shrink: 0; background: transparent; border: 1px solid var(--border-color); display: flex; align-items: center; justify-content: center;"
+            >
+              <ChevronLeft size={14} />
+            </button>
+          {/if}
+          <div class="flex-col" style="gap: 2px; min-width: 0; flex: 1;">
+            <h1 class="popover-title-text" style="font-size: var(--font-size-md); font-weight: 850; color: var(--text-primary); margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: -0.2px;">
+              {#if appState.selectedTag}
+                #{appState.selectedTag}
+              {:else if appState.activeNotebook}
+                {appState.activeNotebook}
+              {:else if appState.activeNotePath?.startsWith('Daily Notes/')}
+                Daily Logs
+              {:else}
+                All Notes
+              {/if}
+            </h1>
+            <span style="font-size: var(--font-size-2xs); color: var(--text-tertiary); font-weight: 600;">
+              {appState.filteredNotes.length} notes
+            </span>
+          </div>
+        </div>
+        
+        <div class="flex-row" style="gap: var(--spacing-xs); align-items: center;">
+          <button 
+            class="header-icon-action-btn"
+            class:active={appState.selectMode}
+            onclick={() => appState.toggleSelectMode()}
+            title="Select multiple notes"
+          >
+            <CheckSquare size={13} />
+          </button>
+          
+          <button 
+            class="header-icon-action-btn"
+            onclick={handleCreateNotebookNote}
+            title="Add new handwriting notebook"
+          >
+            <BookOpen size={13} />
+          </button>
+
+          <button 
+            class="header-icon-action-btn primary-accent"
+            onclick={handleCreateNote}
+            title="Create new note"
+          >
+            <Plus size={14} />
+          </button>
+        </div>
       </div>
-    </div>
-    <div class="flex-row" style="align-items: center; gap: var(--spacing-xs); max-width: 100%;">
-      <h1 class="list-title">
-        {#if appState.selectedTag}
-          Tagged: {appState.selectedTag}
-        {:else if appState.activeNotebook}
-          {appState.activeNotebook}
-        {:else if appState.activeNotePath?.startsWith('Daily Notes/')}
-          Daily Logs
-        {:else}
-          All Notes
-        {/if}
-      </h1>
-    </div>
-    
-    <div class="header-actions flex-row">
-      <span class="count-indicator">
-        {appState.filteredNotes.length} notes
-        {#if appState.googleConnected && appState.syncEnabled}
-          • ☁️ {appState.customDriveFolderName || 'MyNotes'}
-        {/if}
-      </span>
+    {:else}
+      <div class="flex-row" style="justify-content: space-between; align-items: center; width: 100%;">
+        <div class="meta-label">
+          {#if appState.vaultName}
+            DIRECTORY: {appState.vaultName.toUpperCase()}
+          {:else}
+            NOTEBOOK
+          {/if}
+        </div>
+      </div>
+      <div class="flex-row" style="align-items: center; gap: var(--spacing-xs); max-width: 100%;">
+        <h1 class="list-title">
+          {#if appState.selectedTag}
+            Tagged: {appState.selectedTag}
+          {:else if appState.activeNotebook}
+            {appState.activeNotebook}
+          {:else if appState.activeNotePath?.startsWith('Daily Notes/')}
+            Daily Logs
+          {:else}
+            All Notes
+          {/if}
+        </h1>
+      </div>
       
-      <div class="flex-row" style="gap: var(--spacing-xs); align-items: center; flex-wrap: wrap; justify-content: flex-end;">
-        <button 
-          class="btn-pill btn-pill-outline" 
-          onclick={() => appState.toggleUiDensity()}
-          title="Toggle density (Comfortable / Compact)"
-          style="font-size: var(--font-size-xs); padding: var(--spacing-xs) var(--spacing-sm); height: 32px;"
-        >
-          {appState.uiDensity === 'comfortable' ? 'Comfortable' : 'Compact'}
-        </button>
-        {#if appState.editorCollapsed}
+      <div class="header-actions flex-row">
+        <span class="count-indicator">
+          {appState.filteredNotes.length} notes
+          {#if appState.googleConnected && appState.syncEnabled}
+            • ☁️ {appState.customDriveFolderName || 'MyNotes'}
+          {/if}
+        </span>
+        
+        <div class="flex-row" style="gap: var(--spacing-xs); align-items: center; flex-wrap: wrap; justify-content: flex-end;">
           <button 
             class="btn-pill btn-pill-outline" 
-            style="font-size: var(--font-size-xs); padding: var(--spacing-xs) var(--spacing-sm); height: 32px;" 
-            onclick={() => appState.setEditorCollapsed(false)}
+            onclick={() => appState.toggleUiDensity()}
+            title="Toggle density (Comfortable / Compact)"
+            style="font-size: var(--font-size-xs); padding: var(--spacing-xs) var(--spacing-sm); height: 32px;"
           >
-            Show Editor
+            {appState.uiDensity === 'comfortable' ? 'Comfortable' : 'Compact'}
           </button>
-        {/if}
-        <button 
-          class="btn-pill btn-pill-outline" 
-          class:active={appState.selectMode}
-          style="font-size: var(--font-size-xs); padding: var(--spacing-xs) var(--spacing-sm); height: 32px; gap: var(--spacing-2xs); display: inline-flex; align-items: center;" 
-          onclick={() => appState.toggleSelectMode()}
-          title="Toggle Select Mode"
-        >
-          <CheckSquare size={14} />
-          <span>{appState.selectMode ? 'Cancel' : 'Select'}</span>
-        </button>
-        <button class="btn-pill btn-pill-outline add-note-btn" onclick={handleCreateNotebookNote} style="gap: var(--spacing-2xs); height: 32px;">
-          <BookOpen size={14} />
-          <span>Add Notebook</span>
-        </button>
-        <button class="btn-pill btn-pill-primary add-note-btn" onclick={handleCreateNote}>
-          <Plus size={16} />
-          <span>Add Note</span>
-        </button>
+          {#if appState.editorCollapsed}
+            <button 
+              class="btn-pill btn-pill-outline" 
+              style="font-size: var(--font-size-xs); padding: var(--spacing-xs) var(--spacing-sm); height: 32px;" 
+              onclick={() => appState.setEditorCollapsed(false)}
+            >
+              Show Editor
+            </button>
+          {/if}
+          <button 
+            class="btn-pill btn-pill-outline" 
+            class:active={appState.selectMode}
+            style="font-size: var(--font-size-xs); padding: var(--spacing-xs) var(--spacing-sm); height: 32px; gap: var(--spacing-2xs); display: inline-flex; align-items: center;" 
+            onclick={() => appState.toggleSelectMode()}
+            title="Toggle Select Mode"
+          >
+            <CheckSquare size={14} />
+            <span>{appState.selectMode ? 'Cancel' : 'Select'}</span>
+          </button>
+          <button class="btn-pill btn-pill-outline add-note-btn" onclick={handleCreateNotebookNote} style="gap: var(--spacing-2xs); height: 32px;">
+            <BookOpen size={14} />
+            <span>Add Notebook</span>
+          </button>
+          <button class="btn-pill btn-pill-primary add-note-btn" onclick={handleCreateNote}>
+            <Plus size={16} />
+            <span>Add Note</span>
+          </button>
+        </div>
       </div>
-    </div>
+    {/if}
 
     <!-- Active Filter Chips Bar (UI-D-009) -->
     {#if appState.activeNotebook || appState.selectedTag || appState.searchQuery}
@@ -392,69 +465,98 @@
     </div>
   {/if}
 
-  <!-- Note Playlist Headers -->
-  <div class="playlist-columns flex-row">
-    {#if appState.selectMode}
-      <span class="col-index" style="display: flex; align-items: center; justify-content: center;">
-        <input 
-          type="checkbox"
-          checked={appState.selectedNotes.size > 0 && appState.selectedNotes.size === appState.filteredNotes.length}
-          aria-label="Select all notes"
-          onclick={(e) => {
-            e.stopPropagation();
-            if (appState.selectedNotes.size === appState.filteredNotes.length) {
-              appState.selectedNotes.clear();
-            } else {
-              appState.selectAllNotes(appState.filteredNotes.map(n => n.path));
-            }
-          }}
-          style="cursor: pointer; width: 14px; height: 14px;"
-        />
-      </span>
+  <!-- Note Playlist Headers / Sorting Options -->
+  <div class="playlist-columns flex-row" class:popover-mode={isPopover}>
+    {#if isPopover}
+      <div class="sort-options-container flex-row" style="width: 100%; justify-content: space-between; padding: 0 var(--spacing-sm) 4px; font-size: 11px; color: var(--text-tertiary);">
+        <span style="font-weight: bold; text-transform: uppercase; font-size: 10px; letter-spacing: 0.5px;">Sort by:</span>
+        <div class="flex-row" style="gap: var(--spacing-xs);">
+          <button 
+            class="sort-tab-btn" 
+            class:active={appState.sortField === 'title'}
+            onclick={() => appState.setSort('title')}
+          >
+            Title {#if appState.sortField === 'title'}{appState.sortDirection === 'asc' ? '↑' : '↓'}{/if}
+          </button>
+          <button 
+            class="sort-tab-btn" 
+            class:active={appState.sortField === 'notebook'}
+            onclick={() => appState.setSort('notebook')}
+          >
+            Folder {#if appState.sortField === 'notebook'}{appState.sortDirection === 'asc' ? '↑' : '↓'}{/if}
+          </button>
+          <button 
+            class="sort-tab-btn" 
+            class:active={appState.sortField === 'modified'}
+            onclick={() => appState.setSort('modified')}
+          >
+            Date {#if appState.sortField === 'modified'}{appState.sortDirection === 'asc' ? '↑' : '↓'}{/if}
+          </button>
+        </div>
+      </div>
     {:else}
-      <span class="col-index">#</span>
-    {/if}
-    
-    <button 
-      class="col-title flex-row sort-header-btn" 
-      class:active={appState.sortField === 'title'}
-      onclick={() => appState.setSort('title')}
-      aria-label="Sort by title"
-      style="background: none; border: none; font: inherit; color: inherit; text-align: left; cursor: pointer; padding: 0;"
-    >
-      <span>TITLE</span>
-      {#if appState.sortField === 'title'}
-        <span class="sort-arrow">{appState.sortDirection === 'asc' ? '↑' : '↓'}</span>
+      {#if appState.selectMode}
+        <span class="col-index" style="display: flex; align-items: center; justify-content: center;">
+          <input 
+            type="checkbox"
+            checked={appState.selectedNotes.size > 0 && appState.selectedNotes.size === appState.filteredNotes.length}
+            aria-label="Select all notes"
+            onclick={(e) => {
+              e.stopPropagation();
+              if (appState.selectedNotes.size === appState.filteredNotes.length) {
+                appState.selectedNotes.clear();
+              } else {
+                appState.selectAllNotes(appState.filteredNotes.map(n => n.path));
+              }
+            }}
+            style="cursor: pointer; width: 14px; height: 14px;"
+          />
+        </span>
+      {:else}
+        <span class="col-index">#</span>
       {/if}
-    </button>
+      
+      <button 
+        class="col-title flex-row sort-header-btn" 
+        class:active={appState.sortField === 'title'}
+        onclick={() => appState.setSort('title')}
+        aria-label="Sort by title"
+        style="background: none; border: none; font: inherit; color: inherit; text-align: left; cursor: pointer; padding: 0;"
+      >
+        <span>TITLE</span>
+        {#if appState.sortField === 'title'}
+          <span class="sort-arrow">{appState.sortDirection === 'asc' ? '↑' : '↓'}</span>
+        {/if}
+      </button>
 
-    <button 
-      class="col-notebook flex-row sort-header-btn" 
-      class:active={appState.sortField === 'notebook'}
-      onclick={() => appState.setSort('notebook')}
-      aria-label="Sort by notebook path"
-      style="background: none; border: none; font: inherit; color: inherit; text-align: left; cursor: pointer; padding: 0;"
-    >
-      <span>NOTEBOOK</span>
-      {#if appState.sortField === 'notebook'}
-        <span class="sort-arrow">{appState.sortDirection === 'asc' ? '↑' : '↓'}</span>
-      {/if}
-    </button>
-    
-    <button 
-      class="col-modified flex-row sort-header-btn" 
-      class:active={appState.sortField === 'modified'}
-      onclick={() => appState.setSort('modified')}
-      aria-label="Sort by modified time"
-      style="background: none; border: none; font: inherit; color: inherit; text-align: left; cursor: pointer; padding: 0;"
-    >
-      <span>MODIFIED</span>
-      {#if appState.sortField === 'modified'}
-        <span class="sort-arrow">{appState.sortDirection === 'asc' ? '↑' : '↓'}</span>
-      {/if}
-    </button>
-    
-    <span class="col-actions"></span>
+      <button 
+        class="col-notebook flex-row sort-header-btn" 
+        class:active={appState.sortField === 'notebook'}
+        onclick={() => appState.setSort('notebook')}
+        aria-label="Sort by notebook path"
+        style="background: none; border: none; font: inherit; color: inherit; text-align: left; cursor: pointer; padding: 0;"
+      >
+        <span>NOTEBOOK</span>
+        {#if appState.sortField === 'notebook'}
+          <span class="sort-arrow">{appState.sortDirection === 'asc' ? '↑' : '↓'}</span>
+        {/if}
+      </button>
+      
+      <button 
+        class="col-modified flex-row sort-header-btn" 
+        class:active={appState.sortField === 'modified'}
+        onclick={() => appState.setSort('modified')}
+        aria-label="Sort by modified time"
+        style="background: none; border: none; font: inherit; color: inherit; text-align: left; cursor: pointer; padding: 0;"
+      >
+        <span>MODIFIED</span>
+        {#if appState.sortField === 'modified'}
+          <span class="sort-arrow">{appState.sortDirection === 'asc' ? '↑' : '↓'}</span>
+        {/if}
+      </button>
+      
+      <span class="col-actions"></span>
+    {/if}
   </div>
 
   <!-- Notes Grid -->
@@ -484,7 +586,7 @@
       {#each appState.filteredNotes as note, index (note.path)}
         {@const thumb = getNoteThumbnail(note.content)}
         <div 
-          class="note-row flex-row"
+          class="note-row flex-col"
           class:active={appState.activeNotePath === note.path}
           class:selected={appState.selectedNotes.has(note.path)}
           style="--index: {index};"
@@ -496,6 +598,7 @@
               appState.toggleNoteSelection(note.path);
             } else {
               appState.selectNote(note.path);
+              if (onNoteSelect) onNoteSelect();
             }
           }}
           onkeydown={(e) => {
@@ -504,101 +607,107 @@
                 appState.toggleNoteSelection(note.path);
               } else {
                 appState.selectNote(note.path);
+                if (onNoteSelect) onNoteSelect();
               }
             }
           }}
         >
-          {#if appState.selectMode}
-            <div class="selection-checkbox-wrapper">
-              <!-- svelte-ignore a11y_click_events_have_key_events -->
-              <!-- svelte-ignore a11y_no_static_element_interactions -->
-              <div 
-                class="selection-checkbox" 
-                class:checked={appState.selectedNotes.has(note.path)}
-                role="checkbox"
-                aria-checked={appState.selectedNotes.has(note.path)}
-                tabindex="0"
-                aria-label="Select note {note.name}"
-                onclick={(e) => { e.stopPropagation(); appState.toggleNoteSelection(note.path); }}
-                onkeydown={(e) => {
-                  if (e.key === ' ' || e.key === 'Enter') {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    appState.toggleNoteSelection(note.path);
-                  }
-                }}
-              >
-                {#if appState.selectedNotes.has(note.path)}
-                  ✓
-                {/if}
+          <div class="note-row-main flex-row" style="width: 100%; gap: var(--spacing-sm); align-items: center; justify-content: space-between;">
+            {#if appState.selectMode}
+              <div class="selection-checkbox-wrapper" style="flex-shrink: 0;">
+                <!-- svelte-ignore a11y_click_events_have_key_events -->
+                <!-- svelte-ignore a11y_no_static_element_interactions -->
+                <div 
+                  class="selection-checkbox" 
+                  class:checked={appState.selectedNotes.has(note.path)}
+                  role="checkbox"
+                  aria-checked={appState.selectedNotes.has(note.path)}
+                  tabindex="0"
+                  aria-label="Select note {note.name}"
+                  onclick={(e) => { e.stopPropagation(); appState.toggleNoteSelection(note.path); }}
+                  onkeydown={(e) => {
+                    if (e.key === ' ' || e.key === 'Enter') {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      appState.toggleNoteSelection(note.path);
+                    }
+                  }}
+                >
+                  {#if appState.selectedNotes.has(note.path)}
+                    ✓
+                  {/if}
+                </div>
               </div>
-            </div>
-          {:else}
-            <div class="col-index font-mono">{index + 1}</div>
-          {/if}
-          
-          <div class="col-title flex-row">
-            <div class="track-icon" style="display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; flex-shrink: 0; position: relative;">
+            {/if}
+            
+            <div class="track-icon" style="display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; flex-shrink: 0; position: relative;">
               {#if thumb}
-                <img src={thumb} alt="preview" style="width: 20px; height: 20px; object-fit: cover; border-radius: var(--radius-standard); border: 1px solid var(--border-color);" />
+                <img src={thumb} alt="preview" style="width: 28px; height: 28px; object-fit: cover; border-radius: 6px; border: 1px solid var(--border-color);" />
                 {#if note.path.endsWith('.notebook.json')}
-                  <div class="mini-notebook-overlay" style="position: absolute; bottom: -2px; right: -2px; background: var(--accent); border-radius: 50%; width: 10px; height: 10px; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 3px rgba(0,0,0,0.3); border: 0.5px solid #ffffff;">
-                    <span style="font-size: 6px; color: #ffffff; font-weight: bold; line-height: 1; transform: scale(0.85);">N</span>
+                  <div class="mini-notebook-overlay" style="position: absolute; bottom: -2px; right: -2px; background: var(--accent); border-radius: 50%; width: 12px; height: 12px; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 3px rgba(0,0,0,0.3); border: 0.5px solid #ffffff;">
+                    <span style="font-size: 7px; color: #ffffff; font-weight: bold; line-height: 1; transform: scale(0.85);">N</span>
                   </div>
                 {/if}
               {:else if note.path.endsWith('.notebook.json')}
-                <BookOpen size={18} style="color: var(--accent);" />
+                <BookOpen size={20} style="color: var(--accent);" />
               {:else}
-                <FileText size={18} />
+                <FileText size={20} />
               {/if}
             </div>
-            <div class="track-info flex-col">
-              <span class="track-name">{note.name}</span>
-              {#if note.path.endsWith('.notebook.json')}
-                <span class="notebook-badge" style="font-size: 10px; color: var(--accent); opacity: 0.8; font-weight: 500; margin-top: 2px;">📓 {getPageCount(note)} pages</span>
+
+            <div class="note-details flex-col" style="flex: 1; min-width: 0; gap: 2px;">
+              <div class="note-title-row flex-row" style="justify-content: space-between; align-items: center; width: 100%; gap: 6px;">
+                <span class="track-name" style="font-weight: 700; font-size: var(--font-size-sm); color: var(--text-primary); text-overflow: ellipsis; overflow: hidden; white-space: nowrap; flex: 1; text-align: left;">{note.name}</span>
+                {#if appState.favorites.includes(note.path)}
+                  <Star size={12} style="fill: var(--accent); color: var(--accent); flex-shrink: 0;" />
+                {/if}
+              </div>
+              
+              <div class="note-meta-row flex-row" style="font-size: 11px; color: var(--text-secondary); gap: 6px; align-items: center; width: 100%; white-space: nowrap;">
+                {#if note.path.includes('/')}
+                  <span class="note-folder flex-row" style="gap: 4px; align-items: center; min-width: 0; overflow: hidden; text-overflow: ellipsis;">
+                    <Folder size={11} style="opacity: 0.7; flex-shrink: 0;" />
+                    <span style="overflow: hidden; text-overflow: ellipsis; text-align: left;">{note.path.split('/').slice(0, -1).join('/')}</span>
+                  </span>
+                  <span style="opacity: 0.5;">•</span>
+                {/if}
+                <span class="note-time flex-row" style="gap: 4px; align-items: center; flex-shrink: 0;">
+                  <Clock size={11} style="opacity: 0.7; flex-shrink: 0;" />
+                  <span>{formatModified(note.modified)}</span>
+                </span>
+                {#if note.path.endsWith('.notebook.json')}
+                  <span style="opacity: 0.5;">•</span>
+                  <span class="note-pages" style="color: var(--accent); font-weight: 500; flex-shrink: 0;">📓 {getPageCount(note)} pgs</span>
+                {/if}
+              </div>
+            </div>
+
+            <!-- Actions block -->
+            <div class="col-actions flex-row" style="gap: 4px; align-items: center; justify-content: flex-end; flex-shrink: 0; width: auto;">
+              {#if !appState.selectMode}
+                <button 
+                  class="row-move-btn" 
+                  onclick={(e) => { e.stopPropagation(); handleMoveCopyNote(note.path, note.name, e); }}
+                  title="Move/Copy Note"
+                >
+                  <FolderInput size={14} />
+                </button>
+                <button 
+                  class="row-edit-btn" 
+                  onclick={(e) => { e.stopPropagation(); handleRenameNote(note.path, note.name, e); }}
+                  title="Rename Note"
+                >
+                  <Edit2 size={14} />
+                </button>
+                <button 
+                  class="row-delete-btn" 
+                  onclick={(e) => { e.stopPropagation(); handleDeleteNote(note.path, e); }}
+                  title="Delete Note"
+                >
+                  <Trash2 size={14} />
+                </button>
               {/if}
             </div>
-          </div>
-
-          <div class="col-notebook text-secondary">
-            {#if note.path.includes('/')}
-              <span class="notebook-path">{note.path.split('/').slice(0, -1).join(' / ')}</span>
-            {:else}
-              <span class="notebook-path" style="opacity: 0.3;">—</span>
-            {/if}
-          </div>
-
-          <div class="col-modified text-secondary">
-            {formatModified(note.modified)}
-          </div>
-
-          <div class="col-actions flex-row" style="gap: var(--spacing-xs); align-items: center; justify-content: flex-end;">
-            {#if !appState.selectMode}
-              <button 
-                class="row-move-btn" 
-                onclick={(e) => handleMoveCopyNote(note.path, note.name, e)}
-                aria-label="Move or copy note"
-                title="Move or copy note"
-              >
-                <FolderInput size={16} />
-              </button>
-              <button 
-                class="row-edit-btn" 
-                onclick={(e) => handleRenameNote(note.path, note.name, e)}
-                aria-label="Rename note"
-                title="Rename note"
-              >
-                <Edit2 size={16} />
-              </button>
-              <button 
-                class="row-delete-btn" 
-                onclick={(e) => handleDeleteNote(note.path, e)}
-                aria-label="Delete note"
-                title="Delete note"
-              >
-                <Trash2 size={16} />
-              </button>
-            {/if}
           </div>
         </div>
       {:else}
@@ -1383,5 +1492,131 @@
   .skeleton-block.modified {
     width: 50px;
     height: 12px;
+  }
+
+  /* Popover Mode Adjustments */
+  .note-list.popover-mode {
+    border-right: none;
+    background-color: transparent;
+    padding: 0;
+    height: 400px;
+    max-height: 400px;
+  }
+
+  .popover-header-container {
+    padding: var(--spacing-sm) var(--spacing-sm) var(--spacing-xs) !important;
+    margin-bottom: 0 !important;
+    border-bottom: 1px solid var(--border-color);
+  }
+
+  .note-list.popover-mode .playlist-columns {
+    border-bottom: 1px solid var(--border-color);
+    padding: var(--spacing-xs) var(--spacing-sm);
+    background-color: color-mix(in srgb, var(--bg-surface) 40%, transparent);
+    box-sizing: border-box;
+  }
+
+  .note-list.popover-mode .playlist-rows {
+    padding: var(--spacing-sm);
+    gap: var(--spacing-xs);
+    box-sizing: border-box;
+  }
+
+  .note-list.popover-mode .note-row {
+    background-color: color-mix(in srgb, var(--bg-surface) 60%, transparent);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: var(--spacing-xs) var(--spacing-sm);
+    margin: 0;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    box-sizing: border-box;
+  }
+
+  .note-list.popover-mode .note-row:hover {
+    background-color: color-mix(in srgb, var(--text-primary) 3%, var(--bg-surface));
+    border-color: color-mix(in srgb, var(--text-primary) 12%, var(--border-color));
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-sm);
+  }
+
+  .note-list.popover-mode .note-row.active {
+    background-color: color-mix(in srgb, var(--accent) 8%, var(--bg-surface));
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent), 0 2px 8px color-mix(in srgb, var(--accent) 15%, transparent);
+  }
+
+  .note-list.popover-mode .note-row.active .track-name {
+    color: var(--accent);
+  }
+
+  /* Header Compact Icon Buttons */
+  .header-icon-action-btn {
+    background: color-mix(in srgb, var(--text-primary) 5%, transparent);
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    cursor: pointer;
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s ease;
+    padding: 0;
+  }
+
+  .header-icon-action-btn:hover {
+    background-color: color-mix(in srgb, var(--text-primary) 10%, transparent);
+    color: var(--text-primary);
+    transform: translateY(-1px);
+  }
+
+  .header-icon-action-btn.active {
+    background-color: color-mix(in srgb, var(--accent) 15%, transparent);
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .header-icon-action-btn.primary-accent {
+    background-color: var(--accent);
+    border-color: var(--accent);
+    color: #ffffff;
+  }
+
+  .header-icon-action-btn.primary-accent:hover {
+    background-color: var(--accent-hover);
+    border-color: var(--accent-hover);
+    box-shadow: 0 2px 8px color-mix(in srgb, var(--accent) 30%, transparent);
+  }
+
+  /* Sort Tabs Styling */
+  .sort-options-container {
+    width: 100%;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .sort-tab-btn {
+    background: none;
+    border: none;
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-tertiary);
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 4px;
+    transition: all 0.15s ease;
+  }
+
+  .sort-tab-btn:hover {
+    color: var(--text-primary);
+    background-color: color-mix(in srgb, var(--text-primary) 6%, transparent);
+  }
+
+  .sort-tab-btn.active {
+    color: var(--accent);
+    background-color: color-mix(in srgb, var(--accent) 12%, transparent);
   }
 </style>

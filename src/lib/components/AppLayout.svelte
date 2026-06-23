@@ -2361,37 +2361,21 @@
     <AppHeader />
 
     <div class="desktop-app flex-row" style="position: relative;">
-      <!-- Left Sidebar (Notebook / Tag Selection) -->
-      <Sidebar />
-
-      {#if !appState.sidebarCollapsed && !appState.notelistCollapsed}
-        <ResizeHandle onResize={(delta) => appState.resizeSidebar(delta)} />
-      {/if}
-
-      <!-- Middle Panel (Note list) -->
-      <NoteList />
-
-      {#if !appState.notelistCollapsed && !appState.editorCollapsed}
-        <ResizeHandle onResize={(delta) => appState.resizeNotelist(delta)} />
-      {/if}
-
       <!-- Right Panel (Editor) -->
       <div class="editor-panel flex-row" style="display: {appState.editorCollapsed ? 'none' : 'flex'}; min-width: 0;">
         <Editor />
       </div>
 
-      {#if appState.sidebarCollapsed && appState.notelistCollapsed && appState.editorCollapsed}
+      {#if appState.editorCollapsed}
         <div class="all-collapsed-placeholder flex-col" style="flex-grow: 1; align-items: center; justify-content: center; gap: var(--spacing-md); color: var(--text-secondary); background-color: var(--bg-base); height: 100%;">
-          <span>All sections are collapsed.</span>
+          <span>Editor is collapsed.</span>
           <button 
             class="btn-pill btn-pill-primary" 
             onclick={() => {
-              appState.setSidebarCollapsed(false);
-              appState.setNotelistCollapsed(false);
               appState.setEditorCollapsed(false);
             }}
           >
-            Restore All Sections
+            Restore Editor
           </button>
         </div>
       {/if}
