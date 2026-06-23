@@ -177,6 +177,7 @@ class AppState {
   autoPruneTags = $state<boolean>(localStorage.getItem('mynotes_tags_auto_prune') === 'true');
   theme = $state<string>(localStorage.getItem('mynotes_theme') || 'steel');
   forceMobileUi = $state<boolean>(localStorage.getItem('mynotes_force_mobile_ui') === 'true');
+  windowWidth = $state<number>(typeof window !== 'undefined' ? window.innerWidth : 1024);
   defaultCurrency = $state<string>(localStorage.getItem('mynotes_calc_currency') || '₹');
   defaultIncomeLabel = $state<string>(localStorage.getItem('mynotes_calc_income_label') || 'Income');
   customDriveFolderId = $state<string | null>(localStorage.getItem('mynotes_custom_drive_folder_id') || null);
@@ -267,7 +268,7 @@ class AppState {
   }
 
   get isMobile(): boolean {
-    return this.forceMobileUi || (typeof window !== 'undefined' && (/android|iphone|ipad|ipod/i.test(navigator.userAgent) || window.innerWidth < 768));
+    return this.forceMobileUi || (this.windowWidth < 768 || (typeof window !== 'undefined' && /android|iphone|ipad|ipod/i.test(navigator.userAgent)));
   }
 
   toggleForceMobileUi() {
@@ -521,6 +522,11 @@ class AppState {
   }
 
   constructor() {
+    if (typeof window !== 'undefined') {
+      window.addEventListener('resize', () => {
+        this.windowWidth = window.innerWidth;
+      });
+    }
     const customFolderId = localStorage.getItem('mynotes_custom_drive_folder_id');
     if (customFolderId) {
       this.syncService.setFolderId(customFolderId);

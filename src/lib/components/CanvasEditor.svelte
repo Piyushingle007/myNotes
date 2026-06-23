@@ -106,6 +106,7 @@
   let inputMode = $state<InputMode>('auto');
   let hasStylus = $state(false);
   let viewport = $state<Viewport>({ x: 0, y: 0, zoom: 1 });
+  let hasDoneInitialFit = $state(false);
 
   // Tool settings
   let currentSize = $state(4);
@@ -164,8 +165,10 @@
   function fitPageToScreen() {
     if (!canvasElement || !wrapperElement) return;
     const rect = wrapperElement.getBoundingClientRect();
+    if (rect.width <= 0) return;
     const margin = 16;
     const availableWidth = rect.width - margin * 2;
+    if (availableWidth <= 0) return;
 
     const scaleVal = Math.max(0.1, Math.min(4.0, availableWidth / PAGE_WIDTH));
 
@@ -181,6 +184,7 @@
     viewport.y = margin;
     
     redrawAll();
+    hasDoneInitialFit = true;
   }
 
   // Reset canvas state when notePath changes
@@ -194,6 +198,7 @@
         undoStack = [];
         redoStack = [];
         lastLoadedPath = path;
+        hasDoneInitialFit = false;
         
         tick().then(() => {
           resizeCanvas();
@@ -504,6 +509,9 @@
     if (!wrapperElement) return;
     const observer = new ResizeObserver(() => {
       resizeCanvas();
+      if (!hasDoneInitialFit) {
+        fitPageToScreen();
+      }
     });
     observer.observe(wrapperElement);
 
