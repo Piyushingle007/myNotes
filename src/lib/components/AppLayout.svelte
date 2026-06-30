@@ -549,6 +549,11 @@
   let noteLongPressTimeout: any;
   let isNoteLongPressActive = false;
 
+  // Note context menu (long-press actions)
+  let showNoteContextMenu = $state(false);
+  let noteContextPath = $state<string | null>(null);
+  let noteContextName = $state('');
+
   // UI-M-008: Horizontal swipe-action state for note rows
   let noteSwipeEl: HTMLElement | null = null;
   let noteSwipeDx = 0;
@@ -588,10 +593,10 @@
 
     noteLongPressTimeout = setTimeout(() => {
       isNoteLongPressActive = true;
-      if (!appState.selectMode) {
-        appState.toggleSelectMode();
-      }
-      appState.toggleNoteSelection(notePath);
+      // Show context menu with Pin and other actions
+      noteContextPath = notePath;
+      noteContextName = appState.notes.find(n => n.path === notePath)?.name || notePath.split('/').pop() || '';
+      showNoteContextMenu = true;
     }, LONG_PRESS_MS);
   }
 
@@ -980,6 +985,48 @@
                 <span>{appState.favorites.includes(appState.activeNotePath || '') ? 'Remove from Favorites' : 'Add to Favorites'}</span>
               </button>
 
+              <!-- Pin to Top -->
+              <button
+                class="menu-item flex-row"
+                onclick={() => {
+                  appState.togglePin(appState.activeNotePath || '');
+                  showMobileMoreMenu = false;
+                }}
+              >
+                <svg width="15" height="15" class="menu-item-icon" viewBox="0 0 24 24" fill={appState.isNotePinned(appState.activeNotePath || '') ? 'var(--accent)' : 'none'} stroke={appState.isNotePinned(appState.activeNotePath || '') ? 'var(--accent)' : 'currentColor'} stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 17v5"/><path d="M9 2h6l-1 7h4l-5 7H7l2-7H5l1-7z"/>
+                </svg>
+                <span>{appState.isNotePinned(appState.activeNotePath || '') ? 'Unpin Note' : 'Pin to Top'}</span>
+              </button>
+
+              <!-- Outline -->
+              <button
+                class="menu-item flex-row"
+                onclick={() => {
+                  showMobileMoreMenu = false;
+                  window.dispatchEvent(new CustomEvent('trigger-toggle-outline'));
+                }}
+              >
+                <svg width="15" height="15" class="menu-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="4" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="20" y2="12"/><line x1="8" y1="18" x2="20" y2="18"/><circle cx="4" cy="12" r="1" fill="currentColor"/><circle cx="4" cy="18" r="1" fill="currentColor"/>
+                </svg>
+                <span>Outline &amp; Folding</span>
+              </button>
+
+              <!-- Note Info -->
+              <button
+                class="menu-item flex-row"
+                onclick={() => {
+                  showMobileMoreMenu = false;
+                  window.dispatchEvent(new CustomEvent('trigger-toggle-note-info'));
+                }}
+              >
+                <svg width="15" height="15" class="menu-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
+                </svg>
+                <span>Note Info</span>
+              </button>
+
               {#if !appState.isReadOnly}
                 <button
                   class="menu-item flex-row"
@@ -1324,6 +1371,7 @@
                         <div class="card-header-row flex-row" style="justify-content: space-between; width: 100%; align-items: center;">
                           <span class="card-note-title" style="flex-grow: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: var(--spacing-xs);">{note.name}</span>
                           <div class="flex-row" style="gap: var(--spacing-xs); align-items: center; flex-shrink: 0;">
+                            {#if appState.isNotePinned(note.path)}<svg width="13" height="13" viewBox="0 0 24 24" fill="var(--accent)" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;"><path d="M12 17v5"/><path d="M9 2h6l-1 7h4l-5 7H7l2-7H5l1-7z"/></svg>{/if}
                             <span class="card-note-time">{new Date(note.modified).toLocaleDateString(undefined, {month: 'short', day: 'numeric'})}</span>
                             {#if !appState.selectMode}
                               <!-- Rename button -->
@@ -1505,7 +1553,7 @@
                       {/if}
                       <div class="row-art">📄</div>
                       <div class="row-info flex-col">
-                        <span class="row-title">{note.name}</span>
+                        <span class="row-title">{note.name}{#if appState.isNotePinned(note.path)} <svg width="12" height="12" viewBox="0 0 24 24" fill="var(--accent)" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: inline; vertical-align: middle; margin-left: 4px;"><path d="M12 17v5"/><path d="M9 2h6l-1 7h4l-5 7H7l2-7H5l1-7z"/></svg>{/if}</span>
                         <span class="row-sub">{note.path}</span>
                       </div>
                     </button>
@@ -1587,7 +1635,7 @@
                           {/if}
                           <div class="row-art">📄</div>
                           <div class="row-info flex-col" style="min-width: 0; flex-grow: 1;">
-                            <span class="row-title" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{note.name}</span>
+                            <span class="row-title" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{note.name}{#if appState.isNotePinned(note.path)} <svg width="12" height="12" viewBox="0 0 24 24" fill="var(--accent)" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: inline; vertical-align: middle; margin-left: 4px;"><path d="M12 17v5"/><path d="M9 2h6l-1 7h4l-5 7H7l2-7H5l1-7z"/></svg>{/if}</span>
                             <span class="row-sub" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{note.path}</span>
                           </div>
                         </div>
@@ -1730,6 +1778,7 @@
                       <div class="card-header-row flex-row" style="justify-content: space-between; width: 100%; align-items: center;">
                         <span class="card-note-title" style="font-weight: 700; font-size: var(--font-size-sm); color: var(--text-primary); flex-grow: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: var(--spacing-xs);">{note.name}</span>
                         <div class="flex-row" style="gap: var(--spacing-xs); align-items: center; flex-shrink: 0;">
+                          {#if appState.isNotePinned(note.path)}<svg width="13" height="13" viewBox="0 0 24 24" fill="var(--accent)" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;"><path d="M12 17v5"/><path d="M9 2h6l-1 7h4l-5 7H7l2-7H5l1-7z"/></svg>{/if}
                           <span class="card-note-time" style="font-size: var(--font-size-xs); color: var(--text-tertiary);">{new Date(note.modified).toLocaleDateString(undefined, {month: 'short', day: 'numeric'})}</span>
                           {#if !appState.selectMode}
                             <!-- Rename button -->
@@ -1926,6 +1975,7 @@
                       <div class="card-header-row flex-row" style="justify-content: space-between; width: 100%; align-items: center;">
                         <span class="card-note-title" style="font-weight: 700; font-size: var(--font-size-sm); color: var(--text-primary); flex-grow: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: var(--spacing-xs);">{note.name}</span>
                         <div class="flex-row" style="gap: var(--spacing-xs); align-items: center; flex-shrink: 0;">
+                          {#if appState.isNotePinned(note.path)}<svg width="13" height="13" viewBox="0 0 24 24" fill="var(--accent)" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;"><path d="M12 17v5"/><path d="M9 2h6l-1 7h4l-5 7H7l2-7H5l1-7z"/></svg>{/if}
                           <span class="card-note-time" style="font-size: var(--font-size-xs); color: var(--text-tertiary);">{new Date(note.modified).toLocaleDateString(undefined, {month: 'short', day: 'numeric'})}</span>
                           {#if !appState.selectMode}
                             <!-- Rename button -->
@@ -2003,7 +2053,7 @@
                     <div class="flex-row" style="gap: var(--spacing-sm); align-items: center; flex-grow: 1; min-width: 0;">
                       <div class="row-art">📅</div>
                       <div class="row-info flex-col" style="min-width: 0; flex-grow: 1;">
-                        <span class="row-title" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{note.name}</span>
+                        <span class="row-title" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{note.name}{#if appState.isNotePinned(note.path)} <svg width="12" height="12" viewBox="0 0 24 24" fill="var(--accent)" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: inline; vertical-align: middle; margin-left: 4px;"><path d="M12 17v5"/><path d="M9 2h6l-1 7h4l-5 7H7l2-7H5l1-7z"/></svg>{/if}</span>
                         <span class="row-sub" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Daily Log</span>
                       </div>
                     </div>
@@ -2190,6 +2240,94 @@
         <X size={12} />
         <span>Reset Color</span>
       </button>
+    </BottomSheet>
+
+    <!-- Note Context Menu (long-press) -->
+    <BottomSheet show={showNoteContextMenu} onClose={() => { showNoteContextMenu = false; noteContextPath = null; }} title={noteContextName || 'Note Actions'}>
+      {#if noteContextPath}
+        <button type="button" class="quick-create-row flex-row" onclick={() => { appState.togglePin(noteContextPath!); showNoteContextMenu = false; noteContextPath = null; }}>
+          <span class="quick-create-icon flex-row" style="background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent);">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill={appState.isNotePinned(noteContextPath) ? 'var(--accent)' : 'none'} stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 2h6l-1 7h4l-5 7H7l2-7H5l1-7z"/></svg>
+          </span>
+          <span class="flex-col" style="align-items: flex-start; gap: 1px;">
+            <span class="quick-create-label">{appState.isNotePinned(noteContextPath) ? 'Unpin Note' : 'Pin to Top'}</span>
+            <span class="quick-create-desc">{appState.isNotePinned(noteContextPath) ? 'Remove from pinned notes' : 'Keep this note at the top of the list'}</span>
+          </span>
+        </button>
+
+        <button type="button" class="quick-create-row flex-row" onclick={() => { appState.toggleFavorite(noteContextPath!); showNoteContextMenu = false; noteContextPath = null; }}>
+          <span class="quick-create-icon flex-row" style="background: color-mix(in srgb, var(--semantic-warning, #ffa42b) 14%, transparent); color: var(--semantic-warning, #ffa42b);">
+            <Star size={18} fill={appState.favorites.includes(noteContextPath) ? 'var(--semantic-warning, #ffa42b)' : 'none'} />
+          </span>
+          <span class="flex-col" style="align-items: flex-start; gap: 1px;">
+            <span class="quick-create-label">{appState.favorites.includes(noteContextPath) ? 'Remove from Favorites' : 'Add to Favorites'}</span>
+            <span class="quick-create-desc">Quick access from the Favorites section</span>
+          </span>
+        </button>
+
+        <button type="button" class="quick-create-row flex-row" onclick={() => { showNoteContextMenu = false; appState.moveCopyNotePath = noteContextPath!; appState.moveCopyNoteName = noteContextName; appState.showMoveCopyModal = true; noteContextPath = null; }}>
+          <span class="quick-create-icon flex-row" style="background: color-mix(in srgb, var(--semantic-info, #539df5) 14%, transparent); color: var(--semantic-info, #539df5);">
+            <FolderInput size={18} />
+          </span>
+          <span class="flex-col" style="align-items: flex-start; gap: 1px;">
+            <span class="quick-create-label">Move or Copy</span>
+            <span class="quick-create-desc">Move to another folder or duplicate</span>
+          </span>
+        </button>
+
+        <button type="button" class="quick-create-row flex-row" onclick={() => {
+          showNoteContextMenu = false;
+          const path = noteContextPath!;
+          const name = noteContextName;
+          noteContextPath = null;
+          appState.showPrompt({
+            title: 'Rename Note',
+            message: 'Enter new title & file name:',
+            value: name,
+            placeholder: 'Note name...',
+            onConfirm: async (newTitle) => {
+              const trimmed = newTitle.trim();
+              if (!trimmed || trimmed === name) return;
+              try {
+                await appState.renameNote(path, trimmed);
+                appState.showToast('Note renamed', 'success');
+              } catch (err) {
+                appState.showToast('Failed to rename', 'error');
+              }
+            }
+          });
+        }}>
+          <span class="quick-create-icon flex-row" style="background: color-mix(in srgb, var(--text-primary) 8%, transparent); color: var(--text-secondary);">
+            <Edit3 size={18} />
+          </span>
+          <span class="flex-col" style="align-items: flex-start; gap: 1px;">
+            <span class="quick-create-label">Rename</span>
+            <span class="quick-create-desc">Change the note title and file name</span>
+          </span>
+        </button>
+
+        <button type="button" class="quick-create-row flex-row" onclick={() => { showNoteContextMenu = false; const path = noteContextPath!; noteContextPath = null; confirmDeleteNote(path); }}>
+          <span class="quick-create-icon flex-row" style="background: color-mix(in srgb, var(--semantic-error) 14%, transparent); color: var(--semantic-error);">
+            <Trash2 size={18} />
+          </span>
+          <span class="flex-col" style="align-items: flex-start; gap: 1px;">
+            <span class="quick-create-label" style="color: var(--semantic-error);">Delete</span>
+            <span class="quick-create-desc">Permanently remove this note</span>
+          </span>
+        </button>
+
+        <div style="border-top: 1px solid var(--border-color); margin-top: 8px; padding-top: 8px;">
+          <button type="button" class="quick-create-row flex-row" onclick={() => { const p = noteContextPath!; showNoteContextMenu = false; noteContextPath = null; if (!appState.selectMode) appState.toggleSelectMode(); appState.toggleNoteSelection(p); }}>
+            <span class="quick-create-icon flex-row" style="background: color-mix(in srgb, var(--text-primary) 8%, transparent); color: var(--text-secondary);">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+            </span>
+            <span class="flex-col" style="align-items: flex-start; gap: 1px;">
+              <span class="quick-create-label">Select Multiple</span>
+              <span class="quick-create-desc">Enter selection mode for bulk actions</span>
+            </span>
+          </button>
+        </div>
+      {/if}
     </BottomSheet>
 
     <!-- UI-M-009: Full-screen mobile search overlay -->

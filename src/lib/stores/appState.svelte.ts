@@ -663,7 +663,7 @@ class AppState {
     }
 
     // Sort dynamically
-    return [...list].sort((a, b) => {
+    const sorted = [...list].sort((a, b) => {
       let comparison = 0;
       if (this.sortField === 'title') {
         comparison = a.name.localeCompare(b.name);
@@ -681,6 +681,11 @@ class AppState {
       }
       return this.sortDirection === 'asc' ? comparison : -comparison;
     });
+
+    // Pin notes to top
+    const pinned = sorted.filter(n => parseHtmlMetadata(n.content).meta.pinned);
+    const unpinned = sorted.filter(n => !parseHtmlMetadata(n.content).meta.pinned);
+    return [...pinned, ...unpinned];
   }
 
   get linesCountInActiveNotebook() {
@@ -2242,6 +2247,29 @@ class AppState {
     if (this.syncEnabled && this.googleConnected) {
       this.syncNotes();
     }
+  }
+
+  async togglePin(path: string) {
+    const note = this.notes.find(n => n.path === path);
+    if (!note) return;
+    const parsed = parseHtmlMetadata(note.content);
+    const newPinned = !parsed.meta.pinned;
+    parsed.meta.pinned = newPinned;
+    parsed.meta.modified = new Date().toISOString();
+    const updatedContent = generateHtmlNote(parsed.meta, parsed.content);
+    note.content = updatedContent;
+    note.modified = Date.now();
+    await this.storage.writeNote(path, updatedContent);
+    if (this.activeNotePath === path) {
+      this.activeNoteContent = updatedContent;
+    }
+    this.showToast(newPinned ? 'Note pinned to top' : 'Note unpinned', 'success', 2000);
+  }
+
+  isNotePinned(path: string): boolean {
+    const note = this.notes.find(n => n.path === path);
+    if (!note) return false;
+    return parseHtmlMetadata(note.content).meta.pinned === true;
   }
 
   async deleteNote(path: string) {

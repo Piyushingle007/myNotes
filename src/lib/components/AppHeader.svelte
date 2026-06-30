@@ -101,8 +101,13 @@
 
   $effect(() => {
     // Reset popover subview to list whenever the active popover changes
-    const _ = activePopover;
-    popoverSubView = 'list';
+    // But keep 'notes' view if notebooks popover reopens with an active notebook
+    const current = activePopover;
+    if (current === 'notebooks' && appState.activeNotebook) {
+      popoverSubView = 'notes';
+    } else {
+      popoverSubView = 'list';
+    }
   });
 
   function togglePopover(name: 'noteList' | 'favorites' | 'notebooks' | 'tags' | 'dailyLogs') {

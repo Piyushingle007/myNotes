@@ -1223,20 +1223,123 @@
 	}
 
 
-	// Outline
+	// Outline & Folding
 	let showOutline = $state(false);
-	interface OutlineHeading { level: number; text: string; pos: number; }
+	interface OutlineHeading { level: number; text: string; pos: number; id: string; collapsed: boolean; }
 	let outlineHeadings = $state<OutlineHeading[]>([]);
+	let foldState = $state<Map<string, boolean>>(new Map());
+
+	// Note Info Panel
+	let showNoteInfo = $state(localStorage.getItem('mynotes_show_note_info') === 'true');
+	function toggleNoteInfo() {
+		showNoteInfo = !showNoteInfo;
+		localStorage.setItem('mynotes_show_note_info', String(showNoteInfo));
+	}
+
+	let noteStats = $derived.by(() => {
+		if (!editor || editorState < 0) return { words: 0, characters: 0, charactersNoSpaces: 0, paragraphs: 0, headings: 0, readingTime: 1 };
+		const text = editor.getText();
+		const words = text.trim() ? text.trim().split(/\s+/).length : 0;
+		const characters = text.length;
+		const charactersNoSpaces = text.replace(/\s/g, '').length;
+		let paragraphs = 0;
+		let headingCount = 0;
+		editor.state.doc.forEach((node) => {
+			if (node.type.name === 'paragraph' && node.textContent.trim().length > 0) paragraphs++;
+			if (node.type.name === 'heading') headingCount++;
+		});
+		const readingTime = Math.max(1, Math.ceil(words / 200));
+		return { words, characters, charactersNoSpaces, paragraphs, headings: headingCount, readingTime };
+	});
+
+	let selectionStats = $derived.by(() => {
+		if (!editor || editorState < 0 || editor.state.selection.empty) return null;
+		const { from, to } = editor.state.selection;
+		const selectedText = editor.state.doc.textBetween(from, to, ' ');
+		const words = selectedText.trim() ? selectedText.trim().split(/\s+/).length : 0;
+		const characters = selectedText.length;
+		return { words, characters };
+	});
 
 	function updateOutline() {
 		if (!editor) { outlineHeadings = []; return; }
 		const headings: OutlineHeading[] = [];
+		let idx = 0;
 		editor.state.doc.descendants((node, pos) => {
 			if (node.type.name === 'heading') {
-				headings.push({ level: node.attrs.level, text: node.textContent, pos });
+				const id = `h${idx}_${node.attrs.level}_${node.textContent.slice(0, 30).replace(/\s+/g, '_')}`;
+				headings.push({ level: node.attrs.level, text: node.textContent, pos, id, collapsed: foldState.get(id) || false });
+				idx++;
 			}
 		});
 		outlineHeadings = headings;
+	}
+
+	function toggleFold(id: string) {
+		const current = foldState.get(id) || false;
+		foldState.set(id, !current);
+		foldState = new Map(foldState);
+		updateOutline();
+		applyFolding();
+	}
+
+	function foldAll() {
+		for (const h of outlineHeadings) {
+			foldState.set(h.id, true);
+		}
+		foldState = new Map(foldState);
+		updateOutline();
+		applyFolding();
+	}
+
+	function unfoldAll() {
+		foldState.clear();
+		foldState = new Map(foldState);
+		updateOutline();
+		applyFolding();
+	}
+
+	function applyFolding() {
+		if (!editor) return;
+		const editorEl = editor.view.dom;
+		// Remove all existing fold classes
+		editorEl.querySelectorAll('.heading-collapsed').forEach(el => el.classList.remove('heading-collapsed'));
+		editorEl.querySelectorAll('.folded-content').forEach(el => el.classList.remove('folded-content'));
+
+		// Collect top-level child nodes with positions
+		const doc = editor.state.doc;
+		const domChildren: { dom: Element; type: string; level: number; idx: number }[] = [];
+		let childIndex = 0;
+		let headingIdx = 0;
+		doc.forEach((node, _offset) => {
+			const domNode = editorEl.children[childIndex] as Element;
+			if (domNode) {
+				const isHeading = node.type.name === 'heading';
+				domChildren.push({
+					dom: domNode,
+					type: node.type.name,
+					level: isHeading ? node.attrs.level : 99,
+					idx: isHeading ? headingIdx++ : -1
+				});
+			}
+			childIndex++;
+		});
+
+		// For each folded heading from outline, hide content until next same-or-higher level heading
+		for (let i = 0; i < domChildren.length; i++) {
+			const child = domChildren[i];
+			if (child.type !== 'heading') continue;
+			// Check if this heading's outline entry is collapsed
+			const outlineEntry = outlineHeadings.find(h => h.id.startsWith(`h${child.idx}_`));
+			if (!outlineEntry || !outlineEntry.collapsed) continue;
+
+			child.dom.classList.add('heading-collapsed');
+			// Hide subsequent nodes until next heading of same or higher level
+			for (let j = i + 1; j < domChildren.length; j++) {
+				if (domChildren[j].type === 'heading' && domChildren[j].level <= child.level) break;
+				domChildren[j].dom.classList.add('folded-content');
+			}
+		}
 	}
 
 	function scrollToHeading(pos: number) {
@@ -1282,6 +1385,22 @@
 		badge?: string;
 	}
 
+	function formatInfoDate(dateStr: string): string {
+		if (!dateStr) return 'Unknown';
+		const date = new Date(dateStr);
+		if (isNaN(date.getTime())) return 'Unknown';
+		const now = new Date();
+		const diffMs = now.getTime() - date.getTime();
+		const diffMins = Math.floor(diffMs / 60000);
+		const diffHours = Math.floor(diffMs / 3600000);
+		const diffDays = Math.floor(diffMs / 86400000);
+		if (diffMins < 1) return 'just now';
+		if (diffMins < 60) return `${diffMins}m ago`;
+		if (diffHours < 24) return `${diffHours}h ago`;
+		if (diffDays < 7) return `${diffDays}d ago`;
+		return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+	}
+
 	function insertTimestamp(kind: 'date' | 'time' | 'datetime') {
 		if (!editor) return;
 		const now = new Date();
@@ -1301,6 +1420,32 @@
 				aliases: ['table', 'grid'],
 				icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg>',
 				action: () => editor?.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(),
+				category: 'insert'
+			},
+			{
+				label: 'Video Embed',
+				description: 'Embed a YouTube or Vimeo video',
+				aliases: ['video', 'youtube', 'vimeo', 'embed', 'iframe', 'movie', 'clip'],
+				icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>',
+				action: () => {
+					appState.showPrompt({
+						title: 'Embed Video',
+						message: 'Paste a YouTube or Vimeo URL:',
+						value: '',
+						placeholder: 'https://youtube.com/watch?v=...',
+						onConfirm: (url) => {
+							const video = parseVideoUrl(url.trim());
+							if (video) {
+								editor?.chain().focus().insertContent({
+									type: 'videoEmbed',
+									attrs: { src: video.embedUrl, originalUrl: url.trim(), provider: video.provider }
+								}).run();
+							} else {
+								appState.showToast('Invalid video URL. Supported: YouTube, Vimeo.', 'error', 4000);
+							}
+						}
+					});
+				},
 				category: 'insert'
 			},
 			{
@@ -1893,6 +2038,106 @@
 		addAttributes() {
 			return { ...this.parent?.(), ...cellColorAttributes() };
 		},
+	});
+
+	// ═══ Video Embed Extension ═══
+	const VIDEO_PATTERNS: Record<string, RegExp[]> = {
+		youtube: [
+			/(?:https?:\/\/)?(?:www\.)?youtube\.com\/watch\?v=([a-zA-Z0-9_-]{11})/,
+			/(?:https?:\/\/)?youtu\.be\/([a-zA-Z0-9_-]{11})/,
+			/(?:https?:\/\/)?(?:www\.)?youtube\.com\/embed\/([a-zA-Z0-9_-]{11})/,
+			/(?:https?:\/\/)?(?:www\.)?youtube\.com\/shorts\/([a-zA-Z0-9_-]{11})/,
+		],
+		vimeo: [
+			/(?:https?:\/\/)?(?:www\.)?vimeo\.com\/(\d+)/,
+			/(?:https?:\/\/)?player\.vimeo\.com\/video\/(\d+)/,
+		]
+	};
+
+	function parseVideoUrl(url: string): { provider: string; id: string; embedUrl: string } | null {
+		for (const [provider, patterns] of Object.entries(VIDEO_PATTERNS)) {
+			for (const pattern of patterns) {
+				const match = url.match(pattern);
+				if (match) {
+					const id = match[1];
+					const embedUrl = provider === 'youtube'
+						? `https://www.youtube-nocookie.com/embed/${id}`
+						: `https://player.vimeo.com/video/${id}`;
+					return { provider, id, embedUrl };
+				}
+			}
+		}
+		return null;
+	}
+
+	const VideoEmbed = TiptapNode.create({
+		name: 'videoEmbed',
+		group: 'block',
+		atom: true,
+		draggable: true,
+		addAttributes() {
+			return {
+				src: { default: null },
+				originalUrl: { default: null },
+				provider: { default: 'generic' },
+			};
+		},
+		parseHTML() {
+			return [
+				{ tag: 'div[data-video-embed]', getAttrs: (el: HTMLElement) => ({
+					src: el.getAttribute('data-video-src'),
+					originalUrl: el.getAttribute('data-video-url'),
+					provider: el.getAttribute('data-video-provider') || 'generic',
+				})},
+			];
+		},
+		renderHTML({ HTMLAttributes }) {
+			return ['div', mergeAttributes({
+				'data-video-embed': 'true',
+				'data-video-src': HTMLAttributes.src,
+				'data-video-url': HTMLAttributes.originalUrl,
+				'data-video-provider': HTMLAttributes.provider,
+				class: 'video-embed-wrapper',
+			}),
+				['iframe', {
+					src: HTMLAttributes.src,
+					frameborder: '0',
+					allowfullscreen: 'true',
+					allow: 'accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture',
+					loading: 'lazy',
+					sandbox: 'allow-scripts allow-same-origin allow-presentation allow-popups',
+				}],
+				['div', { class: 'video-embed-footer' },
+					['span', { class: 'video-provider-badge' }, HTMLAttributes.provider],
+					['a', { href: HTMLAttributes.originalUrl, target: '_blank', rel: 'noopener noreferrer', class: 'video-link' }, 'Open original ↗'],
+				],
+			];
+		},
+		addProseMirrorPlugins() {
+			const nodeType = this.type;
+			return [new Plugin({
+				key: new PluginKey('videoEmbedPaste'),
+				props: {
+					handlePaste(view, event) {
+						const text = event.clipboardData?.getData('text/plain')?.trim();
+						if (!text) return false;
+						const video = parseVideoUrl(text);
+						if (!video) return false;
+						// Only embed if pasting on an empty line
+						const from = view.state.selection.$from;
+						if (from.parent.content.size > 0) return false;
+						const node = nodeType.create({
+							src: video.embedUrl,
+							originalUrl: text,
+							provider: video.provider,
+						});
+						const tr = view.state.tr.replaceSelectionWith(node);
+						view.dispatch(tr);
+						return true;
+					}
+				}
+			})];
+		}
 	});
 
 	const PdfEmbed = TiptapNode.create({
@@ -5021,6 +5266,9 @@
 			editor.commands.setContent(html);
 			// Clear undo/redo history so it doesn't bleed across notes
 			clearEditorHistory();
+			// Clear fold state for new note
+			foldState.clear();
+			foldState = new Map(foldState);
 			// Reset scroll and cursor after all ProseMirror/Svelte DOM updates settle
 			tick().then(() => {
 				if (editorBody) editorBody.scrollTop = 0;
@@ -6006,6 +6254,7 @@
 				Color,
 				CustomCodeBlockLowlight.configure({ lowlight, enableTabIndentation: true, defaultLanguage: 'text' }),
 				MermaidRenderer,
+				VideoEmbed,
 				PdfEmbed,
 				FileAttachment,
 				MathBlock,
@@ -6257,7 +6506,8 @@
 				}
 				$editorDirty = true;
 				autoSave();
-				if (!isMobile && showOutline) updateOutline();
+				if (showOutline) updateOutline();
+				if (foldState.size > 0) requestAnimationFrame(() => applyFolding());
 			},
 		});
 		editorReady = true;
@@ -7453,15 +7703,26 @@
 		const handleExportPdf = () => {
 			exportAsPdf();
 		};
+		const handleToggleOutline = () => {
+			showOutline = !showOutline;
+			if (showOutline) updateOutline();
+		};
+		const handleToggleNoteInfo = () => {
+			toggleNoteInfo();
+		};
 
 		window.addEventListener('trigger-export-html', handleExportHtml);
 		window.addEventListener('trigger-export-markdown', handleExportMarkdown);
 		window.addEventListener('trigger-export-pdf', handleExportPdf);
+		window.addEventListener('trigger-toggle-outline', handleToggleOutline);
+		window.addEventListener('trigger-toggle-note-info', handleToggleNoteInfo);
 
 		return () => {
 			window.removeEventListener('trigger-export-html', handleExportHtml);
 			window.removeEventListener('trigger-export-markdown', handleExportMarkdown);
 			window.removeEventListener('trigger-export-pdf', handleExportPdf);
+			window.removeEventListener('trigger-toggle-outline', handleToggleOutline);
+			window.removeEventListener('trigger-toggle-note-info', handleToggleNoteInfo);
 		};
 	});
 </script>
@@ -7874,6 +8135,19 @@
 					>
 						<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 							<line x1="4" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="20" y2="12"/><line x1="8" y1="18" x2="20" y2="18"/><circle cx="4" cy="12" r="1" fill="currentColor"/><circle cx="4" cy="18" r="1" fill="currentColor"/>
+						</svg>
+					</button>
+					<button
+						type="button"
+						class="icon-btn"
+						class:active={showNoteInfo}
+						aria-label="Note info"
+						aria-pressed={showNoteInfo}
+						onclick={toggleNoteInfo}
+						title={`Note Info (${modKey}+Shift+I)`}
+					>
+						<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+							<circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
 						</svg>
 					</button>
 				</div>
@@ -8472,24 +8746,38 @@
 				<div class="outline-panel">
 					<div class="outline-header">
 						<h3>Outline</h3>
-						<button class="outline-close" onclick={() => { showOutline = false; }}>
-							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-								<line x1="18" y1="6" x2="6" y2="18" />
-								<line x1="6" y1="6" x2="18" y2="18" />
-							</svg>
-						</button>
+						<div class="outline-actions">
+							<button class="outline-action" onclick={foldAll} title="Fold All">
+								<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+									<polyline points="7 3 12 8 17 3"/><polyline points="7 21 12 16 17 21"/>
+								</svg>
+							</button>
+							<button class="outline-action" onclick={unfoldAll} title="Unfold All">
+								<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+									<polyline points="7 8 12 3 17 8"/><polyline points="7 16 12 21 17 16"/>
+								</svg>
+							</button>
+							<button class="outline-close" onclick={() => { showOutline = false; }}>
+								<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+									<line x1="18" y1="6" x2="6" y2="18" />
+									<line x1="6" y1="6" x2="18" y2="18" />
+								</svg>
+							</button>
+						</div>
 					</div>
 					{#if outlineHeadings.length === 0}
 						<div class="outline-empty">No headings in this note.</div>
 					{:else}
 						<div class="outline-list">
 							{#each outlineHeadings as h}
-								<button
-									class="outline-item outline-level-{h.level}"
-									onclick={() => scrollToHeading(h.pos)}
-								>
-									{h.text}
-								</button>
+								<div class="outline-item outline-level-{h.level}" class:collapsed={h.collapsed}>
+									<button class="fold-toggle" onclick={() => toggleFold(h.id)} title={h.collapsed ? 'Unfold' : 'Fold'}>
+										{h.collapsed ? '▶' : '▼'}
+									</button>
+									<button class="outline-text" onclick={() => scrollToHeading(h.pos)}>
+										{h.text}
+									</button>
+								</div>
 							{/each}
 						</div>
 					{/if}
@@ -8498,6 +8786,45 @@
 			
 			</div>
 		</div>
+
+		<!-- Note Info Bar -->
+		{#if showNoteInfo && editorReady && !$viewerNote}
+			<div class="note-info-bar">
+				<div class="info-stats">
+					<span class="info-stat" title="Words">
+						{noteStats.words} words{#if selectionStats} <span class="info-selection">({selectionStats.words} sel)</span>{/if}
+					</span>
+					<span class="info-divider">·</span>
+					<span class="info-stat" title="Characters">{noteStats.characters} chars</span>
+					<span class="info-divider">·</span>
+					<span class="info-stat" title="Reading time">~{noteStats.readingTime} min read</span>
+					{#if noteStats.paragraphs > 0}
+						<span class="info-divider">·</span>
+						<span class="info-stat" title="Paragraphs">{noteStats.paragraphs} ¶</span>
+					{/if}
+					{#if noteStats.headings > 0}
+						<span class="info-divider">·</span>
+						<span class="info-stat" title="Headings">{noteStats.headings} H</span>
+					{/if}
+				</div>
+				<div class="info-meta">
+					{#if $activeNotePath?.includes('/')}
+						<span class="info-stat info-notebook" title="Notebook">📁 {$activeNotePath.split('/')[0]}</span>
+						<span class="info-divider">·</span>
+					{/if}
+					{#if appState.notes.find(n => n.path === $activeNotePath)}
+						{@const parsed = parseHtmlMetadata(appState.notes.find(n => n.path === $activeNotePath)?.content || '')}
+						{#if parsed.meta.created}
+							<span class="info-stat" title="Created {parsed.meta.created}">Created {formatInfoDate(parsed.meta.created)}</span>
+							<span class="info-divider">·</span>
+						{/if}
+						{#if parsed.meta.modified}
+							<span class="info-stat" title="Modified {parsed.meta.modified}">Modified {formatInfoDate(parsed.meta.modified)}</span>
+						{/if}
+					{/if}
+				</div>
+			</div>
+		{/if}
 
 		{#if editorReady && !$sourceMode && !$viewerNote && !$readOnly && appState.editorMode !== 'canvas' && appState.editorMode !== 'notebook'}
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -11653,6 +11980,59 @@
 		color: white;
 	}
 
+	/* Note Info Bar */
+	.note-info-bar {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		padding: 3px 12px;
+		background: var(--bg-surface);
+		border-top: 1px solid var(--border-color);
+		font-size: 11px;
+		color: var(--text-tertiary);
+		flex-shrink: 0;
+		flex-wrap: wrap;
+		gap: 4px 12px;
+		min-height: 22px;
+		grid-column: 1;
+	}
+
+	.note-info-bar .info-stats,
+	.note-info-bar .info-meta {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		flex-wrap: wrap;
+	}
+
+	.note-info-bar .info-stat {
+		display: inline-flex;
+		align-items: center;
+		gap: 3px;
+		white-space: nowrap;
+	}
+
+	.note-info-bar .info-notebook {
+		color: var(--accent);
+		font-weight: 600;
+	}
+
+	.note-info-bar .info-selection {
+		color: var(--accent);
+		font-weight: 600;
+	}
+
+	.note-info-bar .info-divider {
+		color: var(--border-color);
+		user-select: none;
+	}
+
+	@media (max-width: 600px) {
+		.note-info-bar .info-meta {
+			display: none;
+		}
+	}
+
 	.outline-panel {
 		width: 220px;
 		border-left: 1px solid var(--border-light);
@@ -11709,13 +12089,64 @@
 		padding: 4px 0;
 	}
 
-	.outline-item {
-		display: block;
-		width: 100%;
-		text-align: left;
+	.outline-item:hover {
+		background: var(--bg-hover);
+	}
+
+	.outline-actions {
+		display: flex;
+		align-items: center;
+		gap: 2px;
+	}
+
+	.outline-action {
 		background: none;
 		border: none;
-		padding: 4px 14px;
+		color: var(--text-tertiary);
+		cursor: pointer;
+		padding: 3px;
+		border-radius: 4px;
+		display: flex;
+		align-items: center;
+	}
+
+	.outline-action:hover {
+		background: var(--bg-hover);
+		color: var(--text-primary);
+	}
+
+	.outline-item {
+		display: flex;
+		align-items: center;
+		width: 100%;
+		gap: 2px;
+	}
+
+	.outline-item .fold-toggle {
+		background: none;
+		border: none;
+		color: var(--text-tertiary);
+		cursor: pointer;
+		padding: 0 2px;
+		font-size: 9px;
+		line-height: 1;
+		flex-shrink: 0;
+		border-radius: 3px;
+		width: 16px;
+		text-align: center;
+	}
+
+	.outline-item .fold-toggle:hover {
+		color: var(--accent);
+		background: var(--bg-hover);
+	}
+
+	.outline-item .outline-text {
+		flex: 1;
+		background: none;
+		border: none;
+		text-align: left;
+		padding: 4px 4px 4px 0;
 		font-size: 12px;
 		color: var(--text-secondary);
 		cursor: pointer;
@@ -11725,17 +12156,35 @@
 		line-height: 1.5;
 	}
 
-	.outline-item:hover {
-		background: var(--bg-hover);
+	.outline-item .outline-text:hover {
 		color: var(--text-primary);
 	}
 
-	.outline-level-1 { padding-left: 14px; font-weight: 600; }
-	.outline-level-2 { padding-left: 26px; font-weight: 500; }
-	.outline-level-3 { padding-left: 38px; }
-	.outline-level-4 { padding-left: 50px; }
-	.outline-level-5 { padding-left: 62px; }
-	.outline-level-6 { padding-left: 74px; }
+	.outline-item.collapsed .outline-text {
+		color: var(--text-tertiary);
+		font-style: italic;
+	}
+
+	/* Folding styles in editor */
+	:global(.tiptap .folded-content) {
+		display: none !important;
+	}
+
+	:global(.tiptap .heading-collapsed) {
+		position: relative;
+	}
+
+	:global(.tiptap .heading-collapsed::after) {
+		content: '···';
+		margin-left: 8px;
+		color: var(--text-tertiary);
+		font-size: 0.65em;
+		vertical-align: middle;
+		background: var(--bg-secondary);
+		padding: 1px 6px;
+		border-radius: 4px;
+		border: 1px solid var(--border-light);
+	}
 
 	.source-editor {
 		width: 100%;
@@ -13564,6 +14013,55 @@
 		padding: 3px 10px;
 		font-size: 12px;
 	}
+	/* Video Embed Styles */
+	:global(.tiptap .video-embed-wrapper) {
+		position: relative;
+		width: 100%;
+		max-width: 720px;
+		margin: 1em 0;
+		border-radius: 12px;
+		overflow: hidden;
+		box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+		border: 1px solid var(--border-color);
+		transition: box-shadow 0.2s;
+	}
+
+	:global(.tiptap .video-embed-wrapper:hover) {
+		box-shadow: 0 6px 24px rgba(0, 0, 0, 0.3);
+	}
+
+	:global(.tiptap .video-embed-wrapper iframe) {
+		width: 100%;
+		aspect-ratio: 16 / 9;
+		border: none;
+		display: block;
+	}
+
+	:global(.tiptap .video-embed-wrapper .video-embed-footer) {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 6px 12px;
+		background: var(--bg-secondary);
+		font-size: 11px;
+	}
+
+	:global(.tiptap .video-embed-wrapper .video-provider-badge) {
+		text-transform: capitalize;
+		color: var(--text-tertiary);
+		font-weight: 600;
+	}
+
+	:global(.tiptap .video-embed-wrapper .video-link) {
+		color: var(--accent);
+		text-decoration: none;
+		font-weight: 500;
+	}
+
+	:global(.tiptap .video-embed-wrapper .video-link:hover) {
+		text-decoration: underline;
+	}
+
 	:global(.tiptap .pdf-embed) {
 		margin: 12px 0;
 		border: 1px solid var(--border);
@@ -14578,6 +15076,40 @@
 		width: 100% !important;
 		max-width: 100%;
 		border-left: none;
+	}
+
+	.editor-container.mobile .outline-panel .outline-item {
+		padding: 6px 14px;
+		min-height: 40px;
+	}
+
+	.editor-container.mobile .outline-panel .fold-toggle {
+		min-width: 28px;
+		min-height: 28px;
+		font-size: 12px;
+	}
+
+	.editor-container.mobile .outline-panel .outline-text {
+		font-size: 14px;
+		padding: 8px 4px;
+	}
+
+	.editor-container.mobile .outline-panel .outline-action {
+		min-width: 32px;
+		min-height: 32px;
+		padding: 6px;
+	}
+
+	.editor-container.mobile .note-info-bar {
+		font-size: 12px;
+		padding: 6px 12px;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 4px;
+	}
+
+	.editor-container.mobile .note-info-bar .info-meta {
+		display: flex;
 	}
 
 	.editor-container.mobile .history-item {
