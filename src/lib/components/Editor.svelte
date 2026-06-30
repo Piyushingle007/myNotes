@@ -23,6 +23,8 @@
 	import { CodeBlockLowlight } from '@tiptap/extension-code-block-lowlight';
 	import { Details, DetailsSummary, DetailsContent } from '@tiptap/extension-details';
 	import TextAlign from '@tiptap/extension-text-align';
+	import TaskList from '@tiptap/extension-task-list';
+	import TaskItem from '@tiptap/extension-task-item';
 	import { common, createLowlight } from 'lowlight';
 	import MarkdownIt from 'markdown-it';
 	import markdownItMark from 'markdown-it-mark';
@@ -44,9 +46,17 @@
 	import MetricsBlock from './MetricsBlock.svelte';
 	import { renderDiagramSVG, decodeDiagram } from '../utils/diagram';
 	import ErrorBanner from './ErrorBanner.svelte';
-	import CanvasEditor from './CanvasEditor.svelte';
-	import NotebookEditor from './NotebookEditor.svelte';
+	// @ts-ignore — canvasTypes only provides type definitions, safe to import
 	import type { Stroke, CanvasBackground } from '../utils/canvasTypes';
+
+	// Feature-flagged: Canvas/Handwriting editor
+	// When __FEATURE_CANVAS__ is false, CanvasEditor & NotebookEditor won't be in the bundle
+	let CanvasEditorComponent: typeof import('./CanvasEditor.svelte').default | null = $state(null);
+	let NotebookEditorComponent: typeof import('./NotebookEditor.svelte').default | null = $state(null);
+	if (__FEATURE_CANVAS__) {
+		import('./CanvasEditor.svelte').then(m => { CanvasEditorComponent = m.default; });
+		import('./NotebookEditor.svelte').then(m => { NotebookEditorComponent = m.default; });
+	}
 
 	function extractCanvasData(html: string): { strokes: Stroke[], background: CanvasBackground } {
 		const result = { strokes: [] as Stroke[], background: 'blank' as CanvasBackground };
@@ -464,6 +474,7 @@
 	});
 
 	const canvasData = $derived.by(() => {
+		if (!__FEATURE_CANVAS__) return { strokes: [] as Stroke[], background: 'blank' as CanvasBackground };
 		const rawContent = appState.activeNoteContent || '';
 		return extractCanvasData(rawContent);
 	});
@@ -487,6 +498,7 @@
 	}
 
 	async function handleNotebookSave(content: string, thumbnail: string) {
+		if (!__FEATURE_CANVAS__) return;
 		if (get(viewerNote)) return;
 		if (!$activeNote || !$activeNotePath) return;
 
@@ -1315,6 +1327,14 @@
 				aliases: ['ol', 'ordered', 'number', 'list'],
 				icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="10" y1="6" x2="21" y2="6"/><line x1="10" y1="12" x2="21" y2="12"/><line x1="10" y1="18" x2="21" y2="18"/><text x="1" y="9" font-size="8" fill="currentColor" stroke="none">1</text><text x="1" y="15" font-size="8" fill="currentColor" stroke="none">2</text><text x="1" y="21" font-size="8" fill="currentColor" stroke="none">3</text></svg>',
 				action: () => editor?.chain().focus().toggleOrderedList().run(),
+				category: 'insert'
+			},
+			{
+				label: 'Checklist',
+				description: 'Start a checklist with checkboxes',
+				aliases: ['checklist', 'checkbox', 'todo', 'task', 'tasklist', 'check'],
+				icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 5.5L5 7l2.5-3"/><path d="M3.5 11.5L5 13l2.5-3"/><path d="M3.5 17.5L5 19l2.5-3"/><path d="M11 6h9"/><path d="M11 12h9"/><path d="M11 18h9"/></svg>',
+				action: () => editor?.chain().focus().toggleTaskList().run(),
 				category: 'insert'
 			},
 			{
@@ -4785,7 +4805,7 @@
 		if (!$activeNote || !$activeNotePath) return;
 		await fixingBlobsPromise;
 
-		if (appState.editorMode === 'canvas') {
+		if (__FEATURE_CANVAS__ && appState.editorMode === 'canvas') {
 			if (canvasPerformSaveImmediate) {
 				canvasPerformSaveImmediate();
 			}
@@ -4959,7 +4979,7 @@
 		content = content || '';
 		loadedPath = path;
 		
-		if (path.endsWith('.notebook.json') || appState.editorMode === 'notebook') {
+		if (__FEATURE_CANVAS__ && (path.endsWith('.notebook.json') || appState.editorMode === 'notebook')) {
 			isLoadingNote = false;
 			return;
 		}
@@ -5958,6 +5978,8 @@
 			editable: !$readOnly,
 			extensions: [
 				StarterKit.configure({ codeBlock: false }),
+				TaskList,
+				TaskItem.configure({ nested: true, HTMLAttributes: { 'data-type': 'taskItem' } }),
 				Placeholder.configure({
 					includeChildren: true,
 					placeholder: ({ node, pos, editor }) => {
@@ -7635,7 +7657,7 @@
 					</div>
 
 					<!-- Mobile Text/Canvas Mode Toggle -->
-					{#if appState.editorMode !== 'notebook'}
+					{#if __FEATURE_CANVAS__ && appState.editorMode !== 'notebook'}
 						<div class="mode-segmented-control mobile" style="margin-left: 4px;">
 							<button
 								type="button"
@@ -7752,7 +7774,7 @@
 				{/if}
 
 				<!-- Group: Editor Mode (Text / Canvas) -->
-				{#if appState.editorMode !== 'notebook'}
+				{#if __FEATURE_CANVAS__ && appState.editorMode !== 'notebook'}
 					<div class="mode-segmented-control" role="radiogroup" aria-label="Editor mode">
 						<button
 							type="button"
@@ -8011,7 +8033,7 @@
 		</div>
 		{/if}
 
-		{#if appState.editorMode !== 'canvas'}
+		{#if !__FEATURE_CANVAS__ || appState.editorMode !== 'canvas'}
 		<div class="note-meta-bar" class:focus-mode={appState.focusModeEnabled}>
 			{#if !appState.focusModeEnabled}
 				<span class="note-folder" class:unfiled={!noteFolder}>
@@ -8345,9 +8367,9 @@
 				{/if}
 
 				<!-- Canvas Mode Editor -->
-				{#if appState.editorMode === 'canvas' && appState.activeNoteContent}
+				{#if __FEATURE_CANVAS__ && CanvasEditorComponent && appState.editorMode === 'canvas' && appState.activeNoteContent}
 					<div class="canvas-editor-wrapper" style="display: block; position: absolute; inset: 0; z-index: 1;">
-						<CanvasEditor 
+						<CanvasEditorComponent 
 							notePath={$activeNotePath || ''}
 							initialStrokes={canvasStrokes}
 							initialBackground={canvasBackground}
@@ -8358,9 +8380,9 @@
 				{/if}
 
 				<!-- Notebook Mode Editor -->
-				{#if appState.editorMode === 'notebook' && appState.activeNoteContent}
+				{#if __FEATURE_CANVAS__ && NotebookEditorComponent && appState.editorMode === 'notebook' && appState.activeNoteContent}
 					<div class="notebook-editor-wrapper" style="display: block; position: absolute; inset: 0; z-index: 1;">
-						<NotebookEditor 
+						<NotebookEditorComponent 
 							notePath={$activeNotePath || ''}
 							initialContent={appState.activeNoteContent}
 							onSave={handleNotebookSave}
@@ -8480,7 +8502,7 @@
 		{#if editorReady && !$sourceMode && !$viewerNote && !$readOnly && appState.editorMode !== 'canvas' && appState.editorMode !== 'notebook'}
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<div class="editor-formatting-bar" 
-				style={isMobile ? `${keyboardHeight > 0 ? `bottom: ${keyboardHeight}px;` : ''}${anyDropdownOpen ? 'overflow: visible;' : ''}` : ''} 
+				style={isMobile ? `${keyboardHeight > 0 ? `bottom: ${keyboardHeight}px;` : ''}${anyDropdownOpen ? 'overflow: visible;' : ''}` : (anyDropdownOpen ? 'overflow: visible !important;' : '')} 
 				onclick={() => { headingDropdown = false; colorDropdown = false; highlightDropdown = false; tablePickerOpen = false; alignDropdown = false; insertDropdown = false; fontDropdown = false; fontSizeDropdown = false; }}
 			>
 
@@ -8782,6 +8804,10 @@
 				</button>
 				<button class="fmt-btn" class:active={(editorState >= 0 && editor?.isActive('orderedList'))} onclick={() => editor?.chain().focus().toggleOrderedList().run()} title={`Ordered List (${modKey}+Shift+7)`}>
 					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5h10"/><path d="M11 12h10"/><path d="M11 19h10"/><path d="M4 4h1v5"/><path d="M4 9h2"/><path d="M6.5 20H3.4c0-1 2.6-1.925 2.6-3.5a1.5 1.5 0 00-2.6-1.02"/></svg>
+				</button>
+				<!-- Checklist (Task List) -->
+				<button class="fmt-btn" class:active={(editorState >= 0 && editor?.isActive('taskList'))} onclick={() => editor?.chain().focus().toggleTaskList().run()} title={`Checklist (${modKey}+Shift+9)`}>
+					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 5.5L5 7l2.5-3"/><path d="M3.5 11.5L5 13l2.5-3"/><path d="M3.5 17.5L5 19l2.5-3"/><path d="M11 6h9"/><path d="M11 12h9"/><path d="M11 18h9"/></svg>
 				</button>
 
 
@@ -10950,8 +10976,10 @@
 			border-left: 1px solid var(--border-light);
 			padding: 10px 4px !important;
 			flex-wrap: nowrap !important;
-			overflow: visible !important;
-			scrollbar-width: none;
+			overflow-y: auto;
+			overflow-x: visible;
+			scrollbar-width: thin;
+			scrollbar-color: color-mix(in srgb, var(--text-tertiary) 25%, transparent) transparent;
 			gap: 8px;
 			align-items: center;
 			justify-content: flex-start;
@@ -10959,7 +10987,20 @@
 		}
 
 		.editor-formatting-bar::-webkit-scrollbar {
-			display: none;
+			width: 3px;
+		}
+
+		.editor-formatting-bar::-webkit-scrollbar-track {
+			background: transparent;
+		}
+
+		.editor-formatting-bar::-webkit-scrollbar-thumb {
+			background-color: color-mix(in srgb, var(--text-tertiary) 25%, transparent);
+			border-radius: 3px;
+		}
+
+		.editor-formatting-bar::-webkit-scrollbar-thumb:hover {
+			background-color: color-mix(in srgb, var(--text-tertiary) 45%, transparent);
 		}
 
 		.editor-formatting-bar .fmt-sep {
@@ -10967,7 +11008,13 @@
 			height: 3px !important;
 			background: var(--text-tertiary) !important;
 			opacity: 1 !important;
+			flex-shrink: 0 !important;
 			margin: 6px 0 !important;
+		}
+
+		.editor-formatting-bar .fmt-btn,
+		.editor-formatting-bar .fmt-dropdown-wrap {
+			flex-shrink: 0;
 		}
 
 		.editor-formatting-bar .fmt-dropdown {
@@ -12557,15 +12604,18 @@
 	}
 
 	:global(.tiptap-wrapper .tiptap ul[data-type="taskList"] li[data-type="taskItem"]) {
-		display: flex;
+		display: flex !important;
+		flex-direction: row !important;
 		align-items: center;
+		flex-wrap: nowrap;
 		padding: 6px 10px;
 		border-radius: 8px;
 		border: 1px solid transparent;
 		transition: all 0.2s ease;
 		background: transparent;
 		position: relative;
-		margin: 6px 0;
+		margin: 4px 0;
+		gap: 0;
 	}
 	:global(.tiptap-wrapper .tiptap ul[data-type="taskList"] li[data-type="taskItem"]:hover) {
 		background: rgba(255, 255, 255, 0.02);
@@ -12582,30 +12632,22 @@
 		}
 	}
 
-	/* Drag handle ::before */
+	/* Drag handle - hidden until hover/focus */
 	:global(.tiptap-wrapper .tiptap ul[data-type="taskList"] li[data-type="taskItem"]::before) {
-		content: "⋮⋮";
-		color: rgba(255, 255, 255, 0.2);
-		font-family: monospace;
-		font-size: 14px;
-		cursor: grab;
-		margin-right: 6px;
-		opacity: 0;
-		transition: opacity 0.2s ease;
-		display: inline-flex;
-		align-items: center;
-		user-select: none;
-		flex-shrink: 0;
-	}
-	:global(.tiptap-wrapper .tiptap ul[data-type="taskList"] li[data-type="taskItem"]:hover::before),
-	:global(.tiptap-wrapper .tiptap ul[data-type="taskList"] li[data-type="taskItem"]:focus-within::before) {
-		opacity: 1;
+		content: none;
 	}
 
 	:global(.tiptap-wrapper .tiptap ul[data-type="taskList"] li label) {
-		display: flex;
+		display: inline-flex;
 		align-items: center;
 		flex-shrink: 0;
+		margin-right: 10px;
+		cursor: pointer;
+		height: var(--editor-line-height, 1.65em);
+	}
+
+	:global(.tiptap-wrapper .tiptap ul[data-type="taskList"] li label span) {
+		display: none;
 	}
 
 	:global(.tiptap-wrapper .tiptap ul[data-type="taskList"] li label input[type="checkbox"]) {
@@ -12613,8 +12655,8 @@
 		-webkit-appearance: none;
 		width: 18px;
 		height: 18px;
-		border: 2px solid #a855f7; /* Signature purple/violet matching Evernote */
-		border-radius: 50%;
+		border: 2px solid var(--text-tertiary);
+		border-radius: 4px;
 		cursor: pointer;
 		position: relative;
 		flex-shrink: 0;
@@ -12626,8 +12668,8 @@
 	}
 
 	:global(.tiptap-wrapper .tiptap ul[data-type="taskList"] li[data-checked="true"] label input[type="checkbox"]) {
-		background: #a855f7;
-		border-color: #a855f7;
+		background: var(--accent);
+		border-color: var(--accent);
 	}
 
 	:global(.tiptap-wrapper .tiptap ul[data-type="taskList"] li[data-checked="true"] label input[type="checkbox"]::after) {
@@ -12643,13 +12685,17 @@
 	}
 
 	:global(.tiptap-wrapper .tiptap ul[data-type="taskList"] li label input[type="checkbox"]:hover) {
-		background: rgba(168, 85, 247, 0.1);
-		border-color: #a855f7;
+		background: color-mix(in srgb, var(--accent) 10%, transparent);
+		border-color: var(--accent);
 	}
 
 	:global(.tiptap-wrapper .tiptap ul[data-type="taskList"] li > div) {
 		flex: 1;
 		min-width: 0;
+	}
+
+	:global(.tiptap-wrapper .tiptap ul[data-type="taskList"] li > div > p) {
+		margin: 0;
 	}
 
 	/* Strike through only the direct paragraph content of a checked task item. */
