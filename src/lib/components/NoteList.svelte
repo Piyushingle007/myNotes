@@ -1,6 +1,6 @@
 <script lang="ts">
   import { appState, parseHtmlMetadata } from '../stores/appState.svelte';
-  import { FileText, Plus, Trash2, Edit2, Search, Clock, CalendarDays, X, Menu, FolderInput, CheckSquare, BookOpen, Folder, Star, ChevronLeft } from 'lucide-svelte';
+  import { FileText, Plus, Trash2, Edit2, Search, Clock, CalendarDays, X, Menu, FolderInput, CheckSquare, BookOpen, Folder, Star, ChevronLeft, Pin } from 'lucide-svelte';
   import { fly } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
   import ErrorBanner from './ErrorBanner.svelte';
@@ -662,6 +662,9 @@
             <div class="note-details flex-col" style="flex: 1; min-width: 0; gap: 2px;">
               <div class="note-title-row flex-row" style="justify-content: space-between; align-items: center; width: 100%; gap: 6px;">
                 <span class="track-name" style="font-weight: 700; font-size: var(--font-size-sm); color: var(--text-primary); text-overflow: ellipsis; overflow: hidden; white-space: nowrap; flex: 1; text-align: left;">{note.name}</span>
+                {#if appState.isNotePinned(note.path)}
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="var(--accent)" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;" title="Pinned"><path d="M12 17v5"/><path d="M9 2h6l-1 7h4l-5 7H7l2-7H5l1-7z"/></svg>
+                {/if}
                 {#if appState.favorites.includes(note.path)}
                   <Star size={12} style="fill: var(--accent); color: var(--accent); flex-shrink: 0;" />
                 {/if}
@@ -689,6 +692,15 @@
             <!-- Actions block -->
             <div class="col-actions flex-row" style="gap: 4px; align-items: center; justify-content: flex-end; flex-shrink: 0; width: auto;">
               {#if !appState.selectMode}
+                <button 
+                  class="row-move-btn" 
+                  class:active={appState.isNotePinned(note.path)}
+                  onclick={(e) => { e.stopPropagation(); appState.togglePin(note.path); }}
+                  title={appState.isNotePinned(note.path) ? 'Unpin Note' : 'Pin to Top'}
+                  style={appState.isNotePinned(note.path) ? 'color: var(--accent); opacity: 1;' : ''}
+                >
+                  <Pin size={14} />
+                </button>
                 <button 
                   class="row-move-btn" 
                   onclick={(e) => { e.stopPropagation(); handleMoveCopyNote(note.path, note.name, e); }}
@@ -1302,8 +1314,17 @@
   }
 
   @media (max-width: 768px) {
-    .row-delete-btn {
+    .row-delete-btn,
+    .row-move-btn,
+    .row-edit-btn {
       opacity: 1;
+    }
+
+    .row-move-btn,
+    .row-edit-btn,
+    .row-delete-btn {
+      min-width: 32px;
+      min-height: 32px;
     }
   }
 

@@ -574,11 +574,12 @@
 				label: ''
 			};
 			rows.splice(index + 1, 0, newRow);
+			editingRowIndex = index + 1;
 			saveRows();
 
 			tick().then(() => {
-				const labelInputs = document.querySelectorAll(`.metrics-row-wrapper-${$nodeStore.attrs.id || ''} .row-label-input`);
-				const nextInput = labelInputs[index + 1] as HTMLInputElement | null;
+				const labelInputs = document.querySelectorAll(`.metrics-row-wrapper-${$nodeStore.attrs.id || ''} .row-label-input.editing`);
+				const nextInput = labelInputs[0] as HTMLElement | null;
 				nextInput?.focus();
 			});
 		} else if (event.key === 'Backspace') {
@@ -1413,6 +1414,11 @@
 					}
 					const related = e.relatedTarget as HTMLElement | null;
 					if (related && e.currentTarget.contains(related)) {
+						return;
+					}
+					// Don't reset if we just moved editing to another row (e.g. Enter to create new row)
+					if (editingRowIndex !== null && editingRowIndex !== index) {
+						saveRows();
 						return;
 					}
 					saveRows();
