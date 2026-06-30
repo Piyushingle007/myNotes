@@ -1364,6 +1364,15 @@
     display: flex;
     flex-direction: column;
     gap: 16px;
+    overflow-y: auto;
+    position: sticky;
+    top: 0;
+    max-height: 100vh;
+    padding-right: 4px;
+    padding-bottom: 32px;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.08) transparent;
+    align-self: flex-start;
   }
 
   .panel-right {
