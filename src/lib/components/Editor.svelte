@@ -44,9 +44,17 @@
 	import MetricsBlock from './MetricsBlock.svelte';
 	import { renderDiagramSVG, decodeDiagram } from '../utils/diagram';
 	import ErrorBanner from './ErrorBanner.svelte';
-	import CanvasEditor from './CanvasEditor.svelte';
-	import NotebookEditor from './NotebookEditor.svelte';
+	// @ts-ignore — canvasTypes only provides type definitions, safe to import
 	import type { Stroke, CanvasBackground } from '../utils/canvasTypes';
+
+	// Feature-flagged: Canvas/Handwriting editor
+	// When __FEATURE_CANVAS__ is false, CanvasEditor & NotebookEditor won't be in the bundle
+	let CanvasEditorComponent: typeof import('./CanvasEditor.svelte').default | null = $state(null);
+	let NotebookEditorComponent: typeof import('./NotebookEditor.svelte').default | null = $state(null);
+	if (__FEATURE_CANVAS__) {
+		import('./CanvasEditor.svelte').then(m => { CanvasEditorComponent = m.default; });
+		import('./NotebookEditor.svelte').then(m => { NotebookEditorComponent = m.default; });
+	}
 
 	function extractCanvasData(html: string): { strokes: Stroke[], background: CanvasBackground } {
 		const result = { strokes: [] as Stroke[], background: 'blank' as CanvasBackground };
@@ -464,6 +472,7 @@
 	});
 
 	const canvasData = $derived.by(() => {
+		if (!__FEATURE_CANVAS__) return { strokes: [] as Stroke[], background: 'blank' as CanvasBackground };
 		const rawContent = appState.activeNoteContent || '';
 		return extractCanvasData(rawContent);
 	});
@@ -487,6 +496,7 @@
 	}
 
 	async function handleNotebookSave(content: string, thumbnail: string) {
+		if (!__FEATURE_CANVAS__) return;
 		if (get(viewerNote)) return;
 		if (!$activeNote || !$activeNotePath) return;
 
@@ -4785,7 +4795,7 @@
 		if (!$activeNote || !$activeNotePath) return;
 		await fixingBlobsPromise;
 
-		if (appState.editorMode === 'canvas') {
+		if (__FEATURE_CANVAS__ && appState.editorMode === 'canvas') {
 			if (canvasPerformSaveImmediate) {
 				canvasPerformSaveImmediate();
 			}
@@ -4959,7 +4969,7 @@
 		content = content || '';
 		loadedPath = path;
 		
-		if (path.endsWith('.notebook.json') || appState.editorMode === 'notebook') {
+		if (__FEATURE_CANVAS__ && (path.endsWith('.notebook.json') || appState.editorMode === 'notebook')) {
 			isLoadingNote = false;
 			return;
 		}
@@ -7635,7 +7645,7 @@
 					</div>
 
 					<!-- Mobile Text/Canvas Mode Toggle -->
-					{#if appState.editorMode !== 'notebook'}
+					{#if __FEATURE_CANVAS__ && appState.editorMode !== 'notebook'}
 						<div class="mode-segmented-control mobile" style="margin-left: 4px;">
 							<button
 								type="button"
@@ -7752,7 +7762,7 @@
 				{/if}
 
 				<!-- Group: Editor Mode (Text / Canvas) -->
-				{#if appState.editorMode !== 'notebook'}
+				{#if __FEATURE_CANVAS__ && appState.editorMode !== 'notebook'}
 					<div class="mode-segmented-control" role="radiogroup" aria-label="Editor mode">
 						<button
 							type="button"
@@ -8011,7 +8021,7 @@
 		</div>
 		{/if}
 
-		{#if appState.editorMode !== 'canvas'}
+		{#if !__FEATURE_CANVAS__ || appState.editorMode !== 'canvas'}
 		<div class="note-meta-bar" class:focus-mode={appState.focusModeEnabled}>
 			{#if !appState.focusModeEnabled}
 				<span class="note-folder" class:unfiled={!noteFolder}>
@@ -8345,9 +8355,9 @@
 				{/if}
 
 				<!-- Canvas Mode Editor -->
-				{#if appState.editorMode === 'canvas' && appState.activeNoteContent}
+				{#if __FEATURE_CANVAS__ && CanvasEditorComponent && appState.editorMode === 'canvas' && appState.activeNoteContent}
 					<div class="canvas-editor-wrapper" style="display: block; position: absolute; inset: 0; z-index: 1;">
-						<CanvasEditor 
+						<CanvasEditorComponent 
 							notePath={$activeNotePath || ''}
 							initialStrokes={canvasStrokes}
 							initialBackground={canvasBackground}
@@ -8358,9 +8368,9 @@
 				{/if}
 
 				<!-- Notebook Mode Editor -->
-				{#if appState.editorMode === 'notebook' && appState.activeNoteContent}
+				{#if __FEATURE_CANVAS__ && NotebookEditorComponent && appState.editorMode === 'notebook' && appState.activeNoteContent}
 					<div class="notebook-editor-wrapper" style="display: block; position: absolute; inset: 0; z-index: 1;">
-						<NotebookEditor 
+						<NotebookEditorComponent 
 							notePath={$activeNotePath || ''}
 							initialContent={appState.activeNoteContent}
 							onSave={handleNotebookSave}

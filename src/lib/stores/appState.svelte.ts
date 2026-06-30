@@ -1,6 +1,7 @@
 import { type NoteFile, type StorageAdapter, IndexedDBAdapter, FileSystemAccessAdapter } from '../storage/StorageAdapter';
 import { TagDatabase, type Tag } from '../storage/TagSchema';
 import { CalcTagDatabase, type CalcTag } from '../storage/CalcTagSchema';
+import { FocusCardStore, type FocusCard, type CardStatus, createBlankCard } from '../storage/FocusCardStore';
 import { GoogleDriveSync } from '../sync/GoogleDriveSync';
 import MiniSearch from 'minisearch';
 import MarkdownIt from 'markdown-it';
@@ -178,13 +179,19 @@ class AppState {
   tags = $state<Tag[]>([]);
   calcTagDb = null as CalcTagDatabase | null;
   calcTags = $state<CalcTag[]>([]);
+  // Focus (swipe planner) state
+  focusCardStore = null as FocusCardStore | null;
+  focusCards = $state<FocusCard[]>([]);
+  focusQueue = $state<FocusCard[]>([]);
+  focusTodayPlan = $state<FocusCard[]>([]);
+  focusLoading = $state<boolean>(false);
   selectedTag = $state<string | null>(null);
   notes = $state<NoteFile[]>([]);
   activeNotePath = $state<string | null>(null);
   activeNoteContent = $state<string>('');
   activeNoteTitle = $state<string>('');
   activeNotebook = $state<string | null>(null);
-  activeTab = $state<'home' | 'search' | 'library' | 'daily' | 'tags'>('home');
+  activeTab = $state<'home' | 'search' | 'library' | 'daily' | 'tags' | 'focus'>('home');
   favorites = $state<string[]>(JSON.parse(localStorage.getItem('mynotes_favorites') || '[]'));
   searchQuery = $state<string>('');
   showSettings = $state<boolean>(false);
@@ -252,6 +259,7 @@ class AppState {
   }
 
   async switchEditorMode(mode: 'text' | 'canvas' | 'notebook') {
+    if (!__FEATURE_CANVAS__ && (mode === 'canvas' || mode === 'notebook')) return; // Canvas/Notebook feature disabled
     if (this.editorMode === mode) return;
     if (this.editorMode === 'canvas') {
       if (this.onForceSave) {
@@ -1299,8 +1307,10 @@ class AppState {
       this.vaultName = name;
       if (this.tagDb) this.tagDb.close();
       if (this.calcTagDb) this.calcTagDb.close();
+      if (this.focusCardStore) this.focusCardStore.close();
       this.tagDb = new TagDatabase(name);
       this.calcTagDb = new CalcTagDatabase(name);
+      this.focusCardStore = new FocusCardStore(name);
       
       // Perform migration of markdown notes to html notes
       await this.migrateOldNotes();
@@ -1350,8 +1360,10 @@ class AppState {
       this.vaultName = name;
       if (this.tagDb) this.tagDb.close();
       if (this.calcTagDb) this.calcTagDb.close();
+      if (this.focusCardStore) this.focusCardStore.close();
       this.tagDb = new TagDatabase(name);
       this.calcTagDb = new CalcTagDatabase(name);
+      this.focusCardStore = new FocusCardStore(name);
       // Perform migration of markdown notes to html notes
       await this.migrateOldNotes();
       await this.refreshNotes();
@@ -2185,6 +2197,7 @@ class AppState {
   }
 
   async createNotebookNote(title: string, folder: string | null = null) {
+    if (!__FEATURE_CANVAS__) return; // Handwriting feature disabled
     const cleanTitle = title.trim() || 'Untitled Notebook';
     let path = `${cleanTitle}.notebook.json`;
     if (folder) {
@@ -2694,6 +2707,70 @@ class AppState {
       }
     } catch (e) {
       console.error('[MyNotes] Failed to sync calc tags:', e);
+    }
+  }
+
+  // ─────────────────── Focus (Swipe Planner) ───────────────────
+
+  /** Load all focus data: cards, queue, and today's plan. */
+  async refreshFocusCards(): Promise<void> {
+    if (!this.focusCardStore) return;
+    this.focusLoading = true;
+    try {
+      this.focusCards = await this.focusCardStore.listAll();
+      this.focusQueue = await this.focusCardStore.buildDailyQueue();
+      this.focusTodayPlan = await this.focusCardStore.getTodayPlan();
+    } catch (e) {
+      console.error('[MyNotes] Failed to load focus cards:', e);
+    } finally {
+      this.focusLoading = false;
+    }
+  }
+
+  /** Create a new focus card and refresh state. */
+  async addFocusCard(title: string, description = '', overrides: Partial<FocusCard> = {}): Promise<FocusCard | null> {
+    if (!this.focusCardStore) return null;
+    const card = createBlankCard({ title, description, ...overrides });
+    await this.focusCardStore.addCard(card);
+    await this.refreshFocusCards();
+    return card;
+  }
+
+  /** Update a focus card and refresh state. */
+  async updateFocusCard(card: FocusCard): Promise<void> {
+    if (!this.focusCardStore) return;
+    await this.focusCardStore.updateCard(card);
+    await this.refreshFocusCards();
+  }
+
+  /** Delete a focus card and refresh state. */
+  async deleteFocusCard(id: string): Promise<void> {
+    if (!this.focusCardStore) return;
+    await this.focusCardStore.deleteCard(id);
+    await this.refreshFocusCards();
+  }
+
+  /** Transition a focus card's status (swipe action). */
+  async swipeFocusCard(id: string, newStatus: CardStatus): Promise<FocusCard | null> {
+    if (!this.focusCardStore) return null;
+    try {
+      const card = await this.focusCardStore.transitionCard(id, newStatus);
+      await this.refreshFocusCards();
+      return card;
+    } catch (e) {
+      console.error('[MyNotes] Swipe transition failed:', e);
+      this.showToast((e as Error).message, 'error');
+      return null;
+    }
+  }
+
+  /** Archive all completed focus cards. */
+  async archiveCompletedFocusCards(): Promise<void> {
+    if (!this.focusCardStore) return;
+    const count = await this.focusCardStore.archiveCompleted();
+    if (count > 0) {
+      this.showToast(`Archived ${count} completed card${count > 1 ? 's' : ''}`, 'success');
+      await this.refreshFocusCards();
     }
   }
 

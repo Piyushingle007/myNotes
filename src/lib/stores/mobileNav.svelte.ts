@@ -1,6 +1,6 @@
 import { appState } from './appState.svelte';
 
-export type MobileTab = 'home' | 'tags' | 'library' | 'daily';
+export type MobileTab = 'home' | 'tags' | 'library' | 'daily' | 'focus';
 
 /**
  * MobileNav — centralized mobile navigation model (UI-M-001).
@@ -21,7 +21,7 @@ export type MobileTab = 'home' | 'tags' | 'library' | 'daily';
  */
 class MobileNav {
   /** Bottom-navigation tabs in display order. */
-  readonly tabs: MobileTab[] = ['home', 'tags', 'library', 'daily'];
+  readonly tabs: MobileTab[] = ['home', 'tags', 'library', 'daily', 'focus'];
 
   // ───────────────────────── Derived position ─────────────────────────
 
@@ -140,7 +140,7 @@ class MobileNav {
       return this.dismissTopOverlay();
     }
     // Switch from canvas mode to text mode before closing the editor
-    if (appState.activeNotePath && appState.editorMode === 'canvas') {
+    if (__FEATURE_CANVAS__ && appState.activeNotePath && appState.editorMode === 'canvas') {
       appState.editorMode = 'text';
       return true;
     }

@@ -23,6 +23,7 @@
   import MobileTabBar from './MobileTabBar.svelte';
   import BottomSheet from './BottomSheet.svelte';
   import MobileSearch from './MobileSearch.svelte';
+  import FocusView from './FocusView.svelte';
   import { mobileNav } from '../stores/mobileNav.svelte';
   import { LONG_PRESS_MS, TOUCH_MOVE_TOLERANCE, edgeSwipeBack } from '../actions/touch';
 
@@ -1041,7 +1042,7 @@
               {/if}
 
               <!-- 2.5. Text/Canvas Mode Switcher -->
-              {#if !appState.isReadOnly && appState.editorMode !== 'notebook'}
+              {#if __FEATURE_CANVAS__ && !appState.isReadOnly && appState.editorMode !== 'notebook'}
                 <button
                   class="menu-item flex-row"
                   onclick={() => {
@@ -2044,6 +2045,11 @@
             </div>
           </div>
 
+        <!-- 6. FOCUS TAB -->
+        {:else if appState.activeTab === 'focus'}
+          <div class="mobile-tab-view flex-col">
+            <FocusView />
+          </div>
 
         {/if}
       </div>
@@ -2361,23 +2367,30 @@
     <AppHeader />
 
     <div class="desktop-app flex-row" style="position: relative;">
-      <!-- Right Panel (Editor) -->
-      <div class="editor-panel flex-row" style="display: {appState.editorCollapsed ? 'none' : 'flex'}; min-width: 0;">
-        <Editor />
-      </div>
-
-      {#if appState.editorCollapsed}
-        <div class="all-collapsed-placeholder flex-col" style="flex-grow: 1; align-items: center; justify-content: center; gap: var(--spacing-md); color: var(--text-secondary); background-color: var(--bg-base); height: 100%;">
-          <span>Editor is collapsed.</span>
-          <button 
-            class="btn-pill btn-pill-primary" 
-            onclick={() => {
-              appState.setEditorCollapsed(false);
-            }}
-          >
-            Restore Editor
-          </button>
+      {#if appState.activeTab === 'focus'}
+        <!-- Focus View takes over the main area on desktop -->
+        <div class="editor-panel flex-row" style="min-width: 0;">
+          <FocusView />
         </div>
+      {:else}
+        <!-- Right Panel (Editor) -->
+        <div class="editor-panel flex-row" style="display: {appState.editorCollapsed ? 'none' : 'flex'}; min-width: 0;">
+          <Editor />
+        </div>
+
+        {#if appState.editorCollapsed}
+          <div class="all-collapsed-placeholder flex-col" style="flex-grow: 1; align-items: center; justify-content: center; gap: var(--spacing-md); color: var(--text-secondary); background-color: var(--bg-base); height: 100%;">
+            <span>Editor is collapsed.</span>
+            <button 
+              class="btn-pill btn-pill-primary" 
+              onclick={() => {
+                appState.setEditorCollapsed(false);
+              }}
+            >
+              Restore Editor
+            </button>
+          </div>
+        {/if}
       {/if}
     </div>
   </div>

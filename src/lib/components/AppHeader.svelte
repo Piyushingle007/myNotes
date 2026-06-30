@@ -6,7 +6,7 @@
   import { 
     Search, Plus, Settings, Cloud, CloudOff, X, 
     Folder, Tag as TagIcon, Calendar, ChevronRight, FileText, Menu,
-    ChevronDown, BookOpen, Star, Palette, Edit2, Trash2
+    ChevronDown, BookOpen, Star, Palette, Edit2, Trash2, Target
   } from 'lucide-svelte';
   import GoogleLogo from './GoogleLogo.svelte';
   import CommandPalette from './CommandPalette.svelte';
@@ -342,7 +342,7 @@
 <header class="app-header flex-row">
   <!-- Left Side: Logo & Breadcrumbs -->
   <div class="header-left flex-row">
-    <div class="logo-group flex-row" onclick={() => { appState.activeNotebook = null; appState.selectedTag = null; }} role="button" tabindex="0" onkeydown={(e) => { if (e.key === 'Enter') { appState.activeNotebook = null; appState.selectedTag = null; } }}>
+    <div class="logo-group flex-row" onclick={() => { appState.activeTab = 'home'; appState.activeNotebook = null; appState.selectedTag = null; appState.activeNotePath = null; }} role="button" tabindex="0" onkeydown={(e) => { if (e.key === 'Enter') { appState.activeTab = 'home'; appState.activeNotebook = null; appState.selectedTag = null; appState.activeNotePath = null; } }}>
       <GoogleLogo size={22} />
       <span class="logo-text">MyNotes</span>
     </div>
@@ -389,6 +389,14 @@
           title="Daily Logs"
         >
           <Calendar size={15} style={activePopover === 'dailyLogs' ? 'fill: currentColor;' : ''} />
+        </button>
+        <button 
+          class="panel-toggle-btn flex-row nav-icon-btn" 
+          class:active={appState.activeTab === 'focus'} 
+          onclick={() => { appState.activeTab = appState.activeTab === 'focus' ? 'home' : 'focus'; activePopover = null; }}
+          title="Focus"
+        >
+          <Target size={15} style={appState.activeTab === 'focus' ? 'fill: currentColor;' : ''} />
         </button>
       </div>
     </div>
@@ -487,6 +495,7 @@
               <span style="font-size: var(--font-size-2xs); color: var(--text-tertiary); white-space: nowrap;">Rich text, checkboxes, sketch pad</span>
             </div>
           </button>
+          {#if __FEATURE_CANVAS__}
           <button 
             class="dropdown-item flex-row"
             onclick={() => { handleCreateNotebookNote(); showCreateDropdown = false; }}
@@ -500,6 +509,7 @@
               <span style="font-size: var(--font-size-2xs); color: var(--text-tertiary); white-space: nowrap;">Multi-page vertical scroll card engine</span>
             </div>
           </button>
+          {/if}
         </div>
       {/if}
     </div>

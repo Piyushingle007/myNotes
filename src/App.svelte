@@ -14,13 +14,15 @@
     let newHash = '';
     if (appState.activeNotePath) {
       newHash = `#/note/${encodeURIComponent(appState.activeNotePath)}`;
-      if (appState.editorMode === 'canvas') {
+      if (__FEATURE_CANVAS__ && appState.editorMode === 'canvas') {
         newHash += '?mode=canvas';
-      } else if (appState.editorMode === 'notebook') {
+      } else if (__FEATURE_CANVAS__ && appState.editorMode === 'notebook') {
         newHash += '?mode=notebook';
       }
     } else if (appState.activeTab === 'daily') {
       newHash = `#/daily`;
+    } else if (appState.activeTab === 'focus') {
+      newHash = `#/focus`;
     } else if (appState.activeTab === 'library') {
       if (appState.activeNotebook) {
         newHash = `#/library/${encodeURIComponent(appState.activeNotebook)}`;
@@ -54,9 +56,9 @@
         notePathPart = hash.substring(0, queryIdx);
         const queryStr = hash.substring(queryIdx + 1);
         const params = new URLSearchParams(queryStr);
-        if (params.get('mode') === 'canvas') {
+        if (__FEATURE_CANVAS__ && params.get('mode') === 'canvas') {
           modeParam = 'canvas';
-        } else if (params.get('mode') === 'notebook') {
+        } else if (__FEATURE_CANVAS__ && params.get('mode') === 'notebook') {
           modeParam = 'notebook';
         }
       }
@@ -66,7 +68,7 @@
         appState.selectNote(notePath);
       }
 
-      if (appState.editorMode !== modeParam) {
+      if (__FEATURE_CANVAS__ && appState.editorMode !== modeParam) {
         appState.editorMode = modeParam as 'text' | 'canvas' | 'notebook';
       }
     } else {
@@ -93,6 +95,9 @@
         appState.selectedTag = null;
       } else if (hash === '#/daily') {
         appState.activeTab = 'daily';
+        appState.activeNotebook = null;
+      } else if (hash === '#/focus') {
+        appState.activeTab = 'focus';
         appState.activeNotebook = null;
       } else {
         appState.activeTab = 'home';

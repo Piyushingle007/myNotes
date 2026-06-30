@@ -312,6 +312,7 @@
             <CheckSquare size={13} />
           </button>
           
+          {#if __FEATURE_CANVAS__}
           <button 
             class="header-icon-action-btn"
             onclick={handleCreateNotebookNote}
@@ -319,6 +320,7 @@
           >
             <BookOpen size={13} />
           </button>
+          {/if}
 
           <button 
             class="header-icon-action-btn primary-accent"
@@ -389,10 +391,12 @@
             <CheckSquare size={14} />
             <span>{appState.selectMode ? 'Cancel' : 'Select'}</span>
           </button>
+          {#if __FEATURE_CANVAS__}
           <button class="btn-pill btn-pill-outline add-note-btn" onclick={handleCreateNotebookNote} style="gap: var(--spacing-2xs); height: 32px;">
             <BookOpen size={14} />
             <span>Add Notebook</span>
           </button>
+          {/if}
           <button class="btn-pill btn-pill-primary add-note-btn" onclick={handleCreateNote}>
             <Plus size={16} />
             <span>Add Note</span>
