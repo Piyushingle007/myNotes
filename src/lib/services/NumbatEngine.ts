@@ -162,6 +162,10 @@ export class NumbatEngineClass {
     }
   }
 
+  private preprocess(code: string): string {
+    return code.replace(/\bto\b/gi, '->');
+  }
+
   /**
    * Interpret a line of Numbat code.
    */
@@ -170,14 +174,15 @@ export class NumbatEngineClass {
       throw new Error('Numbat engine not initialized. Call init() first.');
     }
 
-    const trimmed = code.trim();
+    const preprocessed = this.preprocess(code);
+    const trimmed = preprocessed.trim();
     if (!trimmed || trimmed.startsWith('#')) {
       return { output: '', plainOutput: '', isError: false, isCommand: false, shouldClear: false, shouldReset: false };
     }
 
     // Run standard interpreter
     try {
-      const result = this.instance.interpret(code);
+      const result = this.instance.interpret(preprocessed);
       return {
         output: result.output,
         plainOutput: this.stripHtml(result.output),
@@ -230,7 +235,8 @@ export class NumbatEngineClass {
       if (!trimmed || trimmed.startsWith('#')) continue;
       // Interpret without command checks, just to build context
       try {
-        this.instance.interpret(input);
+        const preprocessed = this.preprocess(input);
+        this.instance.interpret(preprocessed);
       } catch (e) {
         // Skip errors on replay
       }

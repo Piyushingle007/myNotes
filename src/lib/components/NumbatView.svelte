@@ -278,7 +278,7 @@
   function highlightNumbatSyntax(text: string) {
     if (!text) return '';
     
-    const regex = /(?:(\b(?:let|fn|if|then|else)\b)|(\b(?:km|m|cm|mm|kg|g|mg|s|min|h|d|usd|eur|inr|gbp|mph|celsius|fahrenheit)\b)|(\b\d+(?:\.\d+)?(?:e[-+]?\d+)?\b)|(\+|-|\*|\/|\^|->|=>|=)|(#.*|\/\/.*))/gi;
+    const regex = /(?:(\b(?:let|fn|if|then|else)\b)|(\b(?:km|m|cm|mm|kg|g|mg|s|min|h|d|usd|eur|inr|gbp|mph|celsius|fahrenheit)\b)|(\b\d+(?:\.\d+)?(?:e[-+]?\d+)?\b)|(\+|-|\*|\/|\^|->|=>|=|\bto\b)|(#.*|\/\/.*))/gi;
     
     let html = '';
     let lastIndex = 0;
