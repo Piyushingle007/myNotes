@@ -93,7 +93,7 @@
       const paddingLeft = 12;
       const paddingTop = 12;
 
-      const assumedDropdownWidth = 200;
+      const assumedDropdownWidth = 330;
       const maxLeft = (textareaEl.clientWidth || 300) - assumedDropdownWidth;
       const calculatedLeft = paddingLeft + (currentCharIdx * charWidth);
 
@@ -240,7 +240,6 @@
     border: 1px solid var(--border-color);
     border-radius: 8px;
     background: var(--bg-card);
-    overflow: hidden;
     transition: border-color 0.2s;
   }
   .numbat-block.focused {
@@ -251,6 +250,7 @@
     padding: 8px 12px;
     background: var(--bg-card-hover);
     border-bottom: 1px solid var(--border-color);
+    border-radius: 8px 8px 0 0;
   }
   .numbat-title {
     font-size: 0.75rem;
@@ -290,6 +290,7 @@
   }
   .output-pane {
     background: rgba(0, 0, 0, 0.1);
+    border-radius: 0 8px 8px 0;
   }
   .line-numbers {
     width: 36px;
@@ -350,6 +351,7 @@
     border-radius: 8px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
     width: 320px;
+    max-width: calc(100vw - 48px);
     max-height: 200px;
     overflow-y: auto;
     padding: 8px;
@@ -390,6 +392,7 @@
     .output-pane {
       width: 100%;
       border-top: 1px dashed var(--border-color);
+      border-radius: 0 0 8px 8px;
     }
   }
 </style>

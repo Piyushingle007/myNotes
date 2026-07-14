@@ -249,7 +249,7 @@
       const paddingLeft = 16;
       const paddingTop = 16;
 
-      const assumedDropdownWidth = 220; // Approximate max width of the dropdown
+      const assumedDropdownWidth = 330; // 320px width + padding
       const maxLeft = (editorEl?.clientWidth || 400) - assumedDropdownWidth;
       const calculatedLeft = gutterWidth + paddingLeft + (currentCharIdx * charWidth);
 
@@ -906,6 +906,7 @@ fn f(x) = x^2</code></pre>
     border-radius: 8px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
     width: 320px;
+    max-width: calc(100vw - 48px);
     max-height: 200px;
     overflow-y: auto;
     padding: 8px;
