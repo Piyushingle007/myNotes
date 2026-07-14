@@ -881,7 +881,9 @@ fn f(x) = x^2</code></pre>
   .autocomplete-dropdown {
     position: absolute;
     z-index: 1000;
-    background: var(--bg-surface-elevated);
+    background: var(--bg-card-hover, #2d333b);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 8px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
