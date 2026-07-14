@@ -1,0 +1,3984 @@
+{
+  "directed": false,
+  "multigraph": false,
+  "graph": {
+    "hyperedges": [
+      {
+        "id": "template_configuration_decisions",
+        "label": "Template Configuration Decisions",
+        "nodes": [
+          "mynotes_readme_global_d_ts",
+          "mynotes_readme_allowjs",
+          "mynotes_readme_hmr_state"
+        ],
+        "relation": "form",
+        "confidence": "EXTRACTED",
+        "confidence_score": 1.0,
+        "source_file": "myNotes/README.md"
+      },
+      {
+        "id": "pwa_frontend_setup",
+        "label": "PWA Frontend Setup",
+        "nodes": [
+          "mynotes_index_app_mount",
+          "mynotes_index_sw_registration",
+          "mynotes_index_web_manifest"
+        ],
+        "relation": "participate_in",
+        "confidence": "INFERRED",
+        "confidence_score": 0.85,
+        "source_file": "myNotes/index.html"
+      }
+    ]
+  },
+  "nodes": [
+    {
+      "label": "extensions.json",
+      "file_type": "code",
+      "source_file": ".vscode/extensions.json",
+      "source_location": "L1",
+      "id": "vscode_extensions",
+      "community": 14,
+      "norm_label": "extensions.json"
+    },
+    {
+      "label": "recommendations",
+      "file_type": "code",
+      "source_file": ".vscode/extensions.json",
+      "source_location": "L2",
+      "id": "vscode_extensions_recommendations",
+      "community": 14,
+      "norm_label": "recommendations"
+    },
+    {
+      "label": "package.json",
+      "file_type": "code",
+      "source_file": "package.json",
+      "source_location": "L1",
+      "id": "package",
+      "community": 3,
+      "norm_label": "package.json"
+    },
+    {
+      "label": "name",
+      "file_type": "code",
+      "source_file": "package.json",
+      "source_location": "L2",
+      "id": "package_name",
+      "community": 3,
+      "norm_label": "name"
+    },
+    {
+      "label": "private",
+      "file_type": "code",
+      "source_file": "package.json",
+      "source_location": "L3",
+      "id": "package_private",
+      "community": 3,
+      "norm_label": "private"
+    },
+    {
+      "label": "version",
+      "file_type": "code",
+      "source_file": "package.json",
+      "source_location": "L4",
+      "id": "package_version",
+      "community": 3,
+      "norm_label": "version"
+    },
+    {
+      "label": "type",
+      "file_type": "code",
+      "source_file": "package.json",
+      "source_location": "L5",
+      "id": "package_type",
+      "community": 3,
+      "norm_label": "type"
+    },
+    {
+      "label": "scripts",
+      "file_type": "code",
+      "source_file": "package.json",
+      "source_location": "L6",
+      "id": "package_scripts",
+      "community": 3,
+      "norm_label": "scripts"
+    },
+    {
+      "label": "dev",
+      "file_type": "code",
+      "source_file": "package.json",
+      "source_location": "L7",
+      "id": "package_scripts_dev",
+      "community": 3,
+      "norm_label": "dev"
+    },
+    {
+      "label": "build",
+      "file_type": "code",
+      "source_file": "package.json",
+      "source_location": "L8",
+      "id": "package_scripts_build",
+      "community": 3,
+      "norm_label": "build"
+    },
+    {
+      "label": "preview",
+      "file_type": "code",
+      "source_file": "package.json",
+      "source_location": "L9",
+      "id": "package_scripts_preview",
+      "community": 3,
+      "norm_label": "preview"
+    },
+    {
+      "label": "check",
+      "file_type": "code",
+      "source_file": "package.json",
+      "source_location": "L10",
+      "id": "package_scripts_check",
+      "community": 3,
+      "norm_label": "check"
+    },
+    {
+      "label": "devDependencies",
+      "file_type": "code",
+      "source_file": "package.json",
+      "source_location": "L12",
+      "id": "package_devdependencies",
+      "community": 3,
+      "norm_label": "devdependencies"
+    },
+    {
+      "label": "@sveltejs/vite-plugin-svelte",
+      "file_type": "code",
+      "source_file": "package.json",
+      "source_location": "L13",
+      "id": "package_devdependencies_sveltejs_vite_plugin_svelte",
+      "community": 3,
+      "norm_label": "@sveltejs/vite-plugin-svelte"
+    },
+    {
+      "label": "@tsconfig/svelte",
+      "file_type": "code",
+      "source_file": "package.json",
+      "source_location": "L14",
+      "id": "package_devdependencies_tsconfig_svelte",
+      "community": 3,
+      "norm_label": "@tsconfig/svelte"
+    },
+    {
+      "label": "@types/node",
+      "file_type": "code",
+      "source_file": "package.json",
+      "source_location": "L15",
+      "id": "package_devdependencies_types_node",
+      "community": 3,
+      "norm_label": "@types/node"
+    },
+    {
+      "label": "svelte",
+      "file_type": "code",
+      "source_file": "package.json",
+      "source_location": "L16",
+      "id": "package_devdependencies_svelte",
+      "community": 3,
+      "norm_label": "svelte"
+    },
+    {
+      "label": "svelte-check",
+      "file_type": "code",
+      "source_file": "package.json",
+      "source_location": "L17",
+      "id": "package_devdependencies_svelte_check",
+      "community": 3,
+      "norm_label": "svelte-check"
+    },
+    {
+      "label": "typescript",
+      "file_type": "code",
+      "source_file": "package.json",
+      "source_location": "L18",
+      "id": "package_devdependencies_typescript",
+      "community": 3,
+      "norm_label": "typescript"
+    },
+    {
+      "label": "vite",
+      "file_type": "code",
+      "source_file": "package.json",
+      "source_location": "L19",
+      "id": "package_devdependencies_vite",
+      "community": 3,
+      "norm_label": "vite"
+    },
+    {
+      "label": "dependencies",
+      "file_type": "code",
+      "source_file": "package.json",
+      "source_location": "L21",
+      "id": "package_dependencies",
+      "community": 1,
+      "norm_label": "dependencies"
+    },
+    {
+      "label": "@types/marked",
+      "file_type": "code",
+      "source_file": "package.json",
+      "source_location": "L22",
+      "id": "package_dependencies_types_marked",
+      "community": 1,
+      "norm_label": "@types/marked"
+    },
+    {
+      "label": "lucide-svelte",
+      "file_type": "code",
+      "source_file": "package.json",
+      "source_location": "L23",
+      "id": "package_dependencies_lucide_svelte",
+      "community": 1,
+      "norm_label": "lucide-svelte"
+    },
+    {
+      "label": "marked",
+      "file_type": "code",
+      "source_file": "package.json",
+      "source_location": "L24",
+      "id": "package_dependencies_marked",
+      "community": 1,
+      "norm_label": "marked"
+    },
+    {
+      "label": "minisearch",
+      "file_type": "code",
+      "source_file": "package.json",
+      "source_location": "L25",
+      "id": "package_dependencies_minisearch",
+      "community": 1,
+      "norm_label": "minisearch"
+    },
+    {
+      "label": "manifest.json",
+      "file_type": "code",
+      "source_file": "public/manifest.json",
+      "source_location": "L1",
+      "id": "public_manifest",
+      "community": 7,
+      "norm_label": "manifest.json"
+    },
+    {
+      "label": "name",
+      "file_type": "code",
+      "source_file": "public/manifest.json",
+      "source_location": "L2",
+      "id": "public_manifest_name",
+      "community": 7,
+      "norm_label": "name"
+    },
+    {
+      "label": "short_name",
+      "file_type": "code",
+      "source_file": "public/manifest.json",
+      "source_location": "L3",
+      "id": "public_manifest_short_name",
+      "community": 7,
+      "norm_label": "short_name"
+    },
+    {
+      "label": "description",
+      "file_type": "code",
+      "source_file": "public/manifest.json",
+      "source_location": "L4",
+      "id": "public_manifest_description",
+      "community": 7,
+      "norm_label": "description"
+    },
+    {
+      "label": "start_url",
+      "file_type": "code",
+      "source_file": "public/manifest.json",
+      "source_location": "L5",
+      "id": "public_manifest_start_url",
+      "community": 7,
+      "norm_label": "start_url"
+    },
+    {
+      "label": "display",
+      "file_type": "code",
+      "source_file": "public/manifest.json",
+      "source_location": "L6",
+      "id": "public_manifest_display",
+      "community": 7,
+      "norm_label": "display"
+    },
+    {
+      "label": "background_color",
+      "file_type": "code",
+      "source_file": "public/manifest.json",
+      "source_location": "L7",
+      "id": "public_manifest_background_color",
+      "community": 7,
+      "norm_label": "background_color"
+    },
+    {
+      "label": "theme_color",
+      "file_type": "code",
+      "source_file": "public/manifest.json",
+      "source_location": "L8",
+      "id": "public_manifest_theme_color",
+      "community": 7,
+      "norm_label": "theme_color"
+    },
+    {
+      "label": "orientation",
+      "file_type": "code",
+      "source_file": "public/manifest.json",
+      "source_location": "L9",
+      "id": "public_manifest_orientation",
+      "community": 7,
+      "norm_label": "orientation"
+    },
+    {
+      "label": "icons",
+      "file_type": "code",
+      "source_file": "public/manifest.json",
+      "source_location": "L10",
+      "id": "public_manifest_icons",
+      "community": 7,
+      "norm_label": "icons"
+    },
+    {
+      "label": "sw.js",
+      "file_type": "code",
+      "source_file": "public/sw.js",
+      "source_location": "L1",
+      "id": "public_sw",
+      "community": 13,
+      "norm_label": "sw.js"
+    },
+    {
+      "label": "ASSETS_TO_CACHE",
+      "file_type": "code",
+      "source_file": "public/sw.js",
+      "source_location": "L2",
+      "id": "public_sw_assets_to_cache",
+      "community": 13,
+      "norm_label": "assets_to_cache"
+    },
+    {
+      "label": "App.svelte",
+      "file_type": "code",
+      "source_file": "src/App.svelte",
+      "source_location": "L1",
+      "id": "src_app",
+      "community": 1,
+      "norm_label": "app.svelte"
+    },
+    {
+      "label": "svelte",
+      "file_type": "code",
+      "source_file": "svelte",
+      "confidence": "EXTRACTED",
+      "id": "svelte",
+      "community": 1,
+      "norm_label": "svelte"
+    },
+    {
+      "label": "../stores/appState.svelte",
+      "file_type": "code",
+      "source_file": "src/lib/stores/appState.svelte",
+      "confidence": "EXTRACTED",
+      "id": "users_piyush_documents_notes_app_mynotes_src_lib_stores_appstate_svelte",
+      "community": 1,
+      "norm_label": "../stores/appstate.svelte"
+    },
+    {
+      "label": "AppLayout.svelte",
+      "file_type": "code",
+      "source_file": "src/lib/components/AppLayout.svelte",
+      "confidence": "EXTRACTED",
+      "source_location": "L1",
+      "id": "components_applayout",
+      "community": 1,
+      "norm_label": "applayout.svelte"
+    },
+    {
+      "label": "lucide-svelte",
+      "file_type": "code",
+      "source_file": "lucide-svelte",
+      "confidence": "EXTRACTED",
+      "id": "lucide_svelte",
+      "community": 1,
+      "norm_label": "lucide-svelte"
+    },
+    {
+      "label": "Counter.svelte",
+      "file_type": "code",
+      "source_file": "src/lib/Counter.svelte",
+      "source_location": "L1",
+      "id": "lib_counter",
+      "community": 15,
+      "norm_label": "counter.svelte"
+    },
+    {
+      "label": "active",
+      "file_type": "code",
+      "source_file": "src/lib/components/AppLayout.svelte",
+      "source_location": "L357",
+      "id": "components_applayout_active",
+      "community": 1,
+      "norm_label": "active"
+    },
+    {
+      "label": "Sidebar.svelte",
+      "file_type": "code",
+      "source_file": "src/lib/components/Sidebar.svelte",
+      "confidence": "EXTRACTED",
+      "source_location": "L1",
+      "id": "components_sidebar",
+      "community": 1,
+      "norm_label": "sidebar.svelte"
+    },
+    {
+      "label": "NoteList.svelte",
+      "file_type": "code",
+      "source_file": "src/lib/components/NoteList.svelte",
+      "confidence": "EXTRACTED",
+      "source_location": "L1",
+      "id": "components_notelist",
+      "community": 1,
+      "norm_label": "notelist.svelte"
+    },
+    {
+      "label": "Editor.svelte",
+      "file_type": "code",
+      "source_file": "src/lib/components/Editor.svelte",
+      "confidence": "EXTRACTED",
+      "source_location": "L1",
+      "id": "components_editor",
+      "community": 1,
+      "norm_label": "editor.svelte"
+    },
+    {
+      "label": "GraphView.svelte",
+      "file_type": "code",
+      "source_file": "src/lib/components/GraphView.svelte",
+      "confidence": "EXTRACTED",
+      "source_location": "L1",
+      "id": "components_graphview",
+      "community": 8,
+      "norm_label": "graphview.svelte"
+    },
+    {
+      "label": "if()",
+      "file_type": "code",
+      "source_file": "src/lib/components/Editor.svelte",
+      "source_location": "L194",
+      "id": "components_editor_if",
+      "community": 1,
+      "norm_label": "if()"
+    },
+    {
+      "label": "marked",
+      "file_type": "code",
+      "source_file": "marked",
+      "confidence": "EXTRACTED",
+      "id": "marked",
+      "community": 1,
+      "norm_label": "marked"
+    },
+    {
+      "label": "updateLoop()",
+      "file_type": "code",
+      "source_file": "src/lib/components/GraphView.svelte",
+      "source_location": "L250",
+      "id": "components_graphview_updateloop",
+      "community": 8,
+      "norm_label": "updateloop()"
+    },
+    {
+      "label": "resize()",
+      "file_type": "code",
+      "source_file": "src/lib/components/GraphView.svelte",
+      "source_location": "L257",
+      "id": "components_graphview_resize",
+      "community": 8,
+      "norm_label": "resize()"
+    },
+    {
+      "label": "getMousePos()",
+      "file_type": "code",
+      "source_file": "src/lib/components/GraphView.svelte",
+      "source_location": "L267",
+      "id": "components_graphview_getmousepos",
+      "community": 8,
+      "norm_label": "getmousepos()"
+    },
+    {
+      "label": "toSimCoords()",
+      "file_type": "code",
+      "source_file": "src/lib/components/GraphView.svelte",
+      "source_location": "L276",
+      "id": "components_graphview_tosimcoords",
+      "community": 8,
+      "norm_label": "tosimcoords()"
+    },
+    {
+      "label": "handleMouseDown()",
+      "file_type": "code",
+      "source_file": "src/lib/components/GraphView.svelte",
+      "source_location": "L283",
+      "id": "components_graphview_handlemousedown",
+      "community": 8,
+      "norm_label": "handlemousedown()"
+    },
+    {
+      "label": "handleMouseMove()",
+      "file_type": "code",
+      "source_file": "src/lib/components/GraphView.svelte",
+      "source_location": "L302",
+      "id": "components_graphview_handlemousemove",
+      "community": 8,
+      "norm_label": "handlemousemove()"
+    },
+    {
+      "label": "handleMouseUp()",
+      "file_type": "code",
+      "source_file": "src/lib/components/GraphView.svelte",
+      "source_location": "L322",
+      "id": "components_graphview_handlemouseup",
+      "community": 8,
+      "norm_label": "handlemouseup()"
+    },
+    {
+      "label": "handleWheel()",
+      "file_type": "code",
+      "source_file": "src/lib/components/GraphView.svelte",
+      "source_location": "L331",
+      "id": "components_graphview_handlewheel",
+      "community": 8,
+      "norm_label": "handlewheel()"
+    },
+    {
+      "label": "active",
+      "file_type": "code",
+      "source_file": "src/lib/components/NoteList.svelte",
+      "source_location": "L103",
+      "id": "components_notelist_active",
+      "community": 1,
+      "norm_label": "active"
+    },
+    {
+      "label": "active",
+      "file_type": "code",
+      "source_file": "src/lib/components/Sidebar.svelte",
+      "source_location": "L81",
+      "id": "components_sidebar_active",
+      "community": 1,
+      "norm_label": "active"
+    },
+    {
+      "label": "StorageAdapter.ts",
+      "file_type": "code",
+      "source_file": "src/lib/storage/StorageAdapter.ts",
+      "source_location": "L1",
+      "id": "storage_storageadapter",
+      "community": 0,
+      "norm_label": "storageadapter.ts"
+    },
+    {
+      "label": "NoteFile",
+      "file_type": "code",
+      "source_file": "src/lib/storage/StorageAdapter.ts",
+      "source_location": "L1",
+      "id": "storage_storageadapter_notefile",
+      "community": 0,
+      "norm_label": "notefile"
+    },
+    {
+      "label": "StorageAdapter",
+      "file_type": "code",
+      "source_file": "src/lib/storage/StorageAdapter.ts",
+      "source_location": "L9",
+      "id": "storage_storageadapter_storageadapter",
+      "community": 0,
+      "norm_label": "storageadapter"
+    },
+    {
+      "label": "IndexedDBAdapter",
+      "file_type": "code",
+      "source_file": "src/lib/storage/StorageAdapter.ts",
+      "source_location": "L22",
+      "id": "storage_storageadapter_indexeddbadapter",
+      "community": 0,
+      "norm_label": "indexeddbadapter"
+    },
+    {
+      "label": ".selectDirectory()",
+      "file_type": "code",
+      "source_file": "src/lib/storage/StorageAdapter.ts",
+      "source_location": "L28",
+      "id": "storage_storageadapter_indexeddbadapter_selectdirectory",
+      "community": 0,
+      "norm_label": ".selectdirectory()"
+    },
+    {
+      "label": ".ensureDb()",
+      "file_type": "code",
+      "source_file": "src/lib/storage/StorageAdapter.ts",
+      "source_location": "L33",
+      "id": "storage_storageadapter_indexeddbadapter_ensuredb",
+      "community": 0,
+      "norm_label": ".ensuredb()"
+    },
+    {
+      "label": ".listNotes()",
+      "file_type": "code",
+      "source_file": "src/lib/storage/StorageAdapter.ts",
+      "source_location": "L51",
+      "id": "storage_storageadapter_indexeddbadapter_listnotes",
+      "community": 0,
+      "norm_label": ".listnotes()"
+    },
+    {
+      "label": ".writeNote()",
+      "file_type": "code",
+      "source_file": "src/lib/storage/StorageAdapter.ts",
+      "source_location": "L64",
+      "id": "storage_storageadapter_indexeddbadapter_writenote",
+      "community": 0,
+      "norm_label": ".writenote()"
+    },
+    {
+      "label": ".deleteNote()",
+      "file_type": "code",
+      "source_file": "src/lib/storage/StorageAdapter.ts",
+      "source_location": "L86",
+      "id": "storage_storageadapter_indexeddbadapter_deletenote",
+      "community": 0,
+      "norm_label": ".deletenote()"
+    },
+    {
+      "label": ".renameNote()",
+      "file_type": "code",
+      "source_file": "src/lib/storage/StorageAdapter.ts",
+      "source_location": "L97",
+      "id": "storage_storageadapter_indexeddbadapter_renamenote",
+      "community": 0,
+      "norm_label": ".renamenote()"
+    },
+    {
+      "label": ".createDirectory()",
+      "file_type": "code",
+      "source_file": "src/lib/storage/StorageAdapter.ts",
+      "source_location": "L105",
+      "id": "storage_storageadapter_indexeddbadapter_createdirectory",
+      "community": 0,
+      "norm_label": ".createdirectory()"
+    },
+    {
+      "label": ".deleteDirectory()",
+      "file_type": "code",
+      "source_file": "src/lib/storage/StorageAdapter.ts",
+      "source_location": "L110",
+      "id": "storage_storageadapter_indexeddbadapter_deletedirectory",
+      "community": 0,
+      "norm_label": ".deletedirectory()"
+    },
+    {
+      "label": "FileSystemAccessAdapter",
+      "file_type": "code",
+      "source_file": "src/lib/storage/StorageAdapter.ts",
+      "source_location": "L137",
+      "id": "storage_storageadapter_filesystemaccessadapter",
+      "community": 0,
+      "norm_label": "filesystemaccessadapter"
+    },
+    {
+      "label": ".constructor()",
+      "file_type": "code",
+      "source_file": "src/lib/storage/StorageAdapter.ts",
+      "source_location": "L140",
+      "id": "storage_storageadapter_filesystemaccessadapter_constructor",
+      "community": 0,
+      "norm_label": ".constructor()"
+    },
+    {
+      "label": ".selectDirectory()",
+      "file_type": "code",
+      "source_file": "src/lib/storage/StorageAdapter.ts",
+      "source_location": "L144",
+      "id": "storage_storageadapter_filesystemaccessadapter_selectdirectory",
+      "community": 0,
+      "norm_label": ".selectdirectory()"
+    },
+    {
+      "label": ".listNotes()",
+      "file_type": "code",
+      "source_file": "src/lib/storage/StorageAdapter.ts",
+      "source_location": "L158",
+      "id": "storage_storageadapter_filesystemaccessadapter_listnotes",
+      "community": 0,
+      "norm_label": ".listnotes()"
+    },
+    {
+      "label": ".scanDirRecursive()",
+      "file_type": "code",
+      "source_file": "src/lib/storage/StorageAdapter.ts",
+      "source_location": "L173",
+      "id": "storage_storageadapter_filesystemaccessadapter_scandirrecursive",
+      "community": 0,
+      "norm_label": ".scandirrecursive()"
+    },
+    {
+      "label": ".getHandleForPath()",
+      "file_type": "code",
+      "source_file": "src/lib/storage/StorageAdapter.ts",
+      "source_location": "L200",
+      "id": "storage_storageadapter_filesystemaccessadapter_gethandleforpath",
+      "community": 0,
+      "norm_label": ".gethandleforpath()"
+    },
+    {
+      "label": ".writeNote()",
+      "file_type": "code",
+      "source_file": "src/lib/storage/StorageAdapter.ts",
+      "source_location": "L216",
+      "id": "storage_storageadapter_filesystemaccessadapter_writenote",
+      "community": 0,
+      "norm_label": ".writenote()"
+    },
+    {
+      "label": ".deleteNote()",
+      "file_type": "code",
+      "source_file": "src/lib/storage/StorageAdapter.ts",
+      "source_location": "L225",
+      "id": "storage_storageadapter_filesystemaccessadapter_deletenote",
+      "community": 0,
+      "norm_label": ".deletenote()"
+    },
+    {
+      "label": ".renameNote()",
+      "file_type": "code",
+      "source_file": "src/lib/storage/StorageAdapter.ts",
+      "source_location": "L230",
+      "id": "storage_storageadapter_filesystemaccessadapter_renamenote",
+      "community": 0,
+      "norm_label": ".renamenote()"
+    },
+    {
+      "label": ".createDirectory()",
+      "file_type": "code",
+      "source_file": "src/lib/storage/StorageAdapter.ts",
+      "source_location": "L240",
+      "id": "storage_storageadapter_filesystemaccessadapter_createdirectory",
+      "community": 0,
+      "norm_label": ".createdirectory()"
+    },
+    {
+      "label": ".deleteDirectory()",
+      "file_type": "code",
+      "source_file": "src/lib/storage/StorageAdapter.ts",
+      "source_location": "L249",
+      "id": "storage_storageadapter_filesystemaccessadapter_deletedirectory",
+      "community": 0,
+      "norm_label": ".deletedirectory()"
+    },
+    {
+      "label": "appState.svelte.ts",
+      "file_type": "code",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L1",
+      "id": "stores_appstate_svelte",
+      "community": 0,
+      "norm_label": "appstate.svelte.ts"
+    },
+    {
+      "label": "SyncMapping",
+      "file_type": "code",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L5",
+      "id": "stores_appstate_svelte_syncmapping",
+      "community": 0,
+      "norm_label": "syncmapping"
+    },
+    {
+      "label": "AppState",
+      "file_type": "code",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L11",
+      "id": "stores_appstate_svelte_appstate",
+      "community": 2,
+      "norm_label": "appstate"
+    },
+    {
+      "label": ".waitForGoogleSDK()",
+      "file_type": "code",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L47",
+      "id": "stores_appstate_svelte_appstate_waitforgooglesdk",
+      "community": 2,
+      "norm_label": ".waitforgooglesdk()"
+    },
+    {
+      "label": ".constructor()",
+      "file_type": "code",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L63",
+      "id": "stores_appstate_svelte_appstate_constructor",
+      "community": 2,
+      "norm_label": ".constructor()"
+    },
+    {
+      "label": ".setClientId()",
+      "file_type": "code",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L151",
+      "id": "stores_appstate_svelte_appstate_setclientid",
+      "community": 2,
+      "norm_label": ".setclientid()"
+    },
+    {
+      "label": ".setSyncEnabled()",
+      "file_type": "code",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L157",
+      "id": "stores_appstate_svelte_appstate_setsyncenabled",
+      "community": 2,
+      "norm_label": ".setsyncenabled()"
+    },
+    {
+      "label": ".connectGoogleDrive()",
+      "file_type": "code",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L162",
+      "id": "stores_appstate_svelte_appstate_connectgoogledrive",
+      "community": 2,
+      "norm_label": ".connectgoogledrive()"
+    },
+    {
+      "label": ".disconnectGoogleDrive()",
+      "file_type": "code",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L202",
+      "id": "stores_appstate_svelte_appstate_disconnectgoogledrive",
+      "community": 2,
+      "norm_label": ".disconnectgoogledrive()"
+    },
+    {
+      "label": ".autoConnectGoogleDrive()",
+      "file_type": "code",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L212",
+      "id": "stores_appstate_svelte_appstate_autoconnectgoogledrive",
+      "community": 2,
+      "norm_label": ".autoconnectgoogledrive()"
+    },
+    {
+      "label": ".triggerDebouncedSync()",
+      "file_type": "code",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L252",
+      "id": "stores_appstate_svelte_appstate_triggerdebouncedsync",
+      "community": 2,
+      "norm_label": ".triggerdebouncedsync()"
+    },
+    {
+      "label": ".syncNotes()",
+      "file_type": "code",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L273",
+      "id": "stores_appstate_svelte_appstate_syncnotes",
+      "community": 2,
+      "norm_label": ".syncnotes()"
+    },
+    {
+      "label": ".initSandbox()",
+      "file_type": "code",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L445",
+      "id": "stores_appstate_svelte_appstate_initsandbox",
+      "community": 2,
+      "norm_label": ".initsandbox()"
+    },
+    {
+      "label": ".openDirectory()",
+      "file_type": "code",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L479",
+      "id": "stores_appstate_svelte_appstate_opendirectory",
+      "community": 2,
+      "norm_label": ".opendirectory()"
+    },
+    {
+      "label": ".refreshNotes()",
+      "file_type": "code",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L509",
+      "id": "stores_appstate_svelte_appstate_refreshnotes",
+      "community": 2,
+      "norm_label": ".refreshnotes()"
+    },
+    {
+      "label": ".selectNote()",
+      "file_type": "code",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L523",
+      "id": "stores_appstate_svelte_appstate_selectnote",
+      "community": 2,
+      "norm_label": ".selectnote()"
+    },
+    {
+      "label": ".saveActiveNote()",
+      "file_type": "code",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L536",
+      "id": "stores_appstate_svelte_appstate_saveactivenote",
+      "community": 2,
+      "norm_label": ".saveactivenote()"
+    },
+    {
+      "label": ".createNote()",
+      "file_type": "code",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L568",
+      "id": "stores_appstate_svelte_appstate_createnote",
+      "community": 2,
+      "norm_label": ".createnote()"
+    },
+    {
+      "label": ".deleteNote()",
+      "file_type": "code",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L596",
+      "id": "stores_appstate_svelte_appstate_deletenote",
+      "community": 2,
+      "norm_label": ".deletenote()"
+    },
+    {
+      "label": ".createNotebook()",
+      "file_type": "code",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L627",
+      "id": "stores_appstate_svelte_appstate_createnotebook",
+      "community": 2,
+      "norm_label": ".createnotebook()"
+    },
+    {
+      "label": ".deleteNotebook()",
+      "file_type": "code",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L641",
+      "id": "stores_appstate_svelte_appstate_deletenotebook",
+      "community": 2,
+      "norm_label": ".deletenotebook()"
+    },
+    {
+      "label": ".extractTags()",
+      "file_type": "code",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L655",
+      "id": "stores_appstate_svelte_appstate_extracttags",
+      "community": 2,
+      "norm_label": ".extracttags()"
+    },
+    {
+      "label": "GoogleDriveSync.ts",
+      "file_type": "code",
+      "source_file": "src/lib/sync/GoogleDriveSync.ts",
+      "source_location": "L1",
+      "id": "sync_googledrivesync",
+      "community": 5,
+      "norm_label": "googledrivesync.ts"
+    },
+    {
+      "label": "DriveFileMeta",
+      "file_type": "code",
+      "source_file": "src/lib/sync/GoogleDriveSync.ts",
+      "source_location": "L3",
+      "id": "sync_googledrivesync_drivefilemeta",
+      "community": 5,
+      "norm_label": "drivefilemeta"
+    },
+    {
+      "label": "GoogleDriveSync",
+      "file_type": "code",
+      "source_file": "src/lib/sync/GoogleDriveSync.ts",
+      "source_location": "L9",
+      "id": "sync_googledrivesync_googledrivesync",
+      "community": 5,
+      "norm_label": "googledrivesync"
+    },
+    {
+      "label": ".constructor()",
+      "file_type": "code",
+      "source_file": "src/lib/sync/GoogleDriveSync.ts",
+      "source_location": "L14",
+      "id": "sync_googledrivesync_googledrivesync_constructor",
+      "community": 5,
+      "norm_label": ".constructor()"
+    },
+    {
+      "label": ".setClientId()",
+      "file_type": "code",
+      "source_file": "src/lib/sync/GoogleDriveSync.ts",
+      "source_location": "L18",
+      "id": "sync_googledrivesync_googledrivesync_setclientid",
+      "community": 5,
+      "norm_label": ".setclientid()"
+    },
+    {
+      "label": ".clearToken()",
+      "file_type": "code",
+      "source_file": "src/lib/sync/GoogleDriveSync.ts",
+      "source_location": "L22",
+      "id": "sync_googledrivesync_googledrivesync_cleartoken",
+      "community": 5,
+      "norm_label": ".cleartoken()"
+    },
+    {
+      "label": ".login()",
+      "file_type": "code",
+      "source_file": "src/lib/sync/GoogleDriveSync.ts",
+      "source_location": "L27",
+      "id": "sync_googledrivesync_googledrivesync_login",
+      "community": 5,
+      "norm_label": ".login()"
+    },
+    {
+      "label": ".setAccessToken()",
+      "file_type": "code",
+      "source_file": "src/lib/sync/GoogleDriveSync.ts",
+      "source_location": "L56",
+      "id": "sync_googledrivesync_googledrivesync_setaccesstoken",
+      "community": 5,
+      "norm_label": ".setaccesstoken()"
+    },
+    {
+      "label": ".hasToken()",
+      "file_type": "code",
+      "source_file": "src/lib/sync/GoogleDriveSync.ts",
+      "source_location": "L60",
+      "id": "sync_googledrivesync_googledrivesync_hastoken",
+      "community": 5,
+      "norm_label": ".hastoken()"
+    },
+    {
+      "label": ".apiCall()",
+      "file_type": "code",
+      "source_file": "src/lib/sync/GoogleDriveSync.ts",
+      "source_location": "L65",
+      "id": "sync_googledrivesync_googledrivesync_apicall",
+      "community": 5,
+      "norm_label": ".apicall()"
+    },
+    {
+      "label": ".getOrCreateSyncFolder()",
+      "file_type": "code",
+      "source_file": "src/lib/sync/GoogleDriveSync.ts",
+      "source_location": "L88",
+      "id": "sync_googledrivesync_googledrivesync_getorcreatesyncfolder",
+      "community": 5,
+      "norm_label": ".getorcreatesyncfolder()"
+    },
+    {
+      "label": ".listFiles()",
+      "file_type": "code",
+      "source_file": "src/lib/sync/GoogleDriveSync.ts",
+      "source_location": "L120",
+      "id": "sync_googledrivesync_googledrivesync_listfiles",
+      "community": 5,
+      "norm_label": ".listfiles()"
+    },
+    {
+      "label": ".downloadFile()",
+      "file_type": "code",
+      "source_file": "src/lib/sync/GoogleDriveSync.ts",
+      "source_location": "L131",
+      "id": "sync_googledrivesync_googledrivesync_downloadfile",
+      "community": 5,
+      "norm_label": ".downloadfile()"
+    },
+    {
+      "label": ".uploadFile()",
+      "file_type": "code",
+      "source_file": "src/lib/sync/GoogleDriveSync.ts",
+      "source_location": "L138",
+      "id": "sync_googledrivesync_googledrivesync_uploadfile",
+      "community": 5,
+      "norm_label": ".uploadfile()"
+    },
+    {
+      "label": ".deleteFile()",
+      "file_type": "code",
+      "source_file": "src/lib/sync/GoogleDriveSync.ts",
+      "source_location": "L178",
+      "id": "sync_googledrivesync_googledrivesync_deletefile",
+      "community": 5,
+      "norm_label": ".deletefile()"
+    },
+    {
+      "label": ".getUserEmail()",
+      "file_type": "code",
+      "source_file": "src/lib/sync/GoogleDriveSync.ts",
+      "source_location": "L186",
+      "id": "sync_googledrivesync_googledrivesync_getuseremail",
+      "community": 5,
+      "norm_label": ".getuseremail()"
+    },
+    {
+      "label": "main.ts",
+      "file_type": "code",
+      "source_file": "src/main.ts",
+      "source_location": "L1",
+      "id": "src_main",
+      "community": 1,
+      "norm_label": "main.ts"
+    },
+    {
+      "label": "app",
+      "file_type": "code",
+      "source_file": "src/main.ts",
+      "source_location": "L5",
+      "id": "src_main_app",
+      "community": 1,
+      "norm_label": "app"
+    },
+    {
+      "label": "svelte.config.js",
+      "file_type": "code",
+      "source_file": "svelte.config.js",
+      "source_location": "L1",
+      "id": "svelte_config",
+      "community": 19,
+      "norm_label": "svelte.config.js"
+    },
+    {
+      "label": "tsconfig.app.json",
+      "file_type": "code",
+      "source_file": "tsconfig.app.json",
+      "source_location": "L1",
+      "id": "tsconfig_app",
+      "community": 6,
+      "norm_label": "tsconfig.app.json"
+    },
+    {
+      "label": "extends",
+      "file_type": "code",
+      "source_file": "tsconfig.app.json",
+      "source_location": "L2",
+      "id": "tsconfig_app_extends",
+      "community": 6,
+      "norm_label": "extends"
+    },
+    {
+      "label": "compilerOptions",
+      "file_type": "code",
+      "source_file": "tsconfig.app.json",
+      "source_location": "L3",
+      "id": "tsconfig_app_compileroptions",
+      "community": 6,
+      "norm_label": "compileroptions"
+    },
+    {
+      "label": "tsBuildInfoFile",
+      "file_type": "code",
+      "source_file": "tsconfig.app.json",
+      "source_location": "L4",
+      "id": "tsconfig_app_compileroptions_tsbuildinfofile",
+      "community": 6,
+      "norm_label": "tsbuildinfofile"
+    },
+    {
+      "label": "target",
+      "file_type": "code",
+      "source_file": "tsconfig.app.json",
+      "source_location": "L5",
+      "id": "tsconfig_app_compileroptions_target",
+      "community": 6,
+      "norm_label": "target"
+    },
+    {
+      "label": "module",
+      "file_type": "code",
+      "source_file": "tsconfig.app.json",
+      "source_location": "L6",
+      "id": "tsconfig_app_compileroptions_module",
+      "community": 6,
+      "norm_label": "module"
+    },
+    {
+      "label": "types",
+      "file_type": "code",
+      "source_file": "tsconfig.app.json",
+      "source_location": "L7",
+      "id": "tsconfig_app_compileroptions_types",
+      "community": 6,
+      "norm_label": "types"
+    },
+    {
+      "label": "noEmit",
+      "file_type": "code",
+      "source_file": "tsconfig.app.json",
+      "source_location": "L8",
+      "id": "tsconfig_app_compileroptions_noemit",
+      "community": 6,
+      "norm_label": "noemit"
+    },
+    {
+      "label": "allowJs",
+      "file_type": "code",
+      "source_file": "tsconfig.app.json",
+      "source_location": "L15",
+      "id": "tsconfig_app_compileroptions_allowjs",
+      "community": 6,
+      "norm_label": "allowjs"
+    },
+    {
+      "label": "checkJs",
+      "file_type": "code",
+      "source_file": "tsconfig.app.json",
+      "source_location": "L16",
+      "id": "tsconfig_app_compileroptions_checkjs",
+      "community": 6,
+      "norm_label": "checkjs"
+    },
+    {
+      "label": "moduleDetection",
+      "file_type": "code",
+      "source_file": "tsconfig.app.json",
+      "source_location": "L17",
+      "id": "tsconfig_app_compileroptions_moduledetection",
+      "community": 6,
+      "norm_label": "moduledetection"
+    },
+    {
+      "label": "include",
+      "file_type": "code",
+      "source_file": "tsconfig.app.json",
+      "source_location": "L19",
+      "id": "tsconfig_app_include",
+      "community": 6,
+      "norm_label": "include"
+    },
+    {
+      "label": "tsconfig.json",
+      "file_type": "code",
+      "source_file": "tsconfig.json",
+      "source_location": "L1",
+      "id": "tsconfig",
+      "community": 10,
+      "norm_label": "tsconfig.json"
+    },
+    {
+      "label": "files",
+      "file_type": "code",
+      "source_file": "tsconfig.json",
+      "source_location": "L2",
+      "id": "tsconfig_files",
+      "community": 10,
+      "norm_label": "files"
+    },
+    {
+      "label": "references",
+      "file_type": "code",
+      "source_file": "tsconfig.json",
+      "source_location": "L3",
+      "id": "tsconfig_references",
+      "community": 10,
+      "norm_label": "references"
+    },
+    {
+      "label": "tsconfig.node.json",
+      "file_type": "code",
+      "source_file": "tsconfig.node.json",
+      "source_location": "L1",
+      "id": "tsconfig_node",
+      "community": 4,
+      "norm_label": "tsconfig.node.json"
+    },
+    {
+      "label": "compilerOptions",
+      "file_type": "code",
+      "source_file": "tsconfig.node.json",
+      "source_location": "L2",
+      "id": "tsconfig_node_compileroptions",
+      "community": 4,
+      "norm_label": "compileroptions"
+    },
+    {
+      "label": "tsBuildInfoFile",
+      "file_type": "code",
+      "source_file": "tsconfig.node.json",
+      "source_location": "L3",
+      "id": "tsconfig_node_compileroptions_tsbuildinfofile",
+      "community": 4,
+      "norm_label": "tsbuildinfofile"
+    },
+    {
+      "label": "target",
+      "file_type": "code",
+      "source_file": "tsconfig.node.json",
+      "source_location": "L4",
+      "id": "tsconfig_node_compileroptions_target",
+      "community": 4,
+      "norm_label": "target"
+    },
+    {
+      "label": "lib",
+      "file_type": "code",
+      "source_file": "tsconfig.node.json",
+      "source_location": "L5",
+      "id": "tsconfig_node_compileroptions_lib",
+      "community": 4,
+      "norm_label": "lib"
+    },
+    {
+      "label": "module",
+      "file_type": "code",
+      "source_file": "tsconfig.node.json",
+      "source_location": "L6",
+      "id": "tsconfig_node_compileroptions_module",
+      "community": 4,
+      "norm_label": "module"
+    },
+    {
+      "label": "types",
+      "file_type": "code",
+      "source_file": "tsconfig.node.json",
+      "source_location": "L7",
+      "id": "tsconfig_node_compileroptions_types",
+      "community": 4,
+      "norm_label": "types"
+    },
+    {
+      "label": "skipLibCheck",
+      "file_type": "code",
+      "source_file": "tsconfig.node.json",
+      "source_location": "L8",
+      "id": "tsconfig_node_compileroptions_skiplibcheck",
+      "community": 4,
+      "norm_label": "skiplibcheck"
+    },
+    {
+      "label": "moduleResolution",
+      "file_type": "code",
+      "source_file": "tsconfig.node.json",
+      "source_location": "L11",
+      "id": "tsconfig_node_compileroptions_moduleresolution",
+      "community": 4,
+      "norm_label": "moduleresolution"
+    },
+    {
+      "label": "allowImportingTsExtensions",
+      "file_type": "code",
+      "source_file": "tsconfig.node.json",
+      "source_location": "L12",
+      "id": "tsconfig_node_compileroptions_allowimportingtsextensions",
+      "community": 4,
+      "norm_label": "allowimportingtsextensions"
+    },
+    {
+      "label": "verbatimModuleSyntax",
+      "file_type": "code",
+      "source_file": "tsconfig.node.json",
+      "source_location": "L13",
+      "id": "tsconfig_node_compileroptions_verbatimmodulesyntax",
+      "community": 4,
+      "norm_label": "verbatimmodulesyntax"
+    },
+    {
+      "label": "moduleDetection",
+      "file_type": "code",
+      "source_file": "tsconfig.node.json",
+      "source_location": "L14",
+      "id": "tsconfig_node_compileroptions_moduledetection",
+      "community": 4,
+      "norm_label": "moduledetection"
+    },
+    {
+      "label": "noEmit",
+      "file_type": "code",
+      "source_file": "tsconfig.node.json",
+      "source_location": "L15",
+      "id": "tsconfig_node_compileroptions_noemit",
+      "community": 4,
+      "norm_label": "noemit"
+    },
+    {
+      "label": "noUnusedLocals",
+      "file_type": "code",
+      "source_file": "tsconfig.node.json",
+      "source_location": "L18",
+      "id": "tsconfig_node_compileroptions_nounusedlocals",
+      "community": 4,
+      "norm_label": "nounusedlocals"
+    },
+    {
+      "label": "noUnusedParameters",
+      "file_type": "code",
+      "source_file": "tsconfig.node.json",
+      "source_location": "L19",
+      "id": "tsconfig_node_compileroptions_nounusedparameters",
+      "community": 4,
+      "norm_label": "nounusedparameters"
+    },
+    {
+      "label": "erasableSyntaxOnly",
+      "file_type": "code",
+      "source_file": "tsconfig.node.json",
+      "source_location": "L20",
+      "id": "tsconfig_node_compileroptions_erasablesyntaxonly",
+      "community": 4,
+      "norm_label": "erasablesyntaxonly"
+    },
+    {
+      "label": "noFallthroughCasesInSwitch",
+      "file_type": "code",
+      "source_file": "tsconfig.node.json",
+      "source_location": "L21",
+      "id": "tsconfig_node_compileroptions_nofallthroughcasesinswitch",
+      "community": 4,
+      "norm_label": "nofallthroughcasesinswitch"
+    },
+    {
+      "label": "include",
+      "file_type": "code",
+      "source_file": "tsconfig.node.json",
+      "source_location": "L23",
+      "id": "tsconfig_node_include",
+      "community": 4,
+      "norm_label": "include"
+    },
+    {
+      "label": "vite.config.ts",
+      "file_type": "code",
+      "source_file": "vite.config.ts",
+      "source_location": "L1",
+      "id": "vite_config",
+      "community": 20,
+      "norm_label": "vite.config.ts"
+    },
+    {
+      "label": "Svelte + TS + Vite Template",
+      "file_type": "document",
+      "source_file": "myNotes/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "mynotes_readme_svelte_ts_vite_template",
+      "community": 9,
+      "norm_label": "svelte + ts + vite template"
+    },
+    {
+      "label": "global.d.ts Configuration Decision",
+      "file_type": "rationale",
+      "source_file": "myNotes/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "rationale": "Using triple-slash references keeps the default TypeScript setting of accepting type information from the entire workspace, while also adding svelte and vite/client type information, rather than shutting out other types with compilerOptions.types.",
+      "id": "mynotes_readme_global_d_ts",
+      "community": 18,
+      "norm_label": "global.d.ts configuration decision"
+    },
+    {
+      "label": "allowJs TypeScript Option Decision",
+      "file_type": "rationale",
+      "source_file": "myNotes/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "rationale": "Enabling allowJs prevents worse typechecking for existing JS, allows JS syntax in .svelte files, and supports mixed codebases without enforcing strict false checks.",
+      "id": "mynotes_readme_allowjs",
+      "community": 17,
+      "norm_label": "allowjs typescript option decision"
+    },
+    {
+      "label": "HMR Component State Preservation Decision",
+      "file_type": "rationale",
+      "source_file": "myNotes/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "rationale": "HMR state preservation is disabled by default due to surprising behavior and gotchas in svelte-hmr and @sveltejs/vite-plugin-svelte.",
+      "id": "mynotes_readme_hmr_state",
+      "community": 12,
+      "norm_label": "hmr component state preservation decision"
+    },
+    {
+      "label": "External Store for Component State",
+      "file_type": "concept",
+      "source_file": "myNotes/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "rationale": "Create an external store to retain important state within a component across HMR updates, as the store is not replaced by HMR.",
+      "id": "mynotes_readme_external_store",
+      "community": 12,
+      "norm_label": "external store for component state"
+    },
+    {
+      "label": "Svelte Application Mount Point",
+      "file_type": "code",
+      "source_file": "myNotes/index.html",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "mynotes_index_app_mount",
+      "community": 9,
+      "norm_label": "svelte application mount point"
+    },
+    {
+      "label": "Main Script Entry Point",
+      "file_type": "code",
+      "source_file": "myNotes/index.html",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "mynotes_index_main_script",
+      "community": 9,
+      "norm_label": "main script entry point"
+    },
+    {
+      "label": "Service Worker Registration Script",
+      "file_type": "code",
+      "source_file": "myNotes/index.html",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "mynotes_index_sw_registration",
+      "community": 11,
+      "norm_label": "service worker registration script"
+    },
+    {
+      "label": "Google Identity Services SDK",
+      "file_type": "code",
+      "source_file": "myNotes/index.html",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "mynotes_index_google_gsi",
+      "community": 16,
+      "norm_label": "google identity services sdk"
+    },
+    {
+      "label": "Web App Manifest",
+      "file_type": "code",
+      "source_file": "myNotes/index.html",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "mynotes_index_web_manifest",
+      "community": 11,
+      "norm_label": "web app manifest"
+    },
+    {
+      "label": "GitHub Pages Deploy Workflow",
+      "file_type": "code",
+      "source_file": "myNotes/.github/workflows/deploy.yml",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "workflows_deploy_workflow",
+      "community": 9,
+      "norm_label": "github pages deploy workflow"
+    },
+    {
+      "label": "Deploy Job",
+      "file_type": "code",
+      "source_file": "myNotes/.github/workflows/deploy.yml",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "workflows_deploy_deploy_job",
+      "community": 9,
+      "norm_label": "deploy job"
+    }
+  ],
+  "links": [
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": ".vscode/extensions.json",
+      "source_location": "L2",
+      "weight": 1.0,
+      "source": "vscode_extensions",
+      "target": "vscode_extensions_recommendations",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "package.json",
+      "source_location": "L21",
+      "weight": 1.0,
+      "source": "package",
+      "target": "package_dependencies",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "package.json",
+      "source_location": "L12",
+      "weight": 1.0,
+      "source": "package",
+      "target": "package_devdependencies",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "package.json",
+      "source_location": "L2",
+      "weight": 1.0,
+      "source": "package",
+      "target": "package_name",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "package.json",
+      "source_location": "L3",
+      "weight": 1.0,
+      "source": "package",
+      "target": "package_private",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "package.json",
+      "source_location": "L6",
+      "weight": 1.0,
+      "source": "package",
+      "target": "package_scripts",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "package.json",
+      "source_location": "L5",
+      "weight": 1.0,
+      "source": "package",
+      "target": "package_type",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "package.json",
+      "source_location": "L4",
+      "weight": 1.0,
+      "source": "package",
+      "target": "package_version",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "package.json",
+      "source_location": "L8",
+      "weight": 1.0,
+      "source": "package_scripts",
+      "target": "package_scripts_build",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "package.json",
+      "source_location": "L10",
+      "weight": 1.0,
+      "source": "package_scripts",
+      "target": "package_scripts_check",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "package.json",
+      "source_location": "L7",
+      "weight": 1.0,
+      "source": "package_scripts",
+      "target": "package_scripts_dev",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "package.json",
+      "source_location": "L9",
+      "weight": 1.0,
+      "source": "package_scripts",
+      "target": "package_scripts_preview",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "package.json",
+      "source_location": "L16",
+      "weight": 1.0,
+      "source": "package_devdependencies",
+      "target": "package_devdependencies_svelte",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "package.json",
+      "source_location": "L17",
+      "weight": 1.0,
+      "source": "package_devdependencies",
+      "target": "package_devdependencies_svelte_check",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "package.json",
+      "source_location": "L13",
+      "weight": 1.0,
+      "source": "package_devdependencies",
+      "target": "package_devdependencies_sveltejs_vite_plugin_svelte",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "package.json",
+      "source_location": "L14",
+      "weight": 1.0,
+      "source": "package_devdependencies",
+      "target": "package_devdependencies_tsconfig_svelte",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "package.json",
+      "source_location": "L15",
+      "weight": 1.0,
+      "source": "package_devdependencies",
+      "target": "package_devdependencies_types_node",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "package.json",
+      "source_location": "L18",
+      "weight": 1.0,
+      "source": "package_devdependencies",
+      "target": "package_devdependencies_typescript",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "package.json",
+      "source_location": "L19",
+      "weight": 1.0,
+      "source": "package_devdependencies",
+      "target": "package_devdependencies_vite",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "package.json",
+      "source_location": "L16",
+      "weight": 1.0,
+      "context": "import",
+      "source": "package_devdependencies_svelte",
+      "target": "svelte",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "package.json",
+      "source_location": "L23",
+      "weight": 1.0,
+      "source": "package_dependencies",
+      "target": "package_dependencies_lucide_svelte",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "package.json",
+      "source_location": "L24",
+      "weight": 1.0,
+      "source": "package_dependencies",
+      "target": "package_dependencies_marked",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "package.json",
+      "source_location": "L25",
+      "weight": 1.0,
+      "source": "package_dependencies",
+      "target": "package_dependencies_minisearch",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "package.json",
+      "source_location": "L22",
+      "weight": 1.0,
+      "source": "package_dependencies",
+      "target": "package_dependencies_types_marked",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "package.json",
+      "source_location": "L23",
+      "weight": 1.0,
+      "context": "import",
+      "source": "package_dependencies_lucide_svelte",
+      "target": "lucide_svelte",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "package.json",
+      "source_location": "L24",
+      "weight": 1.0,
+      "context": "import",
+      "source": "package_dependencies_marked",
+      "target": "marked",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "public/manifest.json",
+      "source_location": "L7",
+      "weight": 1.0,
+      "source": "public_manifest",
+      "target": "public_manifest_background_color",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "public/manifest.json",
+      "source_location": "L4",
+      "weight": 1.0,
+      "source": "public_manifest",
+      "target": "public_manifest_description",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "public/manifest.json",
+      "source_location": "L6",
+      "weight": 1.0,
+      "source": "public_manifest",
+      "target": "public_manifest_display",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "public/manifest.json",
+      "source_location": "L10",
+      "weight": 1.0,
+      "source": "public_manifest",
+      "target": "public_manifest_icons",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "public/manifest.json",
+      "source_location": "L2",
+      "weight": 1.0,
+      "source": "public_manifest",
+      "target": "public_manifest_name",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "public/manifest.json",
+      "source_location": "L9",
+      "weight": 1.0,
+      "source": "public_manifest",
+      "target": "public_manifest_orientation",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "public/manifest.json",
+      "source_location": "L3",
+      "weight": 1.0,
+      "source": "public_manifest",
+      "target": "public_manifest_short_name",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "public/manifest.json",
+      "source_location": "L5",
+      "weight": 1.0,
+      "source": "public_manifest",
+      "target": "public_manifest_start_url",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "public/manifest.json",
+      "source_location": "L8",
+      "weight": 1.0,
+      "source": "public_manifest",
+      "target": "public_manifest_theme_color",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "public/sw.js",
+      "source_location": "L2",
+      "weight": 1.0,
+      "source": "public_sw",
+      "target": "public_sw_assets_to_cache",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "src/App.svelte",
+      "source": "src_app",
+      "target": "components_applayout",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "src/App.svelte",
+      "source": "src_app",
+      "target": "lucide_svelte",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "src/App.svelte",
+      "source": "src_app",
+      "target": "svelte",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "src/App.svelte",
+      "source": "src_app",
+      "target": "users_piyush_documents_notes_app_mynotes_src_lib_stores_appstate_svelte",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/main.ts",
+      "source_location": "L3",
+      "weight": 1.0,
+      "source": "src_main",
+      "target": "src_app",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/components/AppLayout.svelte",
+      "source": "components_applayout",
+      "target": "svelte",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/components/GraphView.svelte",
+      "source": "components_graphview",
+      "target": "svelte",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/main.ts",
+      "source_location": "L1",
+      "weight": 1.0,
+      "source": "src_main",
+      "target": "svelte",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/components/AppLayout.svelte",
+      "source": "components_applayout",
+      "target": "users_piyush_documents_notes_app_mynotes_src_lib_stores_appstate_svelte",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/components/Editor.svelte",
+      "source": "components_editor",
+      "target": "users_piyush_documents_notes_app_mynotes_src_lib_stores_appstate_svelte",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/components/GraphView.svelte",
+      "source": "components_graphview",
+      "target": "users_piyush_documents_notes_app_mynotes_src_lib_stores_appstate_svelte",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/components/NoteList.svelte",
+      "source": "components_notelist",
+      "target": "users_piyush_documents_notes_app_mynotes_src_lib_stores_appstate_svelte",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/components/Sidebar.svelte",
+      "source": "components_sidebar",
+      "target": "users_piyush_documents_notes_app_mynotes_src_lib_stores_appstate_svelte",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/components/AppLayout.svelte",
+      "source_location": "L384",
+      "weight": 1.0,
+      "source": "components_applayout",
+      "target": "components_applayout_active",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/components/AppLayout.svelte",
+      "source": "components_applayout",
+      "target": "components_editor",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/components/AppLayout.svelte",
+      "source": "components_applayout",
+      "target": "components_graphview",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/components/AppLayout.svelte",
+      "source": "components_applayout",
+      "target": "components_notelist",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/components/AppLayout.svelte",
+      "source": "components_applayout",
+      "target": "components_sidebar",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/components/AppLayout.svelte",
+      "source": "components_applayout",
+      "target": "lucide_svelte",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/components/Editor.svelte",
+      "source": "components_editor",
+      "target": "lucide_svelte",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/components/NoteList.svelte",
+      "source": "components_notelist",
+      "target": "lucide_svelte",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/components/Sidebar.svelte",
+      "source": "components_sidebar",
+      "target": "lucide_svelte",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/components/Sidebar.svelte",
+      "source_location": "L131",
+      "weight": 1.0,
+      "source": "components_sidebar",
+      "target": "components_sidebar_active",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/components/NoteList.svelte",
+      "source_location": "L103",
+      "weight": 1.0,
+      "source": "components_notelist",
+      "target": "components_notelist_active",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/components/Editor.svelte",
+      "source_location": "L378",
+      "weight": 1.0,
+      "source": "components_editor",
+      "target": "components_editor_if",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/components/Editor.svelte",
+      "source": "components_editor",
+      "target": "marked",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/components/GraphView.svelte",
+      "source_location": "L267",
+      "weight": 1.0,
+      "source": "components_graphview",
+      "target": "components_graphview_getmousepos",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/components/GraphView.svelte",
+      "source_location": "L283",
+      "weight": 1.0,
+      "source": "components_graphview",
+      "target": "components_graphview_handlemousedown",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/components/GraphView.svelte",
+      "source_location": "L302",
+      "weight": 1.0,
+      "source": "components_graphview",
+      "target": "components_graphview_handlemousemove",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/components/GraphView.svelte",
+      "source_location": "L322",
+      "weight": 1.0,
+      "source": "components_graphview",
+      "target": "components_graphview_handlemouseup",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/components/GraphView.svelte",
+      "source_location": "L331",
+      "weight": 1.0,
+      "source": "components_graphview",
+      "target": "components_graphview_handlewheel",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/components/GraphView.svelte",
+      "source_location": "L257",
+      "weight": 1.0,
+      "source": "components_graphview",
+      "target": "components_graphview_resize",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/components/GraphView.svelte",
+      "source_location": "L276",
+      "weight": 1.0,
+      "source": "components_graphview",
+      "target": "components_graphview_tosimcoords",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/components/GraphView.svelte",
+      "source_location": "L250",
+      "weight": 1.0,
+      "source": "components_graphview",
+      "target": "components_graphview_updateloop",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/components/GraphView.svelte",
+      "source_location": "L284",
+      "weight": 1.0,
+      "source": "components_graphview_handlemousedown",
+      "target": "components_graphview_getmousepos",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/components/GraphView.svelte",
+      "source_location": "L303",
+      "weight": 1.0,
+      "source": "components_graphview_handlemousemove",
+      "target": "components_graphview_getmousepos",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/components/GraphView.svelte",
+      "source_location": "L333",
+      "weight": 1.0,
+      "source": "components_graphview_handlewheel",
+      "target": "components_graphview_getmousepos",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/components/GraphView.svelte",
+      "source_location": "L285",
+      "weight": 1.0,
+      "source": "components_graphview_handlemousedown",
+      "target": "components_graphview_tosimcoords",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/components/GraphView.svelte",
+      "source_location": "L304",
+      "weight": 1.0,
+      "source": "components_graphview_handlemousemove",
+      "target": "components_graphview_tosimcoords",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/components/GraphView.svelte",
+      "source_location": "L334",
+      "weight": 1.0,
+      "source": "components_graphview_handlewheel",
+      "target": "components_graphview_tosimcoords",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/storage/StorageAdapter.ts",
+      "source_location": "L137",
+      "weight": 1.0,
+      "source": "storage_storageadapter",
+      "target": "storage_storageadapter_filesystemaccessadapter",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/storage/StorageAdapter.ts",
+      "source_location": "L22",
+      "weight": 1.0,
+      "source": "storage_storageadapter",
+      "target": "storage_storageadapter_indexeddbadapter",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/storage/StorageAdapter.ts",
+      "source_location": "L1",
+      "weight": 1.0,
+      "source": "storage_storageadapter",
+      "target": "storage_storageadapter_notefile",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/storage/StorageAdapter.ts",
+      "source_location": "L9",
+      "weight": 1.0,
+      "source": "storage_storageadapter",
+      "target": "storage_storageadapter_storageadapter",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L1",
+      "weight": 1.0,
+      "source": "stores_appstate_svelte",
+      "target": "storage_storageadapter",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L1",
+      "weight": 1.0,
+      "source": "stores_appstate_svelte",
+      "target": "storage_storageadapter_notefile",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "implements",
+      "context": "type",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/storage/StorageAdapter.ts",
+      "source_location": "L137",
+      "weight": 1.0,
+      "source": "storage_storageadapter_filesystemaccessadapter",
+      "target": "storage_storageadapter_storageadapter",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "implements",
+      "context": "type",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/storage/StorageAdapter.ts",
+      "source_location": "L22",
+      "weight": 1.0,
+      "source": "storage_storageadapter_indexeddbadapter",
+      "target": "storage_storageadapter_storageadapter",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L1",
+      "weight": 1.0,
+      "source": "stores_appstate_svelte",
+      "target": "storage_storageadapter_storageadapter",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "context": "field",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L40",
+      "weight": 1.0,
+      "source": "stores_appstate_svelte_appstate",
+      "target": "storage_storageadapter_storageadapter",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/storage/StorageAdapter.ts",
+      "source_location": "L105",
+      "weight": 1.0,
+      "source": "storage_storageadapter_indexeddbadapter",
+      "target": "storage_storageadapter_indexeddbadapter_createdirectory",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/storage/StorageAdapter.ts",
+      "source_location": "L110",
+      "weight": 1.0,
+      "source": "storage_storageadapter_indexeddbadapter",
+      "target": "storage_storageadapter_indexeddbadapter_deletedirectory",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/storage/StorageAdapter.ts",
+      "source_location": "L86",
+      "weight": 1.0,
+      "source": "storage_storageadapter_indexeddbadapter",
+      "target": "storage_storageadapter_indexeddbadapter_deletenote",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/storage/StorageAdapter.ts",
+      "source_location": "L33",
+      "weight": 1.0,
+      "source": "storage_storageadapter_indexeddbadapter",
+      "target": "storage_storageadapter_indexeddbadapter_ensuredb",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/storage/StorageAdapter.ts",
+      "source_location": "L51",
+      "weight": 1.0,
+      "source": "storage_storageadapter_indexeddbadapter",
+      "target": "storage_storageadapter_indexeddbadapter_listnotes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/storage/StorageAdapter.ts",
+      "source_location": "L97",
+      "weight": 1.0,
+      "source": "storage_storageadapter_indexeddbadapter",
+      "target": "storage_storageadapter_indexeddbadapter_renamenote",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/storage/StorageAdapter.ts",
+      "source_location": "L28",
+      "weight": 1.0,
+      "source": "storage_storageadapter_indexeddbadapter",
+      "target": "storage_storageadapter_indexeddbadapter_selectdirectory",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/storage/StorageAdapter.ts",
+      "source_location": "L64",
+      "weight": 1.0,
+      "source": "storage_storageadapter_indexeddbadapter",
+      "target": "storage_storageadapter_indexeddbadapter_writenote",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L1",
+      "weight": 1.0,
+      "source": "stores_appstate_svelte",
+      "target": "storage_storageadapter_indexeddbadapter",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/storage/StorageAdapter.ts",
+      "source_location": "L29",
+      "weight": 1.0,
+      "source": "storage_storageadapter_indexeddbadapter_selectdirectory",
+      "target": "storage_storageadapter_indexeddbadapter_ensuredb",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/storage/StorageAdapter.ts",
+      "source_location": "L111",
+      "weight": 1.0,
+      "source": "storage_storageadapter_indexeddbadapter_deletedirectory",
+      "target": "storage_storageadapter_indexeddbadapter_ensuredb",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/storage/StorageAdapter.ts",
+      "source_location": "L87",
+      "weight": 1.0,
+      "source": "storage_storageadapter_indexeddbadapter_deletenote",
+      "target": "storage_storageadapter_indexeddbadapter_ensuredb",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/storage/StorageAdapter.ts",
+      "source_location": "L52",
+      "weight": 1.0,
+      "source": "storage_storageadapter_indexeddbadapter_listnotes",
+      "target": "storage_storageadapter_indexeddbadapter_ensuredb",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/storage/StorageAdapter.ts",
+      "source_location": "L65",
+      "weight": 1.0,
+      "source": "storage_storageadapter_indexeddbadapter_writenote",
+      "target": "storage_storageadapter_indexeddbadapter_ensuredb",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/storage/StorageAdapter.ts",
+      "source_location": "L66",
+      "weight": 1.0,
+      "source": "storage_storageadapter_indexeddbadapter_writenote",
+      "target": "storage_storageadapter_filesystemaccessadapter_listnotes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/storage/StorageAdapter.ts",
+      "source_location": "L101",
+      "weight": 1.0,
+      "source": "storage_storageadapter_indexeddbadapter_renamenote",
+      "target": "storage_storageadapter_filesystemaccessadapter_deletenote",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/storage/StorageAdapter.ts",
+      "source_location": "L98",
+      "weight": 1.0,
+      "source": "storage_storageadapter_indexeddbadapter_renamenote",
+      "target": "storage_storageadapter_filesystemaccessadapter_listnotes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/storage/StorageAdapter.ts",
+      "source_location": "L102",
+      "weight": 1.0,
+      "source": "storage_storageadapter_indexeddbadapter_renamenote",
+      "target": "storage_storageadapter_filesystemaccessadapter_writenote",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/storage/StorageAdapter.ts",
+      "source_location": "L112",
+      "weight": 1.0,
+      "source": "storage_storageadapter_indexeddbadapter_deletedirectory",
+      "target": "storage_storageadapter_filesystemaccessadapter_listnotes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/storage/StorageAdapter.ts",
+      "source_location": "L140",
+      "weight": 1.0,
+      "source": "storage_storageadapter_filesystemaccessadapter",
+      "target": "storage_storageadapter_filesystemaccessadapter_constructor",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/storage/StorageAdapter.ts",
+      "source_location": "L240",
+      "weight": 1.0,
+      "source": "storage_storageadapter_filesystemaccessadapter",
+      "target": "storage_storageadapter_filesystemaccessadapter_createdirectory",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/storage/StorageAdapter.ts",
+      "source_location": "L249",
+      "weight": 1.0,
+      "source": "storage_storageadapter_filesystemaccessadapter",
+      "target": "storage_storageadapter_filesystemaccessadapter_deletedirectory",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/storage/StorageAdapter.ts",
+      "source_location": "L225",
+      "weight": 1.0,
+      "source": "storage_storageadapter_filesystemaccessadapter",
+      "target": "storage_storageadapter_filesystemaccessadapter_deletenote",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/storage/StorageAdapter.ts",
+      "source_location": "L200",
+      "weight": 1.0,
+      "source": "storage_storageadapter_filesystemaccessadapter",
+      "target": "storage_storageadapter_filesystemaccessadapter_gethandleforpath",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/storage/StorageAdapter.ts",
+      "source_location": "L158",
+      "weight": 1.0,
+      "source": "storage_storageadapter_filesystemaccessadapter",
+      "target": "storage_storageadapter_filesystemaccessadapter_listnotes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/storage/StorageAdapter.ts",
+      "source_location": "L230",
+      "weight": 1.0,
+      "source": "storage_storageadapter_filesystemaccessadapter",
+      "target": "storage_storageadapter_filesystemaccessadapter_renamenote",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/storage/StorageAdapter.ts",
+      "source_location": "L173",
+      "weight": 1.0,
+      "source": "storage_storageadapter_filesystemaccessadapter",
+      "target": "storage_storageadapter_filesystemaccessadapter_scandirrecursive",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/storage/StorageAdapter.ts",
+      "source_location": "L144",
+      "weight": 1.0,
+      "source": "storage_storageadapter_filesystemaccessadapter",
+      "target": "storage_storageadapter_filesystemaccessadapter_selectdirectory",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/storage/StorageAdapter.ts",
+      "source_location": "L216",
+      "weight": 1.0,
+      "source": "storage_storageadapter_filesystemaccessadapter",
+      "target": "storage_storageadapter_filesystemaccessadapter_writenote",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L1",
+      "weight": 1.0,
+      "source": "stores_appstate_svelte",
+      "target": "storage_storageadapter_filesystemaccessadapter",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/storage/StorageAdapter.ts",
+      "source_location": "L169",
+      "weight": 1.0,
+      "source": "storage_storageadapter_filesystemaccessadapter_listnotes",
+      "target": "storage_storageadapter_filesystemaccessadapter_scandirrecursive",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/storage/StorageAdapter.ts",
+      "source_location": "L226",
+      "weight": 1.0,
+      "source": "storage_storageadapter_filesystemaccessadapter_deletenote",
+      "target": "storage_storageadapter_filesystemaccessadapter_gethandleforpath",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/storage/StorageAdapter.ts",
+      "source_location": "L231",
+      "weight": 1.0,
+      "source": "storage_storageadapter_filesystemaccessadapter_renamenote",
+      "target": "storage_storageadapter_filesystemaccessadapter_gethandleforpath",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/storage/StorageAdapter.ts",
+      "source_location": "L217",
+      "weight": 1.0,
+      "source": "storage_storageadapter_filesystemaccessadapter_writenote",
+      "target": "storage_storageadapter_filesystemaccessadapter_gethandleforpath",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/storage/StorageAdapter.ts",
+      "source_location": "L236",
+      "weight": 1.0,
+      "source": "storage_storageadapter_filesystemaccessadapter_renamenote",
+      "target": "storage_storageadapter_filesystemaccessadapter_writenote",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L662",
+      "weight": 1.0,
+      "source": "stores_appstate_svelte",
+      "target": "stores_appstate_svelte_appstate",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L5",
+      "weight": 1.0,
+      "source": "stores_appstate_svelte",
+      "target": "stores_appstate_svelte_syncmapping",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L2",
+      "weight": 1.0,
+      "source": "stores_appstate_svelte",
+      "target": "sync_googledrivesync",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L2",
+      "weight": 1.0,
+      "source": "stores_appstate_svelte",
+      "target": "sync_googledrivesync_googledrivesync",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L212",
+      "weight": 1.0,
+      "source": "stores_appstate_svelte_appstate",
+      "target": "stores_appstate_svelte_appstate_autoconnectgoogledrive",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L162",
+      "weight": 1.0,
+      "source": "stores_appstate_svelte_appstate",
+      "target": "stores_appstate_svelte_appstate_connectgoogledrive",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L63",
+      "weight": 1.0,
+      "source": "stores_appstate_svelte_appstate",
+      "target": "stores_appstate_svelte_appstate_constructor",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L568",
+      "weight": 1.0,
+      "source": "stores_appstate_svelte_appstate",
+      "target": "stores_appstate_svelte_appstate_createnote",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L627",
+      "weight": 1.0,
+      "source": "stores_appstate_svelte_appstate",
+      "target": "stores_appstate_svelte_appstate_createnotebook",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L596",
+      "weight": 1.0,
+      "source": "stores_appstate_svelte_appstate",
+      "target": "stores_appstate_svelte_appstate_deletenote",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L641",
+      "weight": 1.0,
+      "source": "stores_appstate_svelte_appstate",
+      "target": "stores_appstate_svelte_appstate_deletenotebook",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L202",
+      "weight": 1.0,
+      "source": "stores_appstate_svelte_appstate",
+      "target": "stores_appstate_svelte_appstate_disconnectgoogledrive",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L655",
+      "weight": 1.0,
+      "source": "stores_appstate_svelte_appstate",
+      "target": "stores_appstate_svelte_appstate_extracttags",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L445",
+      "weight": 1.0,
+      "source": "stores_appstate_svelte_appstate",
+      "target": "stores_appstate_svelte_appstate_initsandbox",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L479",
+      "weight": 1.0,
+      "source": "stores_appstate_svelte_appstate",
+      "target": "stores_appstate_svelte_appstate_opendirectory",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L509",
+      "weight": 1.0,
+      "source": "stores_appstate_svelte_appstate",
+      "target": "stores_appstate_svelte_appstate_refreshnotes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L536",
+      "weight": 1.0,
+      "source": "stores_appstate_svelte_appstate",
+      "target": "stores_appstate_svelte_appstate_saveactivenote",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L523",
+      "weight": 1.0,
+      "source": "stores_appstate_svelte_appstate",
+      "target": "stores_appstate_svelte_appstate_selectnote",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L151",
+      "weight": 1.0,
+      "source": "stores_appstate_svelte_appstate",
+      "target": "stores_appstate_svelte_appstate_setclientid",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L157",
+      "weight": 1.0,
+      "source": "stores_appstate_svelte_appstate",
+      "target": "stores_appstate_svelte_appstate_setsyncenabled",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L273",
+      "weight": 1.0,
+      "source": "stores_appstate_svelte_appstate",
+      "target": "stores_appstate_svelte_appstate_syncnotes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L252",
+      "weight": 1.0,
+      "source": "stores_appstate_svelte_appstate",
+      "target": "stores_appstate_svelte_appstate_triggerdebouncedsync",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L47",
+      "weight": 1.0,
+      "source": "stores_appstate_svelte_appstate",
+      "target": "stores_appstate_svelte_appstate_waitforgooglesdk",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L219",
+      "weight": 1.0,
+      "source": "stores_appstate_svelte_appstate_autoconnectgoogledrive",
+      "target": "stores_appstate_svelte_appstate_waitforgooglesdk",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L164",
+      "weight": 1.0,
+      "source": "stores_appstate_svelte_appstate_connectgoogledrive",
+      "target": "stores_appstate_svelte_appstate_waitforgooglesdk",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L72",
+      "weight": 1.0,
+      "source": "stores_appstate_svelte_appstate_constructor",
+      "target": "stores_appstate_svelte_appstate_waitforgooglesdk",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L208",
+      "weight": 1.0,
+      "source": "stores_appstate_svelte_appstate_disconnectgoogledrive",
+      "target": "stores_appstate_svelte_appstate_setsyncenabled",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L466",
+      "weight": 1.0,
+      "source": "stores_appstate_svelte_appstate_initsandbox",
+      "target": "stores_appstate_svelte_appstate_autoconnectgoogledrive",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L493",
+      "weight": 1.0,
+      "source": "stores_appstate_svelte_appstate_opendirectory",
+      "target": "stores_appstate_svelte_appstate_autoconnectgoogledrive",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L563",
+      "weight": 1.0,
+      "source": "stores_appstate_svelte_appstate_saveactivenote",
+      "target": "stores_appstate_svelte_appstate_triggerdebouncedsync",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L592",
+      "weight": 1.0,
+      "source": "stores_appstate_svelte_appstate_createnote",
+      "target": "stores_appstate_svelte_appstate_syncnotes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L637",
+      "weight": 1.0,
+      "source": "stores_appstate_svelte_appstate_createnotebook",
+      "target": "stores_appstate_svelte_appstate_syncnotes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L650",
+      "weight": 1.0,
+      "source": "stores_appstate_svelte_appstate_deletenotebook",
+      "target": "stores_appstate_svelte_appstate_syncnotes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L464",
+      "weight": 1.0,
+      "source": "stores_appstate_svelte_appstate_initsandbox",
+      "target": "stores_appstate_svelte_appstate_syncnotes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L491",
+      "weight": 1.0,
+      "source": "stores_appstate_svelte_appstate_opendirectory",
+      "target": "stores_appstate_svelte_appstate_syncnotes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L560",
+      "weight": 1.0,
+      "source": "stores_appstate_svelte_appstate_saveactivenote",
+      "target": "stores_appstate_svelte_appstate_syncnotes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L374",
+      "weight": 1.0,
+      "source": "stores_appstate_svelte_appstate_syncnotes",
+      "target": "stores_appstate_svelte_appstate_deletenote",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L427",
+      "weight": 1.0,
+      "source": "stores_appstate_svelte_appstate_syncnotes",
+      "target": "stores_appstate_svelte_appstate_refreshnotes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L458",
+      "weight": 1.0,
+      "source": "stores_appstate_svelte_appstate_initsandbox",
+      "target": "stores_appstate_svelte_appstate_refreshnotes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L473",
+      "weight": 1.0,
+      "source": "stores_appstate_svelte_appstate_initsandbox",
+      "target": "stores_appstate_svelte_appstate_selectnote",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L485",
+      "weight": 1.0,
+      "source": "stores_appstate_svelte_appstate_opendirectory",
+      "target": "stores_appstate_svelte_appstate_refreshnotes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L498",
+      "weight": 1.0,
+      "source": "stores_appstate_svelte_appstate_opendirectory",
+      "target": "stores_appstate_svelte_appstate_selectnote",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L587",
+      "weight": 1.0,
+      "source": "stores_appstate_svelte_appstate_createnote",
+      "target": "stores_appstate_svelte_appstate_refreshnotes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L632",
+      "weight": 1.0,
+      "source": "stores_appstate_svelte_appstate_createnotebook",
+      "target": "stores_appstate_svelte_appstate_refreshnotes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L602",
+      "weight": 1.0,
+      "source": "stores_appstate_svelte_appstate_deletenote",
+      "target": "stores_appstate_svelte_appstate_refreshnotes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L643",
+      "weight": 1.0,
+      "source": "stores_appstate_svelte_appstate_deletenotebook",
+      "target": "stores_appstate_svelte_appstate_refreshnotes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L549",
+      "weight": 1.0,
+      "source": "stores_appstate_svelte_appstate_saveactivenote",
+      "target": "stores_appstate_svelte_appstate_refreshnotes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L588",
+      "weight": 1.0,
+      "source": "stores_appstate_svelte_appstate_createnote",
+      "target": "stores_appstate_svelte_appstate_selectnote",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L606",
+      "weight": 1.0,
+      "source": "stores_appstate_svelte_appstate_deletenote",
+      "target": "stores_appstate_svelte_appstate_selectnote",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/stores/appState.svelte.ts",
+      "source_location": "L525",
+      "weight": 1.0,
+      "source": "stores_appstate_svelte_appstate_selectnote",
+      "target": "stores_appstate_svelte_appstate_saveactivenote",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/sync/GoogleDriveSync.ts",
+      "source_location": "L3",
+      "weight": 1.0,
+      "source": "sync_googledrivesync",
+      "target": "sync_googledrivesync_drivefilemeta",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/sync/GoogleDriveSync.ts",
+      "source_location": "L9",
+      "weight": 1.0,
+      "source": "sync_googledrivesync",
+      "target": "sync_googledrivesync_googledrivesync",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/sync/GoogleDriveSync.ts",
+      "source_location": "L65",
+      "weight": 1.0,
+      "source": "sync_googledrivesync_googledrivesync",
+      "target": "sync_googledrivesync_googledrivesync_apicall",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/sync/GoogleDriveSync.ts",
+      "source_location": "L22",
+      "weight": 1.0,
+      "source": "sync_googledrivesync_googledrivesync",
+      "target": "sync_googledrivesync_googledrivesync_cleartoken",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/sync/GoogleDriveSync.ts",
+      "source_location": "L14",
+      "weight": 1.0,
+      "source": "sync_googledrivesync_googledrivesync",
+      "target": "sync_googledrivesync_googledrivesync_constructor",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/sync/GoogleDriveSync.ts",
+      "source_location": "L178",
+      "weight": 1.0,
+      "source": "sync_googledrivesync_googledrivesync",
+      "target": "sync_googledrivesync_googledrivesync_deletefile",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/sync/GoogleDriveSync.ts",
+      "source_location": "L131",
+      "weight": 1.0,
+      "source": "sync_googledrivesync_googledrivesync",
+      "target": "sync_googledrivesync_googledrivesync_downloadfile",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/sync/GoogleDriveSync.ts",
+      "source_location": "L88",
+      "weight": 1.0,
+      "source": "sync_googledrivesync_googledrivesync",
+      "target": "sync_googledrivesync_googledrivesync_getorcreatesyncfolder",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/sync/GoogleDriveSync.ts",
+      "source_location": "L186",
+      "weight": 1.0,
+      "source": "sync_googledrivesync_googledrivesync",
+      "target": "sync_googledrivesync_googledrivesync_getuseremail",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/sync/GoogleDriveSync.ts",
+      "source_location": "L60",
+      "weight": 1.0,
+      "source": "sync_googledrivesync_googledrivesync",
+      "target": "sync_googledrivesync_googledrivesync_hastoken",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/sync/GoogleDriveSync.ts",
+      "source_location": "L120",
+      "weight": 1.0,
+      "source": "sync_googledrivesync_googledrivesync",
+      "target": "sync_googledrivesync_googledrivesync_listfiles",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/sync/GoogleDriveSync.ts",
+      "source_location": "L27",
+      "weight": 1.0,
+      "source": "sync_googledrivesync_googledrivesync",
+      "target": "sync_googledrivesync_googledrivesync_login",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/sync/GoogleDriveSync.ts",
+      "source_location": "L56",
+      "weight": 1.0,
+      "source": "sync_googledrivesync_googledrivesync",
+      "target": "sync_googledrivesync_googledrivesync_setaccesstoken",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/sync/GoogleDriveSync.ts",
+      "source_location": "L18",
+      "weight": 1.0,
+      "source": "sync_googledrivesync_googledrivesync",
+      "target": "sync_googledrivesync_googledrivesync_setclientid",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/sync/GoogleDriveSync.ts",
+      "source_location": "L138",
+      "weight": 1.0,
+      "source": "sync_googledrivesync_googledrivesync",
+      "target": "sync_googledrivesync_googledrivesync_uploadfile",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/sync/GoogleDriveSync.ts",
+      "source_location": "L180",
+      "weight": 1.0,
+      "source": "sync_googledrivesync_googledrivesync_deletefile",
+      "target": "sync_googledrivesync_googledrivesync_apicall",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/sync/GoogleDriveSync.ts",
+      "source_location": "L133",
+      "weight": 1.0,
+      "source": "sync_googledrivesync_googledrivesync_downloadfile",
+      "target": "sync_googledrivesync_googledrivesync_apicall",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/sync/GoogleDriveSync.ts",
+      "source_location": "L94",
+      "weight": 1.0,
+      "source": "sync_googledrivesync_googledrivesync_getorcreatesyncfolder",
+      "target": "sync_googledrivesync_googledrivesync_apicall",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/sync/GoogleDriveSync.ts",
+      "source_location": "L188",
+      "weight": 1.0,
+      "source": "sync_googledrivesync_googledrivesync_getuseremail",
+      "target": "sync_googledrivesync_googledrivesync_apicall",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/sync/GoogleDriveSync.ts",
+      "source_location": "L124",
+      "weight": 1.0,
+      "source": "sync_googledrivesync_googledrivesync_listfiles",
+      "target": "sync_googledrivesync_googledrivesync_apicall",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/sync/GoogleDriveSync.ts",
+      "source_location": "L165",
+      "weight": 1.0,
+      "source": "sync_googledrivesync_googledrivesync_uploadfile",
+      "target": "sync_googledrivesync_googledrivesync_apicall",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/lib/sync/GoogleDriveSync.ts",
+      "source_location": "L139",
+      "weight": 1.0,
+      "source": "sync_googledrivesync_googledrivesync_uploadfile",
+      "target": "sync_googledrivesync_googledrivesync_getorcreatesyncfolder",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/main.ts",
+      "source_location": "L5",
+      "weight": 1.0,
+      "source": "src_main",
+      "target": "src_main_app",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tsconfig.app.json",
+      "source_location": "L3",
+      "weight": 1.0,
+      "source": "tsconfig_app",
+      "target": "tsconfig_app_compileroptions",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tsconfig.app.json",
+      "source_location": "L2",
+      "weight": 1.0,
+      "source": "tsconfig_app",
+      "target": "tsconfig_app_extends",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tsconfig.app.json",
+      "source_location": "L19",
+      "weight": 1.0,
+      "source": "tsconfig_app",
+      "target": "tsconfig_app_include",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tsconfig.app.json",
+      "source_location": "L15",
+      "weight": 1.0,
+      "source": "tsconfig_app_compileroptions",
+      "target": "tsconfig_app_compileroptions_allowjs",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tsconfig.app.json",
+      "source_location": "L16",
+      "weight": 1.0,
+      "source": "tsconfig_app_compileroptions",
+      "target": "tsconfig_app_compileroptions_checkjs",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tsconfig.app.json",
+      "source_location": "L6",
+      "weight": 1.0,
+      "source": "tsconfig_app_compileroptions",
+      "target": "tsconfig_app_compileroptions_module",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tsconfig.app.json",
+      "source_location": "L17",
+      "weight": 1.0,
+      "source": "tsconfig_app_compileroptions",
+      "target": "tsconfig_app_compileroptions_moduledetection",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tsconfig.app.json",
+      "source_location": "L8",
+      "weight": 1.0,
+      "source": "tsconfig_app_compileroptions",
+      "target": "tsconfig_app_compileroptions_noemit",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tsconfig.app.json",
+      "source_location": "L5",
+      "weight": 1.0,
+      "source": "tsconfig_app_compileroptions",
+      "target": "tsconfig_app_compileroptions_target",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tsconfig.app.json",
+      "source_location": "L4",
+      "weight": 1.0,
+      "source": "tsconfig_app_compileroptions",
+      "target": "tsconfig_app_compileroptions_tsbuildinfofile",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tsconfig.app.json",
+      "source_location": "L7",
+      "weight": 1.0,
+      "source": "tsconfig_app_compileroptions",
+      "target": "tsconfig_app_compileroptions_types",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tsconfig.json",
+      "source_location": "L2",
+      "weight": 1.0,
+      "source": "tsconfig",
+      "target": "tsconfig_files",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tsconfig.json",
+      "source_location": "L3",
+      "weight": 1.0,
+      "source": "tsconfig",
+      "target": "tsconfig_references",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tsconfig.node.json",
+      "source_location": "L2",
+      "weight": 1.0,
+      "source": "tsconfig_node",
+      "target": "tsconfig_node_compileroptions",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tsconfig.node.json",
+      "source_location": "L23",
+      "weight": 1.0,
+      "source": "tsconfig_node",
+      "target": "tsconfig_node_include",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tsconfig.node.json",
+      "source_location": "L12",
+      "weight": 1.0,
+      "source": "tsconfig_node_compileroptions",
+      "target": "tsconfig_node_compileroptions_allowimportingtsextensions",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tsconfig.node.json",
+      "source_location": "L20",
+      "weight": 1.0,
+      "source": "tsconfig_node_compileroptions",
+      "target": "tsconfig_node_compileroptions_erasablesyntaxonly",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tsconfig.node.json",
+      "source_location": "L5",
+      "weight": 1.0,
+      "source": "tsconfig_node_compileroptions",
+      "target": "tsconfig_node_compileroptions_lib",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tsconfig.node.json",
+      "source_location": "L6",
+      "weight": 1.0,
+      "source": "tsconfig_node_compileroptions",
+      "target": "tsconfig_node_compileroptions_module",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tsconfig.node.json",
+      "source_location": "L14",
+      "weight": 1.0,
+      "source": "tsconfig_node_compileroptions",
+      "target": "tsconfig_node_compileroptions_moduledetection",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tsconfig.node.json",
+      "source_location": "L11",
+      "weight": 1.0,
+      "source": "tsconfig_node_compileroptions",
+      "target": "tsconfig_node_compileroptions_moduleresolution",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tsconfig.node.json",
+      "source_location": "L15",
+      "weight": 1.0,
+      "source": "tsconfig_node_compileroptions",
+      "target": "tsconfig_node_compileroptions_noemit",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tsconfig.node.json",
+      "source_location": "L21",
+      "weight": 1.0,
+      "source": "tsconfig_node_compileroptions",
+      "target": "tsconfig_node_compileroptions_nofallthroughcasesinswitch",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tsconfig.node.json",
+      "source_location": "L18",
+      "weight": 1.0,
+      "source": "tsconfig_node_compileroptions",
+      "target": "tsconfig_node_compileroptions_nounusedlocals",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tsconfig.node.json",
+      "source_location": "L19",
+      "weight": 1.0,
+      "source": "tsconfig_node_compileroptions",
+      "target": "tsconfig_node_compileroptions_nounusedparameters",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tsconfig.node.json",
+      "source_location": "L8",
+      "weight": 1.0,
+      "source": "tsconfig_node_compileroptions",
+      "target": "tsconfig_node_compileroptions_skiplibcheck",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tsconfig.node.json",
+      "source_location": "L4",
+      "weight": 1.0,
+      "source": "tsconfig_node_compileroptions",
+      "target": "tsconfig_node_compileroptions_target",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tsconfig.node.json",
+      "source_location": "L3",
+      "weight": 1.0,
+      "source": "tsconfig_node_compileroptions",
+      "target": "tsconfig_node_compileroptions_tsbuildinfofile",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tsconfig.node.json",
+      "source_location": "L7",
+      "weight": 1.0,
+      "source": "tsconfig_node_compileroptions",
+      "target": "tsconfig_node_compileroptions_types",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tsconfig.node.json",
+      "source_location": "L13",
+      "weight": 1.0,
+      "source": "tsconfig_node_compileroptions",
+      "target": "tsconfig_node_compileroptions_verbatimmodulesyntax",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": "myNotes/.github/workflows/deploy.yml",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "workflows_deploy_workflow",
+      "target": "mynotes_readme_svelte_ts_vite_template"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "myNotes/README.md",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "mynotes_readme_hmr_state",
+      "target": "mynotes_readme_external_store"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "myNotes/index.html",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "mynotes_index_main_script",
+      "target": "mynotes_index_app_mount"
+    },
+    {
+      "relation": "references",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": "myNotes/.github/workflows/deploy.yml",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "workflows_deploy_deploy_job",
+      "target": "mynotes_index_main_script"
+    },
+    {
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": "myNotes/index.html",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "mynotes_index_sw_registration",
+      "target": "mynotes_index_web_manifest"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "myNotes/.github/workflows/deploy.yml",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "workflows_deploy_workflow",
+      "target": "workflows_deploy_deploy_job"
+    }
+  ],
+  "hyperedges": [
+    {
+      "id": "template_configuration_decisions",
+      "label": "Template Configuration Decisions",
+      "nodes": [
+        "mynotes_readme_global_d_ts",
+        "mynotes_readme_allowjs",
+        "mynotes_readme_hmr_state"
+      ],
+      "relation": "form",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "myNotes/README.md"
+    },
+    {
+      "id": "pwa_frontend_setup",
+      "label": "PWA Frontend Setup",
+      "nodes": [
+        "mynotes_index_app_mount",
+        "mynotes_index_sw_registration",
+        "mynotes_index_web_manifest"
+      ],
+      "relation": "participate_in",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": "myNotes/index.html"
+    }
+  ],
+  "built_at_commit": "7acb7e40a73de7e66faaf83c20f9ef1974909b12"
+}
