@@ -1,0 +1,2 @@
+# Allow WASM files to be committed so that remote builds (CI/CD) succeed
+# without needing a Rust/wasm-pack compiler toolchain.
