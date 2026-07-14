@@ -208,9 +208,18 @@ ${cubes}\t\t</Cube>
     // Run standard interpreter
     try {
       const result = this.instance.interpret(preprocessed);
+      let outputHtml = result.output;
+      
+      // Clean up the output to remove the redundant echoed input expression
+      // Numbat outputs e.g. "10 eur <br> = 11 $". We only want the "= 11 $" part.
+      const eqIdx = outputHtml.indexOf('<span class="numbat-operator">=</span>');
+      if (eqIdx !== -1) {
+        outputHtml = outputHtml.substring(eqIdx).trim();
+      }
+
       return {
-        output: result.output,
-        plainOutput: this.stripHtml(result.output),
+        output: outputHtml,
+        plainOutput: this.stripHtml(outputHtml),
         isError: result.is_error,
         isCommand: false,
         shouldClear: false,
