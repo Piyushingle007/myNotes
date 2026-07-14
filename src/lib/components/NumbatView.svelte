@@ -36,9 +36,17 @@
   let isRenamingFile = $state(false);
   let newFileNameVal = $state('');
 
+  // Autocomplete State
+  let showCompletions = $state(false);
+  let completions = $state<string[]>([]);
+  let activeCompletionIdx = $state(0);
+  let dropdownTop = $state(0);
+  let dropdownLeft = $state(0);
+
   // DOM Elements References
   let editorEl = $state<HTMLTextAreaElement | null>(null);
   let backdropEl = $state<HTMLElement | null>(null);
+  let renameInputEl = $state<HTMLInputElement | null>(null);
 
   // Derived values
   let activeFile = $derived(numFiles.find(f => f.path === activeFilePath));
@@ -84,6 +92,18 @@
 
   async function selectFile(path: string) {
     if (activeFilePath === path) return;
+
+    // Fix: Cancel pending debounced evaluation to prevent race conditions
+    if (evalTimeout) {
+      clearTimeout(evalTimeout);
+      evalTimeout = null;
+    }
+
+    // Fix: Save current tab before switching
+    if (activeFilePath && activeFile) {
+      await saveCurrentDocument();
+    }
+
     activeFilePath = path;
     showMenu = false;
     isRenamingFile = false;
@@ -174,10 +194,114 @@
     resizeTextarea();
     handleEditorScroll();
     
+    updateCompletions();
+
     if (evalTimeout) clearTimeout(evalTimeout);
     evalTimeout = setTimeout(() => {
       evaluateDocument(rawText);
     }, 150);
+  }
+
+  function updateCompletions() {
+    if (!editorEl || !isWasmLoaded) return;
+    const start = editorEl.selectionStart;
+    const textBeforeCursor = rawText.substring(0, start);
+    const linesBefore = textBeforeCursor.split('\n');
+    const currentLineIdx = linesBefore.length - 1;
+    const currentLineText = linesBefore[currentLineIdx];
+    const currentCharIdx = currentLineText.length;
+
+    // Check for trigger
+    const isDotTrigger = currentLineText.endsWith('.');
+    // Match the last word being typed
+    const lastWordRegex = /[\w]+$/; 
+    const match = currentLineText.match(lastWordRegex);
+    
+    // Close if it's a decimal number like .5 or 0.5
+    if (currentLineText.match(/(?:\d+\.\d*|\.\d+)$/)) {
+      showCompletions = false;
+      return;
+    }
+
+    let query = '';
+    if (isDotTrigger) {
+      query = ''; // Show all options
+    } else if (match) {
+      query = match[0];
+    } else {
+      showCompletions = false;
+      return;
+    }
+
+    // Preprocess 'to' in query just like interpret does
+    const processedQuery = query.replace(/\bto\b/gi, '->');
+    const results = NumbatEngine.getCompletions(processedQuery);
+
+    if (results.length > 0) {
+      completions = results.slice(0, 50); // limit to max 50 for performance
+      activeCompletionIdx = 0;
+      showCompletions = true;
+
+      // Position calculation
+      const lineHeight = 24.32; // 1.6 * 15.2px
+      const charWidth = 9.12; // Approx for JetBrains Mono
+      const gutterWidth = 44; 
+      const paddingLeft = 16;
+      const paddingTop = 16;
+
+      dropdownTop = paddingTop + (currentLineIdx + 1) * lineHeight;
+      dropdownLeft = gutterWidth + paddingLeft + (currentCharIdx * charWidth);
+    } else {
+      showCompletions = false;
+    }
+  }
+
+  function insertCompletion(completion: string) {
+    if (!editorEl) return;
+    const start = editorEl.selectionStart;
+    const textVal = rawText;
+    const textBefore = textVal.substring(0, start);
+    
+    const isDotTrigger = textBefore.endsWith('.');
+    const lastWordRegex = /[\w]+$/;
+    const match = textBefore.match(lastWordRegex);
+    
+    let wordStart = start;
+    if (isDotTrigger) {
+      wordStart = start - 1; // replace the dot
+    } else if (match) {
+      wordStart = start - match[0].length;
+    }
+
+    rawText = textVal.substring(0, wordStart) + completion + textVal.substring(start);
+    evaluateDocument(rawText);
+    
+    showCompletions = false;
+    
+    const newCursorPos = wordStart + completion.length;
+    tick().then(() => {
+      editorEl?.setSelectionRange(newCursorPos, newCursorPos);
+      editorEl?.focus();
+      resizeTextarea();
+    });
+  }
+
+  function handleTextareaKeydown(e: KeyboardEvent) {
+    if (!showCompletions) return;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      activeCompletionIdx = (activeCompletionIdx + 1) % completions.length;
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      activeCompletionIdx = (activeCompletionIdx - 1 + completions.length) % completions.length;
+    } else if (e.key === 'Enter' || e.key === 'Tab') {
+      e.preventDefault();
+      insertCompletion(completions[activeCompletionIdx]);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      showCompletions = false;
+    }
   }
 
   async function evaluateDocument(text: string) {
@@ -268,6 +392,7 @@
     newFileNameVal = activeTitle;
     isRenamingFile = true;
     showMenu = false;
+    tick().then(() => renameInputEl?.focus());
   }
 
   function escapeHtml(str: string) {
@@ -278,7 +403,7 @@
   function highlightNumbatSyntax(text: string) {
     if (!text) return '';
     
-    const regex = /(?:(\b(?:let|fn|if|then|else)\b)|(\b(?:km|m|cm|mm|kg|g|mg|s|min|h|d|usd|eur|inr|gbp|mph|celsius|fahrenheit)\b)|(\b\d+(?:\.\d+)?(?:e[-+]?\d+)?\b)|(\+|-|\*|\/|\^|->|=>|=)|(#.*|\/\/.*))/gi;
+    const regex = /(?:(\b(?:let|fn|if|then|else)\b)|(\b(?:km|m|cm|mm|kg|g|mg|s|min|h|d|usd|eur|inr|gbp|mph|celsius|fahrenheit)\b)|(\b\d+(?:\.\d+)?(?:e[-+]?\d+)?\b)|(\+|-|\*|\/|\^|->|=>|=|\bto\b)|(#.*|\/\/.*))/gi;
     
     let html = '';
     let lastIndex = 0;
@@ -433,7 +558,7 @@
               onblur={handleRenameActiveFile}
               class="title-input"
               placeholder="Session name..."
-              bind:this={editorEl}
+              bind:this={renameInputEl}
             />
           {:else}
             <h1 class="title-display" ondblclick={startRenaming}>{activeTitle || 'Calculation Session'}</h1>
@@ -512,6 +637,7 @@
               value={rawText}
               oninput={handleEditorInput}
               onscroll={handleEditorScroll}
+              onkeydown={handleTextareaKeydown}
               placeholder="# Type calculations here...&#10;100 usd -> inr&#10;12 km / 2 h -> mph"
               autocomplete="off"
               autocorrect="off"
@@ -519,6 +645,24 @@
               spellcheck="false"
               class="editor-textarea"
             ></textarea>
+            
+            <!-- Autocomplete Dropdown -->
+            {#if showCompletions}
+              <div 
+                class="autocomplete-dropdown flex-col"
+                style="top: {dropdownTop}px; left: {dropdownLeft}px;"
+              >
+                {#each completions as completion, idx}
+                  <button 
+                    class="completion-item" 
+                    class:active={idx === activeCompletionIdx}
+                    onclick={() => insertCompletion(completion)}
+                  >
+                    {completion}
+                  </button>
+                {/each}
+              </div>
+            {/if}
             </div>
           </div>
 
@@ -741,6 +885,48 @@ fn f(x) = x^2</code></pre>
     .header-actions {
       gap: 2px;
     }
+
+    .quick-actions-bar {
+      bottom: 56px;
+    }
+  }
+
+  /* ── Autocomplete Dropdown ── */
+  .autocomplete-dropdown {
+    position: absolute;
+    z-index: 1000;
+    background: var(--bg-card-hover, #2d333b);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    min-width: 150px;
+    max-height: 200px;
+    overflow-y: auto;
+    padding: 4px;
+    /* Prevent default scrollbar styling to look clean */
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+  }
+
+  .completion-item {
+    background: transparent;
+    border: none;
+    color: var(--text-primary);
+    padding: 6px 12px;
+    text-align: left;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 0.85rem;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.1s;
+    width: 100%;
+  }
+
+  .completion-item:hover, .completion-item.active {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--accent);
   }
 
   /* Sync Indicator */
