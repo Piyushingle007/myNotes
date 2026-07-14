@@ -249,7 +249,7 @@
       const paddingLeft = 16;
       const paddingTop = 16;
 
-      const assumedDropdownWidth = 220; // Approximate max width of the dropdown
+      const assumedDropdownWidth = 330; // 320px width + padding
       const maxLeft = (editorEl?.clientWidth || 400) - assumedDropdownWidth;
       const calculatedLeft = gutterWidth + paddingLeft + (currentCharIdx * charWidth);
 
@@ -653,7 +653,7 @@
             <!-- Autocomplete Dropdown -->
             {#if showCompletions}
               <div 
-                class="autocomplete-dropdown flex-col"
+                class="autocomplete-dropdown"
                 style="top: {dropdownTop}px; left: {dropdownLeft}px;"
               >
                 {#each completions as completion, idx}
@@ -905,13 +905,19 @@ fn f(x) = x^2</code></pre>
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 8px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-    min-width: 150px;
+    width: 320px;
+    max-width: calc(100vw - 48px);
     max-height: 200px;
     overflow-y: auto;
-    padding: 4px;
+    padding: 8px;
     /* Prevent default scrollbar styling to look clean */
     scrollbar-width: thin;
     scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+    display: flex;
+    flex-wrap: wrap;
+    flex-direction: row;
+    gap: 6px;
+    align-content: flex-start;
   }
 
   .completion-item {
@@ -919,18 +925,17 @@ fn f(x) = x^2</code></pre>
     border: none;
     color: var(--text-primary);
     padding: 6px 12px;
-    text-align: left;
+    text-align: center;
     font-family: 'JetBrains Mono', 'Fira Code', monospace;
     font-size: 0.85rem;
     border-radius: 4px;
     cursor: pointer;
     transition: background 0.1s;
-    width: 100%;
   }
 
   .completion-item:hover, .completion-item.active {
-    background: rgba(255, 255, 255, 0.1);
-    color: var(--accent);
+    background: var(--accent-primary, #007acc);
+    color: #ffffff;
   }
 
   /* Sync Indicator */
