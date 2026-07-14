@@ -17,12 +17,20 @@
   let textareaEl = $state<HTMLTextAreaElement | null>(null);
   let isFocused = $state(false);
 
+  // Autocomplete state
+  let completions = $state<string[]>([]);
+  let showCompletions = $state(false);
+  let activeCompletionIdx = $state(0);
+  let dropdownTop = $state(0);
+  let dropdownLeft = $state(0);
+  let evalTimeout: any = null;
+
   function evaluate() {
     if (!NumbatEngine.isReady()) return;
     const lines = code.split('\n');
     let res = [];
     for (const line of lines) {
-      if (!line.trim()) {
+      if (!line.trim() || line.trim().startsWith('#') || line.trim().startsWith('//')) {
         res.push({ output: '', isError: false });
         continue;
       }
@@ -32,10 +40,115 @@
     results = res;
   }
 
-  function handleInput() {
+  function handleInput(e: Event) {
+    code = (e.target as HTMLTextAreaElement).value;
     resizeTextarea();
+    updateCompletions();
+    
+    if (evalTimeout) clearTimeout(evalTimeout);
+    evalTimeout = setTimeout(() => {
+      evaluate();
+      updateAttributes({ code });
+    }, 150);
+  }
+
+  function updateCompletions() {
+    if (!textareaEl || !NumbatEngine.isReady()) return;
+    const start = textareaEl.selectionStart;
+    const textBeforeCursor = code.substring(0, start);
+    const linesBefore = textBeforeCursor.split('\n');
+    const currentLineIdx = linesBefore.length - 1;
+    const currentLineText = linesBefore[currentLineIdx];
+    const currentCharIdx = currentLineText.length;
+
+    const isDotTrigger = currentLineText.endsWith('.');
+    const lastWordRegex = /[\w]+$/; 
+    const match = currentLineText.match(lastWordRegex);
+    
+    if (currentLineText.match(/(?:\d+\.\d*|\.\d+)$/)) {
+      showCompletions = false;
+      return;
+    }
+
+    let query = '';
+    if (isDotTrigger) {
+      query = '';
+    } else if (match) {
+      query = match[0];
+    } else {
+      showCompletions = false;
+      return;
+    }
+
+    const processedQuery = query.replace(/\bto\b/gi, '->');
+    const compResults = NumbatEngine.getCompletions(processedQuery);
+
+    if (compResults.length > 0) {
+      completions = compResults.slice(0, 50);
+      activeCompletionIdx = 0;
+      showCompletions = true;
+
+      const lineHeight = 24.32; // 1.6 * 15.2px
+      const charWidth = 9.12; 
+      const paddingLeft = 12;
+      const paddingTop = 12;
+
+      const assumedDropdownWidth = 200;
+      const maxLeft = (textareaEl.clientWidth || 300) - assumedDropdownWidth;
+      const calculatedLeft = paddingLeft + (currentCharIdx * charWidth);
+
+      dropdownTop = paddingTop + (currentLineIdx + 1) * lineHeight;
+      dropdownLeft = Math.min(calculatedLeft, Math.max(0, maxLeft));
+    } else {
+      showCompletions = false;
+    }
+  }
+
+  function insertCompletion(completion: string) {
+    if (!textareaEl) return;
+    const start = textareaEl.selectionStart;
+    const textVal = code;
+    const textBefore = textVal.substring(0, start);
+    
+    const isDotTrigger = textBefore.endsWith('.');
+    const match = textBefore.match(/[\w]+$/);
+    
+    let wordStart = start;
+    if (isDotTrigger) {
+      wordStart = start - 1;
+    } else if (match) {
+      wordStart = start - match[0].length;
+    }
+
+    code = textVal.substring(0, wordStart) + completion + textVal.substring(start);
     evaluate();
     updateAttributes({ code });
+    showCompletions = false;
+    
+    const newCursorPos = wordStart + completion.length;
+    tick().then(() => {
+      textareaEl?.setSelectionRange(newCursorPos, newCursorPos);
+      textareaEl?.focus();
+      resizeTextarea();
+    });
+  }
+
+  function handleKeydown(e: KeyboardEvent) {
+    if (!showCompletions) return;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      activeCompletionIdx = (activeCompletionIdx + 1) % completions.length;
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      activeCompletionIdx = (activeCompletionIdx - 1 + completions.length) % completions.length;
+    } else if (e.key === 'Enter' || e.key === 'Tab') {
+      e.preventDefault();
+      insertCompletion(completions[activeCompletionIdx]);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      showCompletions = false;
+    }
   }
 
   function resizeTextarea() {
@@ -71,15 +184,42 @@
       bind:this={textareaEl}
       bind:value={code}
       oninput={handleInput}
+      onkeydown={handleKeydown}
       onfocus={() => isFocused = true}
-      onblur={() => isFocused = false}
+      onblur={() => setTimeout(() => showCompletions = false, 150)}
       placeholder="e.g. 10 usd to inr"
       class="numbat-textarea"
     ></textarea>
+    
+    {#if showCompletions}
+      <div 
+        class="autocomplete-dropdown flex-col"
+        style="top: {dropdownTop}px; left: {dropdownLeft}px;"
+      >
+        {#each completions as completion, i}
+          <button 
+            class="completion-item" 
+            class:active={i === activeCompletionIdx}
+            onmousedown={(e) => { e.preventDefault(); insertCompletion(completion); }}
+          >
+            {completion}
+          </button>
+        {/each}
+      </div>
+    {/if}
+
     <div class="numbat-results flex-col">
       {#each results as res}
         <div class="result-line" class:error={res.isError}>
-          {@html res.output || '&nbsp;'}
+          {#if res.output}
+            {#if res.isError}
+              {@html res.output}
+            {:else}
+              <span class="equals-sign">= </span>{@html res.output}
+            {/if}
+          {:else}
+            &nbsp;
+          {/if}
         </div>
       {/each}
     </div>
@@ -163,6 +303,46 @@
   }
   .result-line.error {
     color: var(--danger-color, #ff4444);
+  }
+  .equals-sign {
+    opacity: 0.5;
+    margin-right: 4px;
+  }
+  
+  /* Autocomplete Dropdown */
+  .autocomplete-dropdown {
+    position: absolute;
+    z-index: 1000;
+    background: var(--bg-card-hover, #2d333b);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    min-width: 150px;
+    max-height: 200px;
+    overflow-y: auto;
+    padding: 4px;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+  }
+
+  .completion-item {
+    background: transparent;
+    border: none;
+    color: var(--text-primary);
+    padding: 6px 12px;
+    text-align: left;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 0.85rem;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.1s;
+  }
+
+  .completion-item:hover, .completion-item.active {
+    background: var(--accent-primary, #007acc);
+    color: #ffffff;
   }
   
   @media (max-width: 768px) {
