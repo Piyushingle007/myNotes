@@ -114,7 +114,7 @@ export class NumbatEngineClass {
       }
     }
 
-    // Try fetching from ECB direct, fallback to Numbat proxy
+    // Try fetching from ECB direct, fallback to Numbat proxy, then Frankfurter API
     let xmlContent = '';
     try {
       // Trying ECB direct (may hit CORS in browser, but good to try)
@@ -133,7 +133,32 @@ export class NumbatEngineClass {
           xmlContent = await proxyResponse.text();
         }
       } catch (e) {
-        console.error('Failed to fetch exchange rates from both ECB and proxy:', e);
+        // Silent catch, try next source
+      }
+    }
+
+    // Frankfurter API — CORS-friendly, free, ECB-sourced. Convert JSON to ECB XML.
+    if (!xmlContent) {
+      try {
+        const frankfurterRes = await fetch('https://api.frankfurter.dev/v1/latest');
+        if (frankfurterRes.ok) {
+          const data = await frankfurterRes.json();
+          const date = data.date || new Date().toISOString().slice(0, 10);
+          const rates = data.rates as Record<string, number>;
+          let cubes = '';
+          for (const [currency, rate] of Object.entries(rates)) {
+            cubes += `\t\t\t<Cube currency="${currency}" rate="${rate}"/>\n`;
+          }
+          xmlContent = `<?xml version="1.0" encoding="UTF-8"?>
+<gesmes:Envelope xmlns:gesmes="http://www.gesmes.org/xml/2002-08-01" xmlns="http://www.ecb.int/vocabulary/2002-08-01/eurofxref">
+\t<Cube>
+\t\t<Cube time="${date}">
+${cubes}\t\t</Cube>
+\t</Cube>
+</gesmes:Envelope>`;
+        }
+      } catch (e) {
+        console.error('Failed to fetch exchange rates from Frankfurter API:', e);
       }
     }
 
@@ -317,36 +342,36 @@ const FALLBACK_EXCHANGE_RATES_XML = `<?xml version="1.0" encoding="UTF-8"?>
 <gesmes:Envelope xmlns:gesmes="http://www.gesmes.org/xml/2002-08-01" xmlns="http://www.ecb.int/vocabulary/2002-08-01/eurofxref">
 	<Cube>
 		<Cube time="2026-07-14">
-			<Cube currency="USD" rate="1.09"/>
-			<Cube currency="JPY" rate="170.0"/>
+			<Cube currency="USD" rate="1.13"/>
+			<Cube currency="JPY" rate="175.0"/>
 			<Cube currency="BGN" rate="1.9558"/>
-			<Cube currency="CZK" rate="25.0"/>
+			<Cube currency="CZK" rate="24.8"/>
 			<Cube currency="DKK" rate="7.46"/>
-			<Cube currency="GBP" rate="0.85"/>
-			<Cube currency="HUF" rate="390.0"/>
-			<Cube currency="PLN" rate="4.30"/>
+			<Cube currency="GBP" rate="0.84"/>
+			<Cube currency="HUF" rate="395.0"/>
+			<Cube currency="PLN" rate="4.18"/>
 			<Cube currency="RON" rate="4.97"/>
-			<Cube currency="SEK" rate="11.40"/>
-			<Cube currency="CHF" rate="0.96"/>
-			<Cube currency="ISK" rate="150.0"/>
-			<Cube currency="NOK" rate="11.50"/>
-			<Cube currency="TRY" rate="35.0"/>
-			<Cube currency="AUD" rate="1.60"/>
-			<Cube currency="BRL" rate="5.90"/>
-			<Cube currency="CAD" rate="1.50"/>
-			<Cube currency="CNY" rate="7.90"/>
-			<Cube currency="HKD" rate="8.50"/>
-			<Cube currency="IDR" rate="17800.0"/>
-			<Cube currency="ILS" rate="4.00"/>
-			<Cube currency="INR" rate="91.0"/>
-			<Cube currency="KRW" rate="1500.0"/>
-			<Cube currency="MXN" rate="19.5"/>
-			<Cube currency="MYR" rate="5.10"/>
-			<Cube currency="NZD" rate="1.78"/>
-			<Cube currency="PHP" rate="64.0"/>
-			<Cube currency="SGD" rate="1.47"/>
-			<Cube currency="THB" rate="39.8"/>
-			<Cube currency="ZAR" rate="19.8"/>
+			<Cube currency="SEK" rate="10.90"/>
+			<Cube currency="CHF" rate="0.94"/>
+			<Cube currency="ISK" rate="148.0"/>
+			<Cube currency="NOK" rate="11.20"/>
+			<Cube currency="TRY" rate="43.0"/>
+			<Cube currency="AUD" rate="1.68"/>
+			<Cube currency="BRL" rate="6.30"/>
+			<Cube currency="CAD" rate="1.52"/>
+			<Cube currency="CNY" rate="8.10"/>
+			<Cube currency="HKD" rate="8.80"/>
+			<Cube currency="IDR" rate="18200.0"/>
+			<Cube currency="ILS" rate="4.05"/>
+			<Cube currency="INR" rate="102.0"/>
+			<Cube currency="KRW" rate="1520.0"/>
+			<Cube currency="MXN" rate="21.5"/>
+			<Cube currency="MYR" rate="4.80"/>
+			<Cube currency="NZD" rate="1.82"/>
+			<Cube currency="PHP" rate="63.0"/>
+			<Cube currency="SGD" rate="1.45"/>
+			<Cube currency="THB" rate="38.5"/>
+			<Cube currency="ZAR" rate="20.0"/>
 		</Cube>
 	</Cube>
 </gesmes:Envelope>`;
