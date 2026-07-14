@@ -180,48 +180,56 @@
     </button>
   </div>
   <div class="numbat-body flex-row">
-    <textarea
-      bind:this={textareaEl}
-      bind:value={code}
-      oninput={handleInput}
-      onkeydown={handleKeydown}
-      onfocus={() => isFocused = true}
-      onblur={() => setTimeout(() => showCompletions = false, 150)}
-      placeholder="e.g. 10 usd to inr"
-      class="numbat-textarea"
-    ></textarea>
-    
-    {#if showCompletions}
-      <div 
-        class="autocomplete-dropdown flex-col"
-        style="top: {dropdownTop}px; left: {dropdownLeft}px;"
-      >
-        {#each completions as completion, i}
-          <button 
-            class="completion-item" 
-            class:active={i === activeCompletionIdx}
-            onmousedown={(e) => { e.preventDefault(); insertCompletion(completion); }}
-          >
-            {completion}
-          </button>
+    <div class="input-pane flex-row">
+      <div class="line-numbers">
+        {#each code.split('\n') as _, i}
+          <div class="line-number">{i + 1}</div>
         {/each}
       </div>
-    {/if}
+      <div style="position: relative; flex: 1; min-width: 0;">
+        <textarea
+          bind:this={textareaEl}
+          bind:value={code}
+          oninput={handleInput}
+          onkeydown={handleKeydown}
+          onfocus={() => isFocused = true}
+          onblur={() => setTimeout(() => showCompletions = false, 150)}
+          placeholder="e.g. 10 usd to inr"
+          class="numbat-textarea"
+        ></textarea>
+        
+        {#if showCompletions}
+          <div 
+            class="autocomplete-dropdown flex-col"
+            style="top: {dropdownTop}px; left: {dropdownLeft}px;"
+          >
+            {#each completions as completion, i}
+              <button 
+                class="completion-item" 
+                class:active={i === activeCompletionIdx}
+                onmousedown={(e) => { e.preventDefault(); insertCompletion(completion); }}
+              >
+                {completion}
+              </button>
+            {/each}
+          </div>
+        {/if}
+      </div>
+    </div>
 
-    <div class="numbat-results flex-col">
-      {#each results as res}
-        <div class="result-line" class:error={res.isError}>
-          {#if res.output}
-            {#if res.isError}
-              {@html res.output}
-            {:else}
-              <span class="equals-sign">= </span>{@html res.output}
-            {/if}
-          {:else}
-            &nbsp;
-          {/if}
-        </div>
-      {/each}
+    <div class="output-pane flex-row">
+      <div class="line-numbers output-numbers">
+        {#each results as _, i}
+          <div class="line-number">{i + 1}</div>
+        {/each}
+      </div>
+      <div class="results-content flex-col">
+        {#each results as res}
+          <div class="result-line" class:error={res.isError}>
+            {@html res.output || '&nbsp;'}
+          </div>
+        {/each}
+      </div>
     </div>
   </div>
 </div>
@@ -273,8 +281,35 @@
     position: relative;
     align-items: flex-start;
   }
-  .numbat-textarea {
+  .input-pane, .output-pane {
     flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+  }
+  .output-pane {
+    background: rgba(0, 0, 0, 0.1);
+  }
+  .line-numbers {
+    width: 36px;
+    padding: 12px 8px 12px 4px;
+    text-align: right;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 0.85rem;
+    line-height: 1.6;
+    color: var(--text-muted, #6e7681);
+    user-select: none;
+    border-right: 1px solid rgba(255, 255, 255, 0.05);
+    background: rgba(0, 0, 0, 0.05);
+  }
+  .output-numbers {
+    border-right: none;
+    background: transparent;
+    padding-left: 12px;
+  }
+  .numbat-textarea {
+    width: 100%;
     min-width: 0;
     background: transparent;
     border: none;
@@ -287,11 +322,10 @@
     overflow: hidden;
     outline: none;
   }
-  .numbat-results {
+  .results-content {
     flex: 1;
     min-width: 0;
     padding: 12px;
-    background: rgba(0, 0, 0, 0.1);
     font-family: 'JetBrains Mono', 'Fira Code', monospace;
     font-size: 0.85rem;
     line-height: 1.6;
@@ -303,10 +337,6 @@
   }
   .result-line.error {
     color: var(--danger-color, #ff4444);
-  }
-  .equals-sign {
-    opacity: 0.5;
-    margin-right: 4px;
   }
   
   /* Autocomplete Dropdown */
@@ -349,7 +379,10 @@
     .numbat-body {
       flex-direction: column;
     }
-    .numbat-results {
+    .input-pane {
+      width: 100%;
+    }
+    .output-pane {
       width: 100%;
       border-top: 1px dashed var(--border-color);
     }
