@@ -21,9 +21,18 @@
   let completions = $state<string[]>([]);
   let showCompletions = $state(false);
   let activeCompletionIdx = $state(0);
-  let dropdownTop = $state(0);
   let dropdownLeft = $state(0);
   let evalTimeout: any = null;
+
+  let lines = $state(code.split('\n'));
+  let inputRefs = $state<HTMLInputElement[]>([]);
+  let activeLineIdx = $state(-1);
+
+  function syncCode() {
+    code = lines.join('\n');
+    updateAttributes({ code });
+    evaluate();
+  }
 
   function evaluate() {
     if (!NumbatEngine.isReady()) return;
@@ -40,25 +49,41 @@
     results = res;
   }
 
-  function handleInput(e: Event) {
-    code = (e.target as HTMLTextAreaElement).value;
-    resizeTextarea();
-    updateCompletions();
-    
-    if (evalTimeout) clearTimeout(evalTimeout);
-    evalTimeout = setTimeout(() => {
-      evaluate();
-      updateAttributes({ code });
-    }, 150);
+  function handleInput(e: Event, i: number) {
+    lines[i] = (e.target as HTMLInputElement).value;
+    syncCode();
+    updateCompletions(i);
   }
 
-  function updateCompletions() {
-    if (!textareaEl || !NumbatEngine.isReady()) return;
-    const start = textareaEl.selectionStart;
-    const textBeforeCursor = code.substring(0, start);
-    const linesBefore = textBeforeCursor.split('\n');
-    const currentLineIdx = linesBefore.length - 1;
-    const currentLineText = linesBefore[currentLineIdx];
+  function handlePaste(e: ClipboardEvent, i: number) {
+    const paste = e.clipboardData?.getData('text');
+    if (paste && paste.includes('\n')) {
+      e.preventDefault();
+      const input = inputRefs[i];
+      const pos = input?.selectionStart || 0;
+      const textBefore = lines[i].substring(0, pos);
+      const textAfter = lines[i].substring(input?.selectionEnd || 0);
+      
+      const pastedLines = paste.split('\n');
+      lines[i] = textBefore + pastedLines[0];
+      
+      const newLinesToInsert = pastedLines.slice(1);
+      newLinesToInsert[newLinesToInsert.length - 1] += textAfter;
+      
+      lines.splice(i + 1, 0, ...newLinesToInsert);
+      syncCode();
+      tick().then(() => {
+        const lastPastedIdx = i + newLinesToInsert.length;
+        inputRefs[lastPastedIdx]?.focus();
+      });
+    }
+  }
+
+  function updateCompletions(i: number) {
+    const input = inputRefs[i];
+    if (!input || !NumbatEngine.isReady()) return;
+    const start = input.selectionStart || 0;
+    const currentLineText = lines[i].substring(0, start);
     const currentCharIdx = currentLineText.length;
 
     const isDotTrigger = currentLineText.endsWith('.');
@@ -88,26 +113,25 @@
       activeCompletionIdx = 0;
       showCompletions = true;
 
-      const lineHeight = 24.32; // 1.6 * 15.2px
       const charWidth = 9.12; 
-      const paddingLeft = 12;
-      const paddingTop = 12;
-
-      const assumedDropdownWidth = 330;
-      const maxLeft = (textareaEl.clientWidth || 300) - assumedDropdownWidth;
-      const calculatedLeft = paddingLeft + (currentCharIdx * charWidth);
-
-      dropdownTop = paddingTop + (currentLineIdx + 1) * lineHeight;
-      dropdownLeft = Math.min(calculatedLeft, Math.max(0, maxLeft));
+      
+      const assumedDropdownWidth = 320; 
+      const containerWidth = input.clientWidth || 400;
+      
+      const maxLeft = Math.max(0, containerWidth - assumedDropdownWidth);
+      const calculatedLeft = currentCharIdx * charWidth;
+      
+      dropdownLeft = Math.min(calculatedLeft, maxLeft);
     } else {
       showCompletions = false;
     }
   }
 
-  function insertCompletion(completion: string) {
-    if (!textareaEl) return;
-    const start = textareaEl.selectionStart;
-    const textVal = code;
+  function insertCompletion(completion: string, i: number) {
+    const input = inputRefs[i];
+    if (!input) return;
+    const start = input.selectionStart || 0;
+    const textVal = lines[i];
     const textBefore = textVal.substring(0, start);
     
     const isDotTrigger = textBefore.endsWith('.');
@@ -120,42 +144,77 @@
       wordStart = start - match[0].length;
     }
 
-    code = textVal.substring(0, wordStart) + completion + textVal.substring(start);
-    evaluate();
-    updateAttributes({ code });
+    lines[i] = textVal.substring(0, wordStart) + completion + textVal.substring(start);
+    syncCode();
     showCompletions = false;
     
     const newCursorPos = wordStart + completion.length;
     tick().then(() => {
-      textareaEl?.setSelectionRange(newCursorPos, newCursorPos);
-      textareaEl?.focus();
-      resizeTextarea();
+      inputRefs[i]?.setSelectionRange(newCursorPos, newCursorPos);
+      inputRefs[i]?.focus();
     });
   }
 
-  function handleKeydown(e: KeyboardEvent) {
-    if (!showCompletions) return;
+  function handleKeydown(e: KeyboardEvent, i: number) {
+    if (showCompletions && activeLineIdx === i) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        activeCompletionIdx = (activeCompletionIdx + 1) % completions.length;
+        return;
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        activeCompletionIdx = (activeCompletionIdx - 1 + completions.length) % completions.length;
+        return;
+      } else if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault();
+        insertCompletion(completions[activeCompletionIdx], i);
+        return;
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        showCompletions = false;
+        return;
+      }
+    }
 
-    if (e.key === 'ArrowDown') {
+    const input = inputRefs[i];
+    if (!input) return;
+
+    if (e.key === 'Enter') {
       e.preventDefault();
-      activeCompletionIdx = (activeCompletionIdx + 1) % completions.length;
+      const pos = input.selectionStart || 0;
+      const textAfter = lines[i].substring(pos);
+      lines[i] = lines[i].substring(0, pos);
+      lines.splice(i + 1, 0, textAfter);
+      syncCode();
+      tick().then(() => {
+        inputRefs[i + 1]?.focus();
+        inputRefs[i + 1]?.setSelectionRange(0, 0);
+      });
+    } else if (e.key === 'Backspace' && (input.selectionStart || 0) === 0 && (input.selectionEnd || 0) === 0 && i > 0) {
+      e.preventDefault();
+      const textToMove = lines[i];
+      lines.splice(i, 1);
+      const prevLen = lines[i - 1].length;
+      lines[i - 1] += textToMove;
+      syncCode();
+      tick().then(() => {
+        inputRefs[i - 1]?.focus();
+        inputRefs[i - 1]?.setSelectionRange(prevLen, prevLen);
+      });
     } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      activeCompletionIdx = (activeCompletionIdx - 1 + completions.length) % completions.length;
-    } else if (e.key === 'Enter' || e.key === 'Tab') {
-      e.preventDefault();
-      insertCompletion(completions[activeCompletionIdx]);
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
-      showCompletions = false;
+      if (i > 0) {
+        e.preventDefault();
+        inputRefs[i - 1]?.focus();
+      }
+    } else if (e.key === 'ArrowDown') {
+      if (i < lines.length - 1) {
+        e.preventDefault();
+        inputRefs[i + 1]?.focus();
+      }
     }
   }
 
-  function resizeTextarea() {
-    if (!textareaEl) return;
-    textareaEl.style.height = 'auto';
-    textareaEl.style.height = textareaEl.scrollHeight + 'px';
-  }
+
 
   function removeBlock() {
     const pos = getPos();
@@ -167,7 +226,6 @@
   onMount(() => {
     NumbatEngine.init().then(() => {
       evaluate();
-      tick().then(resizeTextarea);
     });
   });
 </script>
@@ -179,58 +237,55 @@
       <Trash2 size={14} />
     </button>
   </div>
-  <div class="numbat-body flex-row">
-    <div class="input-pane flex-row">
-      <div class="line-numbers">
-        {#each code.split('\n') as _, i}
+  <div class="numbat-body flex-col">
+    {#each lines as line, i}
+      <div class="cell flex-col" class:active={activeLineIdx === i}>
+        <div class="cell-input-row flex-row">
           <div class="line-number">{i + 1}</div>
-        {/each}
-      </div>
-      <div style="position: relative; flex: 1; min-width: 0;">
-        <textarea
-          bind:this={textareaEl}
-          bind:value={code}
-          oninput={handleInput}
-          onkeydown={handleKeydown}
-          onfocus={() => isFocused = true}
-          onblur={() => setTimeout(() => showCompletions = false, 150)}
-          placeholder="e.g. 10 usd to inr"
-          class="numbat-textarea"
-        ></textarea>
-        
-        {#if showCompletions}
-          <div 
-            class="autocomplete-dropdown"
-            style="top: {dropdownTop}px; left: {dropdownLeft}px;"
-          >
-            {#each completions as completion, i}
-              <button 
-                class="completion-item" 
-                class:active={i === activeCompletionIdx}
-                onmousedown={(e) => { e.preventDefault(); insertCompletion(completion); }}
+          <div class="input-wrapper" style="position: relative; flex: 1;">
+            <input 
+              bind:this={inputRefs[i]}
+              value={line}
+              oninput={(e) => handleInput(e, i)}
+              onkeydown={(e) => handleKeydown(e, i)}
+              onpaste={(e) => handlePaste(e, i)}
+              onfocus={() => activeLineIdx = i}
+              onblur={() => setTimeout(() => { if (activeLineIdx === i) showCompletions = false; }, 150)}
+              class="cell-input"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder={i === 0 ? "e.g. 10 usd to inr" : ""}
+            />
+            
+            {#if showCompletions && activeLineIdx === i}
+              <div 
+                class="autocomplete-dropdown"
+                style="top: 100%; left: {dropdownLeft}px; margin-top: 4px;"
               >
-                {completion}
-              </button>
-            {/each}
+                {#each completions as completion, cIdx}
+                  <button 
+                    class="completion-item" 
+                    class:active={cIdx === activeCompletionIdx}
+                    onmousedown={(e) => { e.preventDefault(); insertCompletion(completion, i); }}
+                  >
+                    {completion}
+                  </button>
+                {/each}
+              </div>
+            {/if}
+          </div>
+        </div>
+
+        {#if results[i] && !results[i].isEmpty}
+          <div class="cell-result-row flex-row">
+            <div class="result-spacer"></div>
+            <div class="cell-result" class:error={results[i].isError}>
+              <span class="res-val">{@html results[i].output || '&nbsp;'}</span>
+            </div>
           </div>
         {/if}
       </div>
-    </div>
-
-    <div class="output-pane flex-row">
-      <div class="line-numbers output-numbers">
-        {#each results as _, i}
-          <div class="line-number">{i + 1}</div>
-        {/each}
-      </div>
-      <div class="results-content flex-col">
-        {#each results as res}
-          <div class="result-line" class:error={res.isError}>
-            {@html res.output || '&nbsp;'}
-          </div>
-        {/each}
-      </div>
-    </div>
+    {/each}
   </div>
 </div>
 
@@ -279,64 +334,80 @@
   }
   .numbat-body {
     position: relative;
-    align-items: flex-start;
-  }
-  .input-pane, .output-pane {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    flex-direction: row;
-    align-items: stretch;
-  }
-  .output-pane {
-    background: rgba(0, 0, 0, 0.1);
-    border-radius: 0 8px 8px 0;
-  }
-  .line-numbers {
-    width: 36px;
-    padding: 12px 8px 12px 4px;
-    text-align: right;
-    font-family: 'JetBrains Mono', 'Fira Code', monospace;
-    font-size: 0.85rem;
-    line-height: 1.6;
-    color: var(--text-muted, #6e7681);
-    user-select: none;
-    border-right: 1px solid rgba(255, 255, 255, 0.05);
-    background: rgba(0, 0, 0, 0.05);
-  }
-  .output-numbers {
-    border-right: none;
     background: transparent;
-    padding-left: 12px;
+    padding: 8px 0;
   }
-  .numbat-textarea {
+  
+  .numbat-body::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 36px;
+    background: rgba(0, 0, 0, 0.15);
+    border-right: 1px solid rgba(255, 255, 255, 0.05);
+    z-index: 0;
+    pointer-events: none;
+    border-bottom-left-radius: 8px;
+  }
+
+  .cell {
+    position: relative;
+    z-index: 1;
     width: 100%;
-    min-width: 0;
+  }
+  
+  .cell.active {
+    z-index: 10;
+  }
+  .cell-input-row {
+    width: 100%;
+    min-height: 28px;
+    align-items: center;
+  }
+  .line-number {
+    width: 36px;
+    text-align: right;
+    padding-right: 12px;
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    user-select: none;
+    flex-shrink: 0;
+  }
+  .cell-input {
+    width: 100%;
     background: transparent;
     border: none;
-    padding: 12px;
-    font-family: 'JetBrains Mono', 'Fira Code', monospace;
-    font-size: 0.85rem;
-    line-height: 1.6;
-    color: var(--text-primary);
-    resize: none;
-    overflow: hidden;
     outline: none;
-  }
-  .results-content {
-    flex: 1;
-    min-width: 0;
-    padding: 12px;
+    color: var(--text-primary);
     font-family: 'JetBrains Mono', 'Fira Code', monospace;
     font-size: 0.85rem;
-    line-height: 1.6;
-    color: var(--text-secondary);
+    padding: 4px 12px;
   }
-  .result-line {
-    min-height: 1.6em;
+  .cell-result-row {
+    width: 100%;
+    align-items: flex-start;
+    padding: 2px 0 6px 0;
+  }
+  .result-spacer {
+    width: 36px;
+    flex-shrink: 0;
+  }
+  .cell-result {
+    flex: 1;
+    margin-left: 12px;
+    margin-right: 12px;
+    color: var(--accent-primary, #007acc);
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 0.85rem;
+    padding: 4px 12px;
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.03);
+    border-radius: 6px;
     word-break: break-all;
   }
-  .result-line.error {
+  .cell-result.error {
     color: var(--danger-color, #ff4444);
   }
   
@@ -344,19 +415,15 @@
   .autocomplete-dropdown {
     position: absolute;
     z-index: 1000;
-    background: var(--bg-card-hover, #2d333b);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: #25282e;
+    border: 1px solid rgba(255, 255, 255, 0.15);
     border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6);
     width: 320px;
-    max-width: calc(100vw - 48px);
+    max-width: 100%;
     max-height: 200px;
     overflow-y: auto;
     padding: 8px;
-    scrollbar-width: thin;
-    scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
     display: flex;
     flex-wrap: wrap;
     flex-direction: row;
@@ -365,8 +432,8 @@
   }
 
   .completion-item {
-    background: transparent;
-    border: none;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.05);
     color: var(--text-primary);
     padding: 6px 12px;
     text-align: center;
@@ -380,19 +447,8 @@
   .completion-item:hover, .completion-item.active {
     background: var(--accent-primary, #007acc);
     color: #ffffff;
+    border-color: var(--accent-primary, #007acc);
   }
   
-  @media (max-width: 768px) {
-    .numbat-body {
-      flex-direction: column;
-    }
-    .input-pane {
-      width: 100%;
-    }
-    .output-pane {
-      width: 100%;
-      border-top: 1px dashed var(--border-color);
-      border-radius: 0 0 8px 8px;
-    }
-  }
+
 </style>

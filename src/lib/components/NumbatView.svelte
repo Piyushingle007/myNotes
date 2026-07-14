@@ -23,9 +23,9 @@
   
   let lines = $derived(rawText.split('\n'));
   
-  // Syntax Highlighter
-  let highlightedText = $derived(highlightNumbatSyntax(rawText));
-
+  let inputRefs = $state<HTMLInputElement[]>([]);
+  let activeLineIdx = $state(-1);
+  
   // Copy to Clipboard Feedback
   let copiedLineIdx = $state<number | null>(null);
 
@@ -40,12 +40,9 @@
   let showCompletions = $state(false);
   let completions = $state<string[]>([]);
   let activeCompletionIdx = $state(0);
-  let dropdownTop = $state(0);
   let dropdownLeft = $state(0);
 
   // DOM Elements References
-  let editorEl = $state<HTMLTextAreaElement | null>(null);
-  let backdropEl = $state<HTMLElement | null>(null);
   let renameInputEl = $state<HTMLInputElement | null>(null);
 
   // Derived values
@@ -114,7 +111,7 @@
       rawText = doc.text || '';
       evaluateDocument(rawText);
       await tick();
-      resizeTextarea();
+      inputRefs[0]?.focus();
     } catch (e) {
       console.error('Failed to load Num file:', e);
       appState.showToast('Failed to load calculation session.', 'error', 4000);
@@ -126,7 +123,7 @@
       const path = await NumFileManager.createNumFile('Calc');
       refreshFileList();
       await selectFile(path);
-      editorEl?.focus();
+      inputRefs[0]?.focus();
     } catch (e) {
       appState.showToast('Failed to create calculation session.', 'error', 4000);
     }
@@ -173,28 +170,19 @@
     }
   }
 
-  function resizeTextarea() {
-    if (editorEl) {
-      editorEl.style.height = 'auto';
-      editorEl.style.height = editorEl.scrollHeight + 'px';
-    }
-  }
-
-  function handleEditorScroll() {
-    if (editorEl && backdropEl) {
-      backdropEl.scrollTop = editorEl.scrollTop;
-      backdropEl.scrollLeft = editorEl.scrollLeft;
-    }
+  function syncCode() {
+    rawText = lines.join('\n');
+    evaluateDocument(rawText);
   }
 
   let evalTimeout: any = null;
-  function handleEditorInput(e: Event) {
-    const target = e.target as HTMLTextAreaElement;
-    rawText = target.value;
-    resizeTextarea();
-    handleEditorScroll();
+  function handleInput(e: Event, i: number) {
+    const val = (e.target as HTMLInputElement).value;
+    const newLines = [...lines];
+    newLines[i] = val;
+    rawText = newLines.join('\n');
     
-    updateCompletions();
+    updateCompletions(i);
 
     if (evalTimeout) clearTimeout(evalTimeout);
     evalTimeout = setTimeout(() => {
@@ -202,13 +190,39 @@
     }, 150);
   }
 
-  function updateCompletions() {
-    if (!editorEl || !isWasmLoaded) return;
-    const start = editorEl.selectionStart;
-    const textBeforeCursor = rawText.substring(0, start);
-    const linesBefore = textBeforeCursor.split('\n');
-    const currentLineIdx = linesBefore.length - 1;
-    const currentLineText = linesBefore[currentLineIdx];
+  function handlePaste(e: ClipboardEvent, i: number) {
+    const paste = e.clipboardData?.getData('text');
+    if (paste && paste.includes('\n')) {
+      e.preventDefault();
+      const input = inputRefs[i];
+      const pos = input?.selectionStart || 0;
+      const textBefore = lines[i].substring(0, pos);
+      const textAfter = lines[i].substring(input?.selectionEnd || 0);
+      
+      const pastedLines = paste.split('\n');
+      const newLines = [...lines];
+      
+      newLines[i] = textBefore + pastedLines[0];
+      
+      const newLinesToInsert = pastedLines.slice(1);
+      newLinesToInsert[newLinesToInsert.length - 1] += textAfter;
+      
+      newLines.splice(i + 1, 0, ...newLinesToInsert);
+      rawText = newLines.join('\n');
+      evaluateDocument(rawText);
+      
+      tick().then(() => {
+        const lastPastedIdx = i + newLinesToInsert.length;
+        inputRefs[lastPastedIdx]?.focus();
+      });
+    }
+  }
+
+  function updateCompletions(i: number) {
+    const input = inputRefs[i];
+    if (!input || !isWasmLoaded) return;
+    const start = input.selectionStart || 0;
+    const currentLineText = lines[i].substring(0, start);
     const currentCharIdx = currentLineText.length;
 
     // Check for trigger
@@ -243,68 +257,117 @@
       showCompletions = true;
 
       // Position calculation
-      const lineHeight = 24.32; // 1.6 * 15.2px
-      const charWidth = 9.12; // Approx for JetBrains Mono
-      const gutterWidth = 44; 
-      const paddingLeft = 16;
-      const paddingTop = 16;
-
-      const assumedDropdownWidth = 330; // 320px width + padding
-      const maxLeft = (editorEl?.clientWidth || 400) - assumedDropdownWidth;
-      const calculatedLeft = gutterWidth + paddingLeft + (currentCharIdx * charWidth);
-
-      dropdownTop = paddingTop + (currentLineIdx + 1) * lineHeight;
-      dropdownLeft = Math.min(calculatedLeft, Math.max(0, maxLeft));
+      const assumedDropdownWidth = 320; 
+      const containerWidth = input.clientWidth || 400;
+      
+      const maxLeft = Math.max(0, containerWidth - assumedDropdownWidth);
+      const calculatedLeft = currentCharIdx * charWidth;
+      
+      dropdownLeft = Math.min(calculatedLeft, maxLeft);
     } else {
       showCompletions = false;
     }
   }
 
-  function insertCompletion(completion: string) {
-    if (!editorEl) return;
-    const start = editorEl.selectionStart;
-    const textVal = rawText;
+  function insertCompletion(completion: string, i: number) {
+    const input = inputRefs[i];
+    if (!input) return;
+    const start = input.selectionStart || 0;
+    const textVal = lines[i];
     const textBefore = textVal.substring(0, start);
     
     const isDotTrigger = textBefore.endsWith('.');
-    const lastWordRegex = /[\w]+$/;
-    const match = textBefore.match(lastWordRegex);
+    const match = textBefore.match(/[\w]+$/);
     
     let wordStart = start;
     if (isDotTrigger) {
-      wordStart = start - 1; // replace the dot
+      wordStart = start - 1;
     } else if (match) {
       wordStart = start - match[0].length;
     }
 
-    rawText = textVal.substring(0, wordStart) + completion + textVal.substring(start);
+    const newLines = [...lines];
+    newLines[i] = textVal.substring(0, wordStart) + completion + textVal.substring(start);
+    lines = newLines;
+    rawText = newLines.join('\n');
     evaluateDocument(rawText);
     
     showCompletions = false;
     
     const newCursorPos = wordStart + completion.length;
     tick().then(() => {
-      editorEl?.setSelectionRange(newCursorPos, newCursorPos);
-      editorEl?.focus();
-      resizeTextarea();
+      inputRefs[i]?.setSelectionRange(newCursorPos, newCursorPos);
+      inputRefs[i]?.focus();
     });
   }
 
-  function handleTextareaKeydown(e: KeyboardEvent) {
-    if (!showCompletions) return;
+  function handleKeydown(e: KeyboardEvent, i: number) {
+    if (showCompletions && activeLineIdx === i) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        activeCompletionIdx = (activeCompletionIdx + 1) % completions.length;
+        return;
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        activeCompletionIdx = (activeCompletionIdx - 1 + completions.length) % completions.length;
+        return;
+      } else if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault();
+        insertCompletion(completions[activeCompletionIdx], i);
+        return;
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        showCompletions = false;
+        return;
+      }
+    }
 
-    if (e.key === 'ArrowDown') {
+    const input = inputRefs[i];
+    if (!input) return;
+
+    if (e.key === 'Enter') {
       e.preventDefault();
-      activeCompletionIdx = (activeCompletionIdx + 1) % completions.length;
+      const pos = input.selectionStart || 0;
+      const textAfter = lines[i].substring(pos);
+      
+      const newLines = [...lines];
+      newLines[i] = newLines[i].substring(0, pos);
+      newLines.splice(i + 1, 0, textAfter);
+      
+      lines = newLines;
+      rawText = newLines.join('\n');
+      evaluateDocument(rawText);
+      
+      tick().then(() => {
+        inputRefs[i + 1]?.focus();
+        inputRefs[i + 1]?.setSelectionRange(0, 0);
+      });
+    } else if (e.key === 'Backspace' && (input.selectionStart || 0) === 0 && (input.selectionEnd || 0) === 0 && i > 0) {
+      e.preventDefault();
+      const textToMove = lines[i];
+      const newLines = [...lines];
+      newLines.splice(i, 1);
+      const prevLen = newLines[i - 1].length;
+      newLines[i - 1] += textToMove;
+      
+      lines = newLines;
+      rawText = newLines.join('\n');
+      evaluateDocument(rawText);
+      
+      tick().then(() => {
+        inputRefs[i - 1]?.focus();
+        inputRefs[i - 1]?.setSelectionRange(prevLen, prevLen);
+      });
     } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      activeCompletionIdx = (activeCompletionIdx - 1 + completions.length) % completions.length;
-    } else if (e.key === 'Enter' || e.key === 'Tab') {
-      e.preventDefault();
-      insertCompletion(completions[activeCompletionIdx]);
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
-      showCompletions = false;
+      if (i > 0) {
+        e.preventDefault();
+        inputRefs[i - 1]?.focus();
+      }
+    } else if (e.key === 'ArrowDown') {
+      if (i < lines.length - 1) {
+        e.preventDefault();
+        inputRefs[i + 1]?.focus();
+      }
     }
   }
 
@@ -347,13 +410,13 @@
   async function handleResetSession() {
     if (confirm('Reset calculation session? This clears all text variables and inputs.')) {
       rawText = '';
+      lines = [''];
       results = [];
       NumbatEngine.reset();
       await saveCurrentDocument();
       showMenu = false;
       appState.showToast('Session reset.', 'info', 2000);
-      editorEl?.focus();
-      resizeTextarea();
+      inputRefs[0]?.focus();
     }
   }
 
@@ -368,17 +431,23 @@
   }
 
   function handleQuickInsert(expr: string) {
-    if (!editorEl) return;
-    const start = editorEl.selectionStart;
-    const end = editorEl.selectionEnd;
-    const currentVal = editorEl.value;
-    rawText = currentVal.substring(0, start) + expr + currentVal.substring(end);
+    const idx = activeLineIdx >= 0 ? activeLineIdx : lines.length - 1;
+    const input = inputRefs[idx];
+    if (!input) return;
+    const start = input.selectionStart || 0;
+    const end = input.selectionEnd || 0;
+    const currentVal = lines[idx];
+    
+    const newLines = [...lines];
+    newLines[idx] = currentVal.substring(0, start) + expr + currentVal.substring(end);
+    lines = newLines;
+    rawText = newLines.join('\n');
     evaluateDocument(rawText);
+    
     tick().then(() => {
-      resizeTextarea();
-      editorEl?.focus();
+      inputRefs[idx]?.focus();
       const newPos = start + expr.length;
-      editorEl?.setSelectionRange(newPos, newPos);
+      inputRefs[idx]?.setSelectionRange(newPos, newPos);
     });
   }
 
@@ -467,55 +536,6 @@
     </div>
 
     <div class="header-actions flex-row">
-      <!-- Sync status badge + popover anchor (desktop only) -->
-      <div class="sync-popover-anchor note-status-group">
-        <span class="status-badge save-status clean" title="All changes saved to local storage">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
-            <polyline points="17 21 17 13 7 13 7 21"/>
-            <polyline points="7 3 7 8 15 8"/>
-          </svg>
-          Saved Locally
-        </span>
-
-        <button 
-          class="status-badge sync-status flex-row {appState.googleConnected && appState.syncEnabled ? (appState.syncStatus === 'syncing' ? 'syncing' : appState.syncStatus === 'error' ? 'error' : 'synced') : 'offline'}" 
-          onclick={() => { showSyncPopover = !showSyncPopover; }}
-          title="Sync & Account"
-          aria-expanded={showSyncPopover}
-        >
-          {#if appState.googleConnected && appState.syncEnabled}
-            {#if appState.syncStatus === 'syncing'}
-              <svg class="spin" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
-              </svg>
-              Syncing...
-            {:else if appState.syncStatus === 'error'}
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-              </svg>
-              Sync Error
-            {:else}
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M17.5 19A3.5 3.5 0 0 0 21 15.5c0-2.79-2.54-4.5-5-4.5-.47 0-.89.09-1.29.27A5 5 0 0 0 5 14c0 .34.05.67.15 1A4.5 4.5 0 0 0 8.5 19H17.5z"/>
-                <polyline points="9 15 11 17 15 13"/>
-              </svg>
-              Drive Synced
-            {/if}
-          {:else}
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M5 14c-.33 0-.66-.03-1-.1A4.5 4.5 0 0 0 8.5 19h7a4.5 4.5 0 0 0 4-2.5"/>
-              <path d="M16 11c1 .5 2.5.5 3.5-1.5M10.3 5.3A5 5 0 0 1 19 8c0 .33-.03.66-.1 1"/>
-              <line x1="2" y1="2" x2="22" y2="22"/>
-            </svg>
-            Sync Offline
-          {/if}
-        </button>
-  
-        {#if showSyncPopover}
-          <SyncPopover onclose={() => { showSyncPopover = false; }} />
-        {/if}
-      </div>
 
       <button class="hdr-icon-btn" onclick={() => showHelp = !showHelp} class:active={showHelp} title="Syntax Guide">
         <HelpCircle size={15} />
@@ -568,8 +588,8 @@
             <h1 class="title-display" ondblclick={startRenaming}>{activeTitle || 'Calculation Session'}</h1>
           {/if}
 
-          <!-- Mobile-only sync status below title -->
-          <div class="mobile-sync-status">
+          <!-- Sync status badges moved next to title -->
+          <div class="sync-popover-anchor note-status-group">
             <span class="status-badge save-status clean" title="All changes saved to local storage">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
@@ -581,10 +601,9 @@
 
             <button 
               class="status-badge sync-status flex-row {appState.googleConnected && appState.syncEnabled ? (appState.syncStatus === 'syncing' ? 'syncing' : appState.syncStatus === 'error' ? 'error' : 'synced') : 'offline'}" 
-              onclick={() => { if (appState.googleConnected && appState.syncEnabled) showSyncPopover = !showSyncPopover; }}
-              title={appState.googleConnected && appState.syncEnabled ? 'Sync & Account' : 'Sync is offline'}
+              onclick={() => { showSyncPopover = !showSyncPopover; }}
+              title="Sync & Account"
               aria-expanded={showSyncPopover}
-              style={!(appState.googleConnected && appState.syncEnabled) ? 'cursor: default;' : ''}
             >
               {#if appState.googleConnected && appState.syncEnabled}
                 {#if appState.syncStatus === 'syncing'}
@@ -613,92 +632,72 @@
                 Sync Offline
               {/if}
             </button>
-
+      
             {#if showSyncPopover}
               <SyncPopover onclose={() => { showSyncPopover = false; }} />
             {/if}
           </div>
         </div>
 
-        <div class="workspace-grid">
-          <!-- Enhanced Editor Area -->
-          <div class="editor-container flex-row">
-            <!-- Line Numbers Gutter -->
-            <div class="line-gutter flex-col" aria-hidden="true">
-              {#each lines as _, idx}
-                <div class="line-no">{idx + 1}</div>
-              {/each}
-            </div>
-            
-            <div class="editor-wrapper">
-              <!-- Syntax Backdrop -->
-              <div class="editor-backdrop" aria-hidden="true" bind:this={backdropEl}>
-                {@html highlightedText}
-              </div>
-            <!-- Transparent Textarea -->
-            <textarea
-              bind:this={editorEl}
-              value={rawText}
-              oninput={handleEditorInput}
-              onscroll={handleEditorScroll}
-              onkeydown={handleTextareaKeydown}
-              placeholder="# Type calculations here...&#10;100 usd -> inr&#10;12 km / 2 h -> mph"
-              autocomplete="off"
-              autocorrect="off"
-              autocapitalize="off"
-              spellcheck="false"
-              class="editor-textarea"
-            ></textarea>
-            
-            <!-- Autocomplete Dropdown -->
-            {#if showCompletions}
-              <div 
-                class="autocomplete-dropdown"
-                style="top: {dropdownTop}px; left: {dropdownLeft}px;"
-              >
-                {#each completions as completion, idx}
-                  <button 
-                    class="completion-item" 
-                    class:active={idx === activeCompletionIdx}
-                    onclick={() => insertCompletion(completion)}
-                  >
-                    {completion}
-                  </button>
-                {/each}
-              </div>
-            {/if}
-            </div>
-          </div>
-
-          <!-- Results Stack -->
-          <div class="results-stack flex-col" aria-hidden="true">
-            {#each results as res, idx}
-              <div class="result-row flex-row">
-                {#if !res.isEmpty}
-                  <div class="res-output flex-row">
-                    <span class="res-line-badge">{res.lineNo}</span>
-                    <div class="num-output" class:has-error={res.isError}>
-                      {#if res.expr}
-                        <span class="res-expr">{res.expr}</span>
-                      {/if}
-                      {@html res.output}
+        <div class="numbat-body flex-col">
+          {#each lines as line, i}
+            <div class="cell flex-col" class:active={activeLineIdx === i}>
+              <div class="cell-input-row flex-row">
+                <div class="line-number">{i + 1}</div>
+                <div style="position: relative; flex: 1;">
+                  <input 
+                    bind:this={inputRefs[i]}
+                    value={line}
+                    oninput={(e) => handleInput(e, i)}
+                    onkeydown={(e) => handleKeydown(e, i)}
+                    onpaste={(e) => handlePaste(e, i)}
+                    onfocus={() => activeLineIdx = i}
+                    class="cell-input"
+                    autocomplete="off"
+                    spellcheck="false"
+                    placeholder={i === 0 ? "e.g. 10 usd to inr" : ""}
+                  />
+                  
+                  {#if showCompletions && activeLineIdx === i}
+                    <div 
+                      class="autocomplete-dropdown"
+                      style="top: 100%; left: {dropdownLeft}px; margin-top: 4px;"
+                    >
+                      {#each completions as completion, cIdx}
+                        <button 
+                          class="completion-item" 
+                          class:active={cIdx === activeCompletionIdx}
+                          onmousedown={(e) => { e.preventDefault(); insertCompletion(completion, i); }}
+                        >
+                          {completion}
+                        </button>
+                      {/each}
                     </div>
+                  {/if}
+                </div>
+              </div>
+
+              {#if results[i] && !results[i].isEmpty}
+                <div class="cell-result-row flex-row">
+                  <div class="result-spacer"></div>
+                  <div class="cell-result" class:error={results[i].isError}>
+                    <span class="res-val">{@html results[i].output || '&nbsp;'}</span>
                   </div>
                   <button 
                     class="copy-btn flex-row" 
-                    onclick={() => handleCopyResult(res.plain, idx)}
+                    onclick={() => handleCopyResult(results[i].plain, i)}
                     title="Copy result"
                   >
-                    {#if copiedLineIdx === idx}
+                    {#if copiedLineIdx === i}
                       <Check size={12} style="color: var(--semantic-success);" />
                     {:else}
                       <Copy size={12} />
                     {/if}
                   </button>
-                {/if}
-              </div>
-            {/each}
-          </div>
+                </div>
+              {/if}
+            </div>
+          {/each}
         </div>
       </div>
     {/if}
@@ -772,7 +771,7 @@ fn f(x) = x^2</code></pre>
     background: color-mix(in srgb, var(--bg-surface) 80%, transparent);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05); /* Extremely subtle border */
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
     justify-content: space-between;
     z-index: 10;
   }
@@ -789,7 +788,7 @@ fn f(x) = x^2</code></pre>
   .file-tab {
     height: 32px;
     padding: 0 var(--spacing-md);
-    border-radius: 8px; /* Smooth corners */
+    border-radius: 8px;
     color: var(--text-secondary);
     font-size: 0.85rem;
     font-weight: 500;
@@ -807,7 +806,7 @@ fn f(x) = x^2</code></pre>
   .file-tab.active {
     background-color: var(--bg-surface-elevated);
     color: var(--text-primary);
-    box-shadow: 0 2px 8px rgba(0,0,0,0.12); /* Hover elevation */
+    box-shadow: 0 2px 8px rgba(0,0,0,0.12);
   }
 
   .tab-icon { opacity: 0.7; }
@@ -832,110 +831,26 @@ fn f(x) = x^2</code></pre>
     margin-left: 4px;
   }
 
-  @media (max-width: 768px) {
-    .tab-close-btn {
-      opacity: 1;
-      width: auto;
-      margin-left: 4px;
-    }
-  }
-
   .tab-close-btn:hover {
     color: var(--semantic-error);
     background-color: rgba(239, 68, 68, 0.15);
   }
 
-  /* ── Mobile Header Revamp ── */
-  @media (max-width: 768px) {
-    .app-header {
-      height: 44px;
-      padding: 0 8px;
-      gap: 4px;
-    }
-
-    .tabs-scroll {
-      gap: 4px;
-    }
-
-    .file-tab {
-      height: 28px;
-      padding: 0 10px;
-      border-radius: 14px; /* Full pill shape */
-      font-size: 0.75rem;
-      gap: 4px;
-    }
-
-    .file-tab .tab-icon {
-      display: none; /* Remove file icons on mobile — tabs are obvious */
-    }
-
-    .tab-close-btn {
-      opacity: 0.5;
-      width: auto;
-      margin-left: 2px;
-      padding: 1px;
-    }
-
-    .file-tab.active .tab-close-btn {
-      opacity: 0.7;
-    }
-
-    .add-tab-btn, .hdr-icon-btn {
-      height: 28px;
-      width: 28px;
-      border-radius: 14px;
-    }
-
-    .header-actions {
-      gap: 2px;
-    }
-
-    .quick-actions-bar {
-      bottom: 56px;
-    }
-  }
-
-  /* ── Autocomplete Dropdown ── */
-  .autocomplete-dropdown {
-    position: absolute;
-    z-index: 1000;
-    background: var(--bg-card-hover, #2d333b);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-    width: 320px;
-    max-width: calc(100vw - 48px);
-    max-height: 200px;
-    overflow-y: auto;
-    padding: 8px;
-    /* Prevent default scrollbar styling to look clean */
-    scrollbar-width: thin;
-    scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
-    display: flex;
-    flex-wrap: wrap;
-    flex-direction: row;
-    gap: 6px;
-    align-content: flex-start;
-  }
-
-  .completion-item {
-    background: transparent;
+  .add-tab-btn, .hdr-icon-btn {
+    background: none;
     border: none;
-    color: var(--text-primary);
-    padding: 6px 12px;
-    text-align: center;
-    font-family: 'JetBrains Mono', 'Fira Code', monospace;
-    font-size: 0.85rem;
-    border-radius: 4px;
+    color: var(--text-secondary);
+    height: 32px;
+    width: 32px;
+    border-radius: 8px;
     cursor: pointer;
-    transition: background 0.1s;
+    justify-content: center;
+    transition: all 0.2s ease;
   }
 
-  .completion-item:hover, .completion-item.active {
-    background: var(--accent-primary, #007acc);
-    color: #ffffff;
+  .add-tab-btn:hover, .hdr-icon-btn:hover, .hdr-icon-btn.active {
+    background-color: rgba(255, 255, 255, 0.08);
+    color: var(--text-primary);
   }
 
   /* Sync Indicator */
@@ -1015,9 +930,6 @@ fn f(x) = x^2</code></pre>
     border: 1px solid rgba(239, 68, 68, 0.2);
   }
 
-  /* Header sync pills: hidden everywhere — desktop uses AppHeader, mobile uses .mobile-sync-status */
-  .note-status-group { display: none; }
-
   @media (max-width: 768px) {
     .status-badge {
       font-size: 10px;
@@ -1025,39 +937,10 @@ fn f(x) = x^2</code></pre>
     }
   }
 
-  /* Mobile sync bar below title */
-  .mobile-sync-status {
-    display: none; /* Hidden on desktop */
-    position: relative;
+  .header-actions {
+    gap: 4px;
+    align-items: center;
   }
-
-  @media (max-width: 768px) {
-    .mobile-sync-status {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      margin-left: auto;
-    }
-  }
-
-  .add-tab-btn, .hdr-icon-btn {
-    background: none;
-    border: none;
-    color: var(--text-secondary);
-    height: 32px;
-    width: 32px;
-    border-radius: 8px;
-    cursor: pointer;
-    justify-content: center;
-    transition: all 0.2s ease;
-  }
-
-  .add-tab-btn:hover, .hdr-icon-btn:hover {
-    background-color: rgba(255, 255, 255, 0.08);
-    color: var(--text-primary);
-  }
-
-  .header-actions { gap: var(--spacing-xs); }
   .menu-wrapper { position: relative; }
 
   /* Glass Menu */
@@ -1109,54 +992,30 @@ fn f(x) = x^2</code></pre>
     color: var(--semantic-error);
   }
 
-  /* ── 2. Main Content & Editor ── */
+  /* ── Main Content Area ── */
   .main-scroll {
     flex-grow: 1;
     overflow-y: auto;
-    padding: var(--spacing-xl) 20px; /* Base padding */
-    gap: var(--spacing-lg);
+    padding: var(--spacing-xl) 20px;
   }
 
   .content-wrapper {
     width: 100%;
-    max-width: 1280px; /* Expand for side-by-side */
+    max-width: 860px;
     margin: 0 auto;
     gap: var(--spacing-lg);
   }
 
-  .workspace-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: var(--spacing-xl);
-    align-items: start;
-  }
-  
-  .workspace-grid > * {
-    min-width: 0; /* Prevent grid blowout from pre-wrap text */
-  }
-
-  @media (max-width: 1024px) {
-    .workspace-grid {
-      grid-template-columns: 1fr;
-      gap: var(--spacing-lg);
-    }
-    .content-wrapper {
-      max-width: 860px;
-    }
-  }
-
-  @media (max-width: 768px) {
-    .main-scroll { padding: var(--spacing-lg) var(--spacing-md); }
-  }
-
   .session-title-area {
     margin-bottom: var(--spacing-md);
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
   }
 
   .title-display {
     font-size: 1.5rem;
     font-weight: 600;
-    letter-spacing: -0.02em;
     margin: 0;
     color: var(--text-primary);
     cursor: text;
@@ -1174,229 +1033,165 @@ fn f(x) = x^2</code></pre>
     padding-bottom: 4px;
   }
 
-  /* Enhanced Editor Container (Syntax Backdrop + Transparent Textarea) */
-  .editor-container {
+  .numbat-body {
     position: relative;
-    width: 100%;
-    min-height: 120px;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.95rem;
-    line-height: 1.6;
+    background: var(--bg-surface-elevated, #1e2227);
     border-radius: 12px;
-    background-color: var(--bg-surface);
+    border: 1px solid rgba(255, 255, 255, 0.05);
     box-shadow: 0 4px 12px rgba(0,0,0,0.1) inset;
-    border: 1px solid rgba(255, 255, 255, 0.04);
-    align-items: stretch;
-  }
-
-  .line-gutter {
-    width: 44px;
-    padding: var(--spacing-lg) 0;
-    text-align: right;
-    border-right: 1px solid rgba(255,255,255,0.05);
-    background: rgba(0,0,0,0.15);
-    border-top-left-radius: 12px;
-    border-bottom-left-radius: 12px;
-    user-select: none;
-    flex-shrink: 0;
-  }
-
-  .line-no {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.95rem;
-    line-height: 1.6;
-    color: var(--text-tertiary);
-    padding-right: 12px;
-    height: 1.6em; /* Match line height */
-  }
-
-  .editor-wrapper {
-    position: relative;
-    flex-grow: 1;
-  }
-
-  .editor-backdrop, .editor-textarea {
+    padding: 8px 0 80px 0;
     width: 100%;
-    min-height: 120px;
-    padding: var(--spacing-lg);
-    font-family: inherit;
-    font-size: inherit;
-    line-height: inherit;
-    box-sizing: border-box;
-    white-space: pre-wrap;
-    word-wrap: break-word;
-    border-radius: 12px;
   }
 
-  .editor-backdrop {
+  .numbat-body::before {
+    content: '';
     position: absolute;
     top: 0;
+    bottom: 0;
     left: 0;
-    color: var(--text-secondary); /* Default unhighlighted text color */
+    width: 48px;
+    background: rgba(0, 0, 0, 0.15);
+    border-right: 1px solid rgba(255, 255, 255, 0.05);
+    z-index: 0;
     pointer-events: none;
-    overflow: hidden;
+    border-top-left-radius: 12px;
+    border-bottom-left-radius: 12px;
   }
-
-  .editor-textarea {
+  
+  .cell {
     position: relative;
+    z-index: 1;
+    width: 100%;
+  }
+  
+  .cell.active {
+    z-index: 10;
+  }
+  .cell-input-row {
+    width: 100%;
+    min-height: 28px;
+    align-items: center;
+  }
+  .line-number {
+    width: 48px;
+    text-align: right;
+    padding-right: 16px;
+    color: var(--text-tertiary);
+    font-size: 0.75rem;
+    user-select: none;
+    flex-shrink: 0;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .cell-input {
+    width: 100%;
     background: transparent;
-    color: transparent; /* Magic trick: hide text, show caret */
-    caret-color: var(--text-primary); /* Keep caret visible */
     border: none;
     outline: none;
-    resize: none;
-    overflow: hidden; /* Hide scrollbar, let container expand */
+    color: var(--text-primary);
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 0.95rem;
+    padding: 4px 12px;
   }
-
-  /* Syntax Tokens */
-  .editor-backdrop :global(.tok-num) { color: #f59e0b; }
-  .editor-backdrop :global(.tok-unit) { color: #10b981; }
-  .editor-backdrop :global(.tok-op) { color: var(--text-tertiary); }
-  .editor-backdrop :global(.tok-kw) { color: #a855f7; font-weight: 600; }
-  .editor-backdrop :global(.tok-comment) { color: var(--text-tertiary); font-style: italic; }
-
-  /* ── 3. Results Stack ── */
-  .results-stack {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.95rem; /* Force exact typography match to editor */
-    line-height: 1.6;
-    padding-top: calc(var(--spacing-lg) + 1px); /* Match editor's top padding + border exactly! */
-    padding-bottom: 60px; /* Space for bottom chips */
-    display: flex;
-    flex-direction: column;
-    /* No gap to ensure line-height sync */
-    min-width: 0;
+  .cell-result-row {
+    width: 100%;
+    align-items: flex-start;
+    padding: 4px 0 8px 0;
   }
-
-  .result-row {
-    height: 1.6em; /* Match editor line-height exactly on desktop */
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    justify-content: space-between;
-    padding-left: var(--spacing-md);
-  }
-
-  .res-output {
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    gap: var(--spacing-sm);
-    min-width: 0;
-    flex-grow: 1;
-  }
-
-  .res-line-badge {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.65rem;
-    color: var(--text-tertiary);
-    background: rgba(255,255,255,0.05);
-    padding: 2px 4px;
-    border-radius: 4px;
-    min-width: 16px;
-    text-align: center;
+  .result-spacer {
+    width: 48px;
     flex-shrink: 0;
   }
-
-  .res-expr {
-    color: var(--text-secondary);
-  }
-
-  .num-output {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.95rem;
+  .cell-result {
+    flex: 1;
+    margin-left: 12px;
+    margin-right: 12px;
     color: var(--text-primary);
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 0.95rem;
+    padding: 6px 16px;
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.03);
+    border-radius: 6px;
+    word-break: break-all;
     display: flex;
     flex-direction: row;
     align-items: center;
     flex-wrap: wrap;
-    min-width: 0;
-    gap: 4px;
+    gap: 8px;
   }
-
-  .num-output.has-error {
-    color: var(--semantic-error);
+  .res-expr {
+    color: var(--text-secondary);
     font-size: 0.85rem;
+    opacity: 0.8;
   }
-
-  .num-output :global(.numbat-value) { color: #f59e0b; font-weight: 600; }
-  .num-output :global(.numbat-unit) { color: #10b981; }
+  .res-val {
+    color: var(--accent);
+  }
+  .res-val :global(.numbat-value) { color: #f59e0b; font-weight: 600; }
+  .res-val :global(.numbat-unit) { color: #10b981; }
+  
+  .cell-result.error {
+    color: var(--semantic-error);
+  }
 
   .copy-btn {
     opacity: 0;
     background: rgba(255,255,255,0.05);
     border: none;
     color: var(--text-secondary);
-    width: 24px;
-    height: 24px;
+    width: 28px;
+    height: 28px;
     border-radius: 6px;
     justify-content: center;
     cursor: pointer;
     transition: all 0.2s ease;
     flex-shrink: 0;
+    margin-left: 8px;
   }
 
-  .result-row:hover .copy-btn { opacity: 1; }
+  .cell-result-row:hover .copy-btn { opacity: 1; }
   .copy-btn:hover {
     background: rgba(255,255,255,0.1);
     color: var(--text-primary);
   }
 
-  /* ── Mobile Result Improvements ── */
-  @media (max-width: 1024px) {
-    .results-stack {
-      background: none;
-      padding: var(--spacing-sm) 0;
-      gap: var(--spacing-xs);
-      font-size: 0.9rem;
-      line-height: 1.5;
-    }
+  /* ── Autocomplete Dropdown ── */
+  .autocomplete-dropdown {
+    position: absolute;
+    z-index: 1000;
+    background: #25282e; /* Solid opaque color to prevent overlapping text bleeding through */
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 8px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6);
+    width: 320px;
+    max-width: 100%;
+    max-height: 200px;
+    overflow-y: auto;
+    padding: 8px;
+    display: flex;
+    flex-wrap: wrap;
+    flex-direction: row;
+    gap: 6px;
+    align-content: flex-start;
+  }
 
-    .result-row {
-      height: auto;
-      padding: 10px 12px;
-      background: var(--bg-surface);
-      border-radius: 10px;
-      border: 1px solid rgba(255, 255, 255, 0.05);
-      align-items: flex-start;
-    }
+  .completion-item {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    color: var(--text-primary);
+    padding: 6px 12px;
+    text-align: center;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 0.85rem;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.1s;
+  }
 
-    /* Hide empty result rows on mobile */
-    .result-row:not(:has(.res-output)) {
-      display: none;
-    }
-
-    .res-output {
-      flex-direction: column;
-      align-items: flex-start;
-      gap: 2px;
-    }
-
-    .res-line-badge {
-      font-size: 0.6rem;
-      opacity: 0.4;
-      background: none;
-      padding: 0;
-      margin-right: 4px;
-    }
-
-    .num-output {
-      white-space: normal;
-      word-break: break-word;
-      display: inline; /* Flow naturally as inline text, not flex */
-    }
-
-    .res-expr {
-      font-size: 0.78rem;
-      opacity: 0.55;
-      letter-spacing: 0.01em;
-      display: block; /* Force onto its own line */
-    }
-
-    .copy-btn {
-      opacity: 1;
-      margin-top: 2px;
-    }
+  .completion-item:hover, .completion-item.active {
+    background: var(--accent);
+    color: #ffffff;
+    border-color: var(--accent);
   }
 
   /* ── 4. Bottom Quick Actions ── */
