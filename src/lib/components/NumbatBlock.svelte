@@ -331,12 +331,28 @@
     color: var(--danger-color, #ff4444);
   }
   .numbat-body {
+    position: relative;
     background: transparent;
-    padding-bottom: 8px;
+    padding: 8px 0;
   }
+  
+  .numbat-body::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 36px;
+    background: rgba(0, 0, 0, 0.15);
+    border-right: 1px solid rgba(255, 255, 255, 0.05);
+    z-index: 0;
+    pointer-events: none;
+  }
+
   .cell {
+    position: relative;
+    z-index: 1;
     width: 100%;
-    margin-top: 4px;
   }
   .cell-input-row {
     width: 100%;
@@ -360,12 +376,12 @@
     color: var(--text-primary);
     font-family: 'JetBrains Mono', 'Fira Code', monospace;
     font-size: 0.85rem;
-    padding: 4px 0;
+    padding: 4px 12px;
   }
   .cell-result-row {
     width: 100%;
-    align-items: center;
-    margin-bottom: 4px;
+    align-items: flex-start;
+    padding: 2px 0 6px 0;
   }
   .result-spacer {
     width: 36px;
@@ -373,11 +389,14 @@
   }
   .cell-result {
     flex: 1;
+    margin-left: 12px;
+    margin-right: 12px;
     color: var(--accent-primary, #007acc);
     font-family: 'JetBrains Mono', 'Fira Code', monospace;
     font-size: 0.85rem;
     padding: 4px 12px;
-    background: rgba(0, 0, 0, 0.1);
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.03);
     border-radius: 6px;
     word-break: break-all;
   }

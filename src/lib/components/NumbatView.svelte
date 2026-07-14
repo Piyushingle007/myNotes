@@ -1030,13 +1030,33 @@ fn f(x) = x^2</code></pre>
   }
 
   .numbat-body {
-    background: transparent;
-    padding-bottom: 80px;
+    position: relative;
+    background: var(--bg-surface-elevated, #1e2227);
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1) inset;
+    overflow: hidden;
+    padding: 8px 0 80px 0;
     width: 100%;
   }
+
+  .numbat-body::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 48px;
+    background: rgba(0, 0, 0, 0.15);
+    border-right: 1px solid rgba(255, 255, 255, 0.05);
+    z-index: 0;
+    pointer-events: none;
+  }
+  
   .cell {
+    position: relative;
+    z-index: 1;
     width: 100%;
-    margin-top: 4px;
   }
   .cell-input-row {
     width: 100%;
@@ -1061,12 +1081,12 @@ fn f(x) = x^2</code></pre>
     color: var(--text-primary);
     font-family: 'JetBrains Mono', 'Fira Code', monospace;
     font-size: 0.95rem;
-    padding: 4px 0;
+    padding: 4px 12px;
   }
   .cell-result-row {
     width: 100%;
-    align-items: center;
-    margin-bottom: 8px;
+    align-items: flex-start;
+    padding: 4px 0 8px 0;
   }
   .result-spacer {
     width: 48px;
@@ -1074,12 +1094,14 @@ fn f(x) = x^2</code></pre>
   }
   .cell-result {
     flex: 1;
+    margin-left: 12px;
+    margin-right: 12px;
     color: var(--text-primary);
     font-family: 'JetBrains Mono', 'Fira Code', monospace;
     font-size: 0.95rem;
     padding: 6px 16px;
-    background: var(--bg-card-hover, #2d333b);
-    border: 1px solid rgba(255, 255, 255, 0.05);
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.03);
     border-radius: 6px;
     word-break: break-all;
     display: flex;
