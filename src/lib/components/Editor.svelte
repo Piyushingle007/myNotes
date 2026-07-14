@@ -44,6 +44,7 @@
 	import DrawIOEditor from './DrawIOEditor.svelte';
 	import MermaidEditor from './MermaidEditor.svelte';
 	import MetricsBlock from './MetricsBlock.svelte';
+	import NumbatBlock from './NumbatBlock.svelte';
 	import Modal from './Modal.svelte';
 	import { exportMultipleMetricsToXlsx, getRowNumbers, getCleanDescription, extractRowDate } from '../utils/exportMetricsXlsx';
 	import { renderDiagramSVG, decodeDiagram } from '../utils/diagram';
@@ -1775,6 +1776,21 @@
 				aliases: ['cal', 'calc', 'metric', 'metrics', 'calculate', 'spreadsheet', 'cal block'],
 				icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2" ry="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="16" y1="14" x2="16" y2="18"/><path d="M16 10h.01"/><path d="M12 10h.01"/><path d="M8 10h.01"/><path d="M12 14h.01"/><path d="M8 14h.01"/><path d="M12 18h.01"/><path d="M8 18h.01"/></svg>',
 				action: () => editor?.chain().focus().insertContent({ type: 'metrics', attrs: { id: 'metrics_' + Math.random().toString(36).substring(2, 9), title: 'Cal Block', data: '[]', excludeChecked: false } }).command(({ tr }) => {
+					const { selection } = tr;
+					if (selection instanceof NodeSelection) {
+						tr.setSelection(TextSelection.near(tr.doc.resolve(selection.to)));
+					}
+					return true;
+				}).run(),
+				category: 'insert',
+				badge: 'New'
+			},
+			{
+				label: 'Num Block',
+				description: 'Insert an inline Numbat calculation sheet',
+				aliases: ['num', 'numbat', 'numbat block'],
+				icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 22h14a2 2 0 0 0 2-2V7.5L14.5 2H6a2 2 0 0 0-2 2v4"/><polyline points="14 2 14 8 20 8"/><path d="M2 15h10"/><path d="M9 18l3-3-3-3"/></svg>',
+				action: () => editor?.chain().focus().insertContent({ type: 'numbat' }).command(({ tr }) => {
 					const { selection } = tr;
 					if (selection instanceof NodeSelection) {
 						tr.setSelection(TextSelection.near(tr.doc.resolve(selection.to)));
@@ -3912,6 +3928,98 @@
 								}
 								return true;
 							}
+						}
+						return false;
+					},
+					ignoreMutation(mutation) {
+						return true;
+					}
+				};
+			};
+		}
+	});
+
+	const NumbatBlockExt = TiptapNode.create({
+		name: 'numbat',
+		group: 'block',
+		atom: true,
+		draggable: true,
+		addAttributes() {
+			return {
+				code: {
+					default: '',
+					parseHTML: (el: HTMLElement) => el.getAttribute('data-numbat-code') || '',
+					renderHTML: (attrs) => ({ 'data-numbat-code': attrs.code })
+				}
+			};
+		},
+		parseHTML() {
+			return [{ tag: 'div[data-type="numbat"]' }];
+		},
+		renderHTML({ HTMLAttributes }) {
+			return ['div', mergeAttributes(HTMLAttributes, { 'data-type': 'numbat' })];
+		},
+		addNodeView() {
+			return ({ node, getPos, editor }) => {
+				const dom = document.createElement('div');
+				dom.className = 'numbat-block-view-container';
+				dom.contentEditable = 'false';
+				
+				let currentNode = node;
+				const nodeStore = writable(node);
+				
+				const component = mount(NumbatBlock, {
+					target: dom,
+					props: {
+						nodeStore,
+						getPos,
+						editor,
+						updateAttributes: (attrs: any) => {
+							const pos = typeof getPos === 'function' ? getPos() : null;
+							if (pos !== null && pos !== undefined) {
+								editor.view.dispatch(editor.state.tr.setNodeMarkup(pos, undefined, {
+									...currentNode.attrs,
+									...attrs
+								}));
+							}
+						}
+					}
+				});
+				
+				return {
+					dom,
+					update(updatedNode) {
+						if (updatedNode.type.name !== 'numbat') return false;
+						currentNode = updatedNode;
+						nodeStore.set(updatedNode);
+						return true;
+					},
+					destroy() {
+						unmount(component);
+					},
+					selectNode() {
+						// Prevent ProseMirror selection highlights
+					},
+					deselectNode() {
+					},
+					stopEvent(event) {
+						if (event.type.startsWith('drag') || event.type === 'drop') {
+							return true;
+						}
+						const target = event.target as HTMLElement | null;
+						if (target && target.closest('.numbat-block')) {
+							if (event.type === 'mousedown' || event.type === 'touchstart') {
+								const pos = typeof getPos === 'function' ? getPos() : null;
+								if (pos !== null && pos !== undefined) {
+									const { selection } = editor.state;
+									if (selection instanceof NodeSelection && selection.from === pos) {
+										const resolvedPos = editor.state.doc.resolve(pos + node.nodeSize);
+										const newSelection = TextSelection.near(resolvedPos);
+										editor.view.dispatch(editor.state.tr.setSelection(newSelection));
+									}
+								}
+							}
+							return true;
 						}
 						return false;
 					},
@@ -6544,6 +6652,7 @@
 				PageBreak,
 				Callout,
 				Metrics,
+				NumbatBlockExt,
 				TypingKeyboardShortcuts,
 				FocusModeHighlight,
 				TypewriterScrolling,
