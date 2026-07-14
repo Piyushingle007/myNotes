@@ -2850,6 +2850,12 @@
       flex-direction: column !important;
       align-items: stretch !important;
     }
+    .categories-section {
+      order: 2;
+    }
+    .blocks-section {
+      order: 1;
+    }
     .budget-section {
       width: 100%;
     }
