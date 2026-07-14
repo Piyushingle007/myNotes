@@ -46,6 +46,7 @@
   // DOM Elements References
   let editorEl = $state<HTMLTextAreaElement | null>(null);
   let backdropEl = $state<HTMLElement | null>(null);
+  let renameInputEl = $state<HTMLInputElement | null>(null);
 
   // Derived values
   let activeFile = $derived(numFiles.find(f => f.path === activeFilePath));
@@ -91,6 +92,18 @@
 
   async function selectFile(path: string) {
     if (activeFilePath === path) return;
+
+    // Fix: Cancel pending debounced evaluation to prevent race conditions
+    if (evalTimeout) {
+      clearTimeout(evalTimeout);
+      evalTimeout = null;
+    }
+
+    // Fix: Save current tab before switching
+    if (activeFilePath && activeFile) {
+      await saveCurrentDocument();
+    }
+
     activeFilePath = path;
     showMenu = false;
     isRenamingFile = false;
@@ -379,6 +392,7 @@
     newFileNameVal = activeTitle;
     isRenamingFile = true;
     showMenu = false;
+    tick().then(() => renameInputEl?.focus());
   }
 
   function escapeHtml(str: string) {
@@ -544,7 +558,7 @@
               onblur={handleRenameActiveFile}
               class="title-input"
               placeholder="Session name..."
-              bind:this={editorEl}
+              bind:this={renameInputEl}
             />
           {:else}
             <h1 class="title-display" ondblclick={startRenaming}>{activeTitle || 'Calculation Session'}</h1>
