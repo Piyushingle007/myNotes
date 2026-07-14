@@ -115,11 +115,13 @@
 
       const charWidth = 9.12; 
       
-      const assumedDropdownWidth = 330;
-      const maxLeft = (input.clientWidth || 300) - assumedDropdownWidth;
+      const assumedDropdownWidth = 320; 
+      const containerWidth = input.clientWidth || 400;
+      
+      const maxLeft = Math.max(0, containerWidth - assumedDropdownWidth);
       const calculatedLeft = currentCharIdx * charWidth;
-
-      dropdownLeft = Math.min(calculatedLeft, Math.max(0, maxLeft));
+      
+      dropdownLeft = Math.min(calculatedLeft, maxLeft);
     } else {
       showCompletions = false;
     }
@@ -347,6 +349,7 @@
     border-right: 1px solid rgba(255, 255, 255, 0.05);
     z-index: 0;
     pointer-events: none;
+    border-bottom-left-radius: 8px;
   }
 
   .cell {
@@ -408,19 +411,15 @@
   .autocomplete-dropdown {
     position: absolute;
     z-index: 1000;
-    background: var(--bg-card-hover, #2d333b);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: #25282e;
+    border: 1px solid rgba(255, 255, 255, 0.15);
     border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6);
     width: 320px;
-    max-width: calc(100vw - 48px);
+    max-width: 100%;
     max-height: 200px;
     overflow-y: auto;
     padding: 8px;
-    scrollbar-width: thin;
-    scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
     display: flex;
     flex-wrap: wrap;
     flex-direction: row;
@@ -429,8 +428,8 @@
   }
 
   .completion-item {
-    background: transparent;
-    border: none;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.05);
     color: var(--text-primary);
     padding: 6px 12px;
     text-align: center;
@@ -444,6 +443,7 @@
   .completion-item:hover, .completion-item.active {
     background: var(--accent-primary, #007acc);
     color: #ffffff;
+    border-color: var(--accent-primary, #007acc);
   }
   
 

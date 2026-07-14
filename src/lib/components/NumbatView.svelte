@@ -257,13 +257,13 @@
       showCompletions = true;
 
       // Position calculation
-      const charWidth = 9.12; 
+      const assumedDropdownWidth = 320; 
+      const containerWidth = input.clientWidth || 400;
       
-      const assumedDropdownWidth = 330; // 320px width + padding
-      const maxLeft = (input.clientWidth || 400) - assumedDropdownWidth;
+      const maxLeft = Math.max(0, containerWidth - assumedDropdownWidth);
       const calculatedLeft = currentCharIdx * charWidth;
       
-      dropdownLeft = Math.min(calculatedLeft, Math.max(0, maxLeft));
+      dropdownLeft = Math.min(calculatedLeft, maxLeft);
     } else {
       showCompletions = false;
     }
@@ -1039,7 +1039,6 @@ fn f(x) = x^2</code></pre>
     border-radius: 12px;
     border: 1px solid rgba(255, 255, 255, 0.05);
     box-shadow: 0 4px 12px rgba(0,0,0,0.1) inset;
-    overflow: hidden;
     padding: 8px 0 80px 0;
     width: 100%;
   }
@@ -1055,6 +1054,8 @@ fn f(x) = x^2</code></pre>
     border-right: 1px solid rgba(255, 255, 255, 0.05);
     z-index: 0;
     pointer-events: none;
+    border-top-left-radius: 12px;
+    border-bottom-left-radius: 12px;
   }
   
   .cell {
@@ -1154,14 +1155,12 @@ fn f(x) = x^2</code></pre>
   .autocomplete-dropdown {
     position: absolute;
     z-index: 1000;
-    background: var(--bg-card-hover, #2d333b);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: #25282e; /* Solid opaque color to prevent overlapping text bleeding through */
+    border: 1px solid rgba(255, 255, 255, 0.15);
     border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6);
     width: 320px;
-    max-width: calc(100vw - 48px);
+    max-width: 100%;
     max-height: 200px;
     overflow-y: auto;
     padding: 8px;
@@ -1173,8 +1172,8 @@ fn f(x) = x^2</code></pre>
   }
 
   .completion-item {
-    background: transparent;
-    border: none;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.05);
     color: var(--text-primary);
     padding: 6px 12px;
     text-align: center;
@@ -1182,11 +1181,13 @@ fn f(x) = x^2</code></pre>
     font-size: 0.85rem;
     border-radius: 4px;
     cursor: pointer;
+    transition: background 0.1s;
   }
 
   .completion-item:hover, .completion-item.active {
     background: var(--accent);
     color: #ffffff;
+    border-color: var(--accent);
   }
 
   /* ── 4. Bottom Quick Actions ── */
