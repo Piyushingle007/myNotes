@@ -560,7 +560,8 @@ export function populateWorksheet(worksheet: ExcelJS.Worksheet, data: MetricsExp
 	getRow(r).height = 24;
 	r++;
 
-	const catHeaders = ['Rank', 'Category', 'Amount', '% of Total', 'Data Bar'];
+	const pctHeader = data.income > 0 ? `% of ${data.incomeLabel || 'Income'}` : '% of Total';
+	const catHeaders = ['Rank', 'Category', 'Amount', pctHeader, 'Data Bar'];
 	catHeaders.forEach((ch, idx) => {
 		const cell = worksheet.getCell(r, idx + 2);
 		cell.value = ch;

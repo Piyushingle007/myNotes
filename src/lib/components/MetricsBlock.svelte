@@ -934,14 +934,14 @@
 						name: tag?.name ?? 'Unknown',
 						color: tag?.color,
 						total,
-						pct: grandTotal > 0 ? Math.abs(total) / grandTotal : 0
+						pct: incomeVal > 0 ? Math.abs(total) / incomeVal : (grandTotal > 0 ? Math.abs(total) / grandTotal : 0)
 					};
 				})
 				.concat({
 					name: 'Untagged',
 					color: undefined,
 					total: tagTotals.untaggedTotal,
-					pct: grandTotal > 0 ? Math.abs(tagTotals.untaggedTotal) / grandTotal : 0
+					pct: incomeVal > 0 ? Math.abs(tagTotals.untaggedTotal) / incomeVal : (grandTotal > 0 ? Math.abs(tagTotals.untaggedTotal) / grandTotal : 0)
 				})
 				.filter(c => c.total !== 0)
 				.sort((a, b) => Math.abs(b.total) - Math.abs(a.total))

@@ -193,7 +193,7 @@ class AppState {
   activeNoteContent = $state<string>('');
   activeNoteTitle = $state<string>('');
   activeNotebook = $state<string | null>(null);
-  activeTab = $state<'home' | 'search' | 'library' | 'daily' | 'tags' | 'focus' | 'budget'>('home');
+  activeTab = $state<'home' | 'search' | 'library' | 'num' | 'tags' | 'focus' | 'budget'>('home');
   favorites = $state<string[]>(JSON.parse(localStorage.getItem('mynotes_favorites') || '[]'));
   searchQuery = $state<string>('');
   showSettings = $state<boolean>(false);
@@ -667,7 +667,7 @@ class AppState {
       const parts = note.path.split('/');
       if (parts.length > 1) {
         const folderPath = parts.slice(0, -1).join('/');
-        if (!folderPath.startsWith('Daily Notes')) {
+        if (!folderPath.startsWith('Daily Notes') && !folderPath.startsWith('Num')) {
           parts.slice(0, -1).forEach((_, idx) => {
             list.add(parts.slice(0, idx + 1).join('/'));
           });

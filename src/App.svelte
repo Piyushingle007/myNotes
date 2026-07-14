@@ -23,8 +23,8 @@
       } else if (__FEATURE_CANVAS__ && appState.editorMode === 'notebook') {
         newHash += '?mode=notebook';
       }
-    } else if (appState.activeTab === 'daily') {
-      newHash = `#/daily`;
+    } else if (appState.activeTab === 'num') {
+      newHash = `#/num`;
     } else if (appState.activeTab === 'focus') {
       newHash = `#/focus`;
     } else if (appState.activeTab === 'budget') {
@@ -109,8 +109,8 @@
         } else if (hash === '#/tags') {
           appState.activeTab = 'tags';
           appState.selectedTag = null;
-        } else if (hash === '#/daily') {
-          appState.activeTab = 'daily';
+        } else if (hash === '#/num') {
+          appState.activeTab = 'num';
           appState.activeNotebook = null;
           appState.selectedTag = null;
         } else if (hash === '#/focus') {

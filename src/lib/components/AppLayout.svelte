@@ -27,6 +27,7 @@
   import FocusView from './FocusView.svelte';
   import ConflictResolver from './ConflictResolver.svelte';
   import BudgetView from './BudgetView.svelte';
+  import NumbatView from './NumbatView.svelte';
   import { mobileNav } from '../stores/mobileNav.svelte';
   import { LONG_PRESS_MS, TOUCH_MOVE_TOLERANCE, edgeSwipeBack } from '../actions/touch';
 
@@ -2037,77 +2038,10 @@
             {/if}
           </div>
 
-        <!-- 5. DAILY TAB -->
-        {:else if appState.activeTab === 'daily'}
+        <!-- 5. NUM TAB -->
+        {:else if appState.activeTab === 'num'}
           <div class="mobile-tab-view flex-col">
-            <div class="mobile-header">
-              <h1>Daily Logs</h1>
-            </div>
-            
-            <div class="daily-view flex-col">
-              <div class="daily-hero card-dark flex-col">
-                <div class="hero-art">🗓️</div>
-                <h2>Keep a Daily Log</h2>
-                <p>Journal thoughts, logs, and notes organized automatically by date.</p>
-                <button class="btn-pill btn-pill-primary hero-btn" onclick={handleMobileDailyNote}>
-                  Create/Open Today's Log
-                </button>
-              </div>
-
-              <div class="daily-history flex-col">
-                <span class="section-title">Past Logs</span>
-                {#each appState.notes.filter(n => n.path.startsWith('Daily Notes/')) as note}
-                  <div 
-                    class="search-result-row flex-row" 
-                    onclick={() => appState.selectNote(note.path)}
-                    style="width: 100%; text-align: left; align-items: center; justify-content: space-between; cursor: pointer;"
-                    role="button"
-                    tabindex="0"
-                    onkeydown={(e) => e.key === 'Enter' && appState.selectNote(note.path)}
-                  >
-                    <div class="flex-row" style="gap: var(--spacing-sm); align-items: center; flex-grow: 1; min-width: 0;">
-                      <div class="row-art">📅</div>
-                      <div class="row-info flex-col" style="min-width: 0; flex-grow: 1;">
-                        <span class="row-title" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{note.name}{#if appState.isNotePinned(note.path)} <svg width="12" height="12" viewBox="0 0 24 24" fill="var(--accent)" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: inline; vertical-align: middle; margin-left: 4px;"><path d="M12 17v5"/><path d="M9 2h6l-1 7h4l-5 7H7l2-7H5l1-7z"/></svg>{/if}</span>
-                        <span class="row-sub" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Daily Log</span>
-                      </div>
-                    </div>
-                    <div class="flex-row" style="gap: var(--spacing-xs); align-items: center; flex-shrink: 0; margin-left: var(--spacing-xs);">
-                      <!-- Rename button -->
-                      <button 
-                        class="row-action-btn flex-row" 
-                        onclick={(e) => {
-                          e.stopPropagation();
-                          handleRenameNote(note.path, note.name);
-                        }}
-                        aria-label="Rename note"
-                        title="Rename note"
-                        style="background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: var(--spacing-2xs); border-radius: 4px; display: inline-flex; align-items: center; justify-content: center;"
-                      >
-                        <Edit3 size={14} />
-                      </button>
-                      <!-- Delete button -->
-                      <button 
-                        class="row-action-btn flex-row" 
-                        onclick={(e) => {
-                          e.stopPropagation();
-                          confirmDeleteNote(note.path);
-                        }}
-                        aria-label="Delete note"
-                        title="Delete note"
-                        style="background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: var(--spacing-2xs); border-radius: 4px; display: inline-flex; align-items: center; justify-content: center;"
-                        onmouseover={(e) => e.currentTarget.style.color = 'var(--semantic-error)'}
-                        onmouseout={(e) => e.currentTarget.style.color = 'var(--text-secondary)'}
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  </div>
-                {:else}
-                  <span class="empty-text">No daily notes written yet</span>
-                {/each}
-              </div>
-            </div>
+            <NumbatView />
           </div>
 
         <!-- 6. FOCUS TAB -->
@@ -2543,6 +2477,11 @@
         <!-- Budget View takes over the main area on desktop -->
         <div class="editor-panel flex-row" style="min-width: 0;">
           <BudgetView />
+        </div>
+      {:else if appState.activeTab === 'num'}
+        <!-- Num View takes over the main area on desktop -->
+        <div class="editor-panel flex-row" style="min-width: 0;">
+          <NumbatView />
         </div>
       {:else}
         <!-- Right Panel (Editor) -->

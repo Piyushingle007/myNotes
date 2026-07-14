@@ -830,7 +830,7 @@
           name: tagObj?.name || 'Unknown',
           color: tagObj?.color,
           total: details.inflows - details.spent,
-          pct: box.stats.expenses > 0 ? details.spent / box.stats.expenses : 0
+          pct: box.income > 0 ? details.spent / box.income : (box.stats.expenses > 0 ? details.spent / box.stats.expenses : 0)
         };
       }).filter(item => item.total !== 0);
 
@@ -839,7 +839,7 @@
         data: {
           title: box.boxTitle,
           currency: box.currencyCode,
-          incomeLabel: 'Initial Income',
+          incomeLabel: box.incomeLabel || 'Income',
           income: box.income,
           rows: boxRows,
           stats: {
