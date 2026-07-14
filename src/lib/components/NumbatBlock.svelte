@@ -239,7 +239,7 @@
   </div>
   <div class="numbat-body flex-col">
     {#each lines as line, i}
-      <div class="cell flex-col">
+      <div class="cell flex-col" class:active={activeLineIdx === i}>
         <div class="cell-input-row flex-row">
           <div class="line-number">{i + 1}</div>
           <div class="input-wrapper" style="position: relative; flex: 1;">
@@ -356,6 +356,10 @@
     position: relative;
     z-index: 1;
     width: 100%;
+  }
+  
+  .cell.active {
+    z-index: 10;
   }
   .cell-input-row {
     width: 100%;
