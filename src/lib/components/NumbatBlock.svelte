@@ -278,7 +278,7 @@
           <div class="cell-result-row flex-row">
             <div class="result-spacer"></div>
             <div class="cell-result" class:error={results[i].isError}>
-              {@html results[i].output || '&nbsp;'}
+              <span class="res-val">{@html results[i].output || '&nbsp;'}</span>
             </div>
           </div>
         {/if}

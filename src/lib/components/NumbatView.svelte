@@ -680,9 +680,6 @@
                 <div class="cell-result-row flex-row">
                   <div class="result-spacer"></div>
                   <div class="cell-result" class:error={results[i].isError}>
-                    {#if results[i].expr}
-                      <span class="res-expr">{results[i].expr}</span>
-                    {/if}
                     <span class="res-val">{@html results[i].output || '&nbsp;'}</span>
                   </div>
                   <button 
@@ -850,12 +847,99 @@ fn f(x) = x^2</code></pre>
     transition: all 0.2s ease;
   }
 
-  .add-tab-btn:hover, .hdr-icon-btn:hover {
+  .add-tab-btn:hover, .hdr-icon-btn:hover, .hdr-icon-btn.active {
     background-color: rgba(255, 255, 255, 0.08);
     color: var(--text-primary);
   }
 
-  .header-actions { gap: var(--spacing-xs); }
+  /* Sync Indicator */
+  .sync-popover-anchor {
+    position: relative;
+  }
+
+  .note-status-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-right: var(--spacing-sm);
+  }
+
+  .status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-weight: 500;
+    letter-spacing: 0.01em;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    border: 1px solid transparent;
+    user-select: none;
+    font-family: inherit;
+    background: none;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .status-badge:hover {
+    filter: brightness(1.1);
+    transform: translateY(-0.5px);
+  }
+
+  .status-badge svg {
+    flex-shrink: 0;
+    opacity: 0.95;
+  }
+  
+  .status-badge .spin {
+    animation: sync-spin 1s linear infinite;
+  }
+
+  /* Local Save status colors */
+  .status-badge.save-status.clean {
+    color: #10b981;
+    background: rgba(16, 185, 129, 0.1);
+    border: 1px solid rgba(16, 185, 129, 0.2);
+    cursor: default;
+  }
+
+  /* Google Drive Sync status colors */
+  .status-badge.sync-status.offline {
+    color: var(--text-tertiary);
+    background: rgba(124, 124, 124, 0.08);
+    border: 1px solid rgba(124, 124, 124, 0.15);
+  }
+
+  .status-badge.sync-status.syncing {
+    color: var(--accent);
+    background: rgba(var(--accent-rgb, 59, 130, 246), 0.1);
+    border: 1px solid rgba(var(--accent-rgb, 59, 130, 246), 0.2);
+  }
+
+  .status-badge.sync-status.synced {
+    color: var(--text-secondary);
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+  
+  .status-badge.sync-status.error {
+    color: var(--semantic-error);
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.2);
+  }
+
+  @media (max-width: 768px) {
+    .status-badge {
+      font-size: 10px;
+      padding: 2px 6px;
+    }
+  }
+
+  .header-actions {
+    gap: 4px;
+    align-items: center;
+  }
   .menu-wrapper { position: relative; }
 
   /* Glass Menu */
