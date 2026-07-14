@@ -6,7 +6,7 @@
   import { 
     Search, Plus, Settings, Cloud, CloudOff, X, 
     Folder, Tag as TagIcon, Calendar, ChevronRight, FileText, Menu,
-    ChevronDown, BookOpen, Star, Palette, Edit2, Trash2, Target, Wallet
+    ChevronDown, BookOpen, Star, Palette, Edit2, Trash2, Target, Wallet, Calculator
   } from 'lucide-svelte';
   import GoogleLogo from './GoogleLogo.svelte';
   import CommandPalette from './CommandPalette.svelte';
@@ -424,6 +424,14 @@
         >
           <Wallet size={15} style={appState.activeTab === 'budget' ? 'fill: currentColor;' : ''} />
         </button>
+        <button 
+          class="panel-toggle-btn flex-row nav-icon-btn" 
+          class:active={appState.activeTab === 'num'} 
+          onclick={() => { appState.activeTab = appState.activeTab === 'num' ? 'home' : 'num'; activePopover = null; }}
+          title="Num"
+        >
+          <Calculator size={15} style={appState.activeTab === 'num' ? 'fill: currentColor;' : ''} />
+        </button>
       </div>
     </div>
     
@@ -536,6 +544,19 @@
             </div>
           </button>
           {/if}
+          <button 
+            class="dropdown-item flex-row"
+            onclick={() => { appState.activeTab = 'num'; showCreateDropdown = false; }}
+            style="width: 100%; text-align: left; padding: var(--spacing-sm) var(--spacing-md); background: none; border: none; font-family: inherit; font-size: var(--font-size-sm); color: var(--text-primary); cursor: pointer; gap: var(--spacing-sm); align-items: center; border-top: 1px solid var(--border-color);"
+            onmouseover={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-mid-dark)'}
+            onmouseout={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+          >
+            <Calculator size={16} style="color: var(--accent); flex-shrink: 0;" />
+            <div class="flex-col" style="align-items: flex-start; gap: 2px;">
+              <span style="font-weight: 600;">New Num Calculation</span>
+              <span style="font-size: var(--font-size-2xs); color: var(--text-tertiary); white-space: nowrap;">Scientific calculator workspace</span>
+            </div>
+          </button>
           <button 
             class="dropdown-item flex-row"
             onclick={() => { appState.showMarkdownImportModal = true; showCreateDropdown = false; }}

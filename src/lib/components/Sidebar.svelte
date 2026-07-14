@@ -1,7 +1,7 @@
 <script lang="ts">
   import { appState, generateHtmlNote, parseHtmlMetadata } from '../stores/appState.svelte';
   import type { Tag } from '../storage/TagSchema';
-  import { Folder, Plus, Trash2, Calendar, Settings, Library, Palette, FolderOpen, X, ChevronRight, FileText, Download, Cloud, RefreshCw, CloudOff, Tag as TagIcon, Edit2, Star, Target, Wallet } from 'lucide-svelte';
+  import { Folder, Plus, Trash2, Calendar, Settings, Library, Palette, FolderOpen, X, ChevronRight, FileText, Download, Cloud, RefreshCw, CloudOff, Tag as TagIcon, Edit2, Star, Target, Wallet, Calculator } from 'lucide-svelte';
   import GoogleLogo from './GoogleLogo.svelte';
 
   let newNotebookName = $state('');
@@ -652,6 +652,20 @@
       >
         <Wallet size={18} class="sec-icon" />
         <span class="section-title">Budget</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Num Calculator Section -->
+  <div class="section-container flex-col" class:active={appState.activeTab === 'num'}>
+    <div class="section-header flex-row" style="justify-content: space-between; width: 100%;">
+      <button
+        class="flex-row"
+        style="flex-grow: 1; cursor: pointer; background: none; border: none; color: inherit; padding: 0; align-items: center; gap: var(--spacing-xs);"
+        onclick={() => { appState.activeTab = 'num'; }}
+      >
+        <Calculator size={18} class="sec-icon" />
+        <span class="section-title">Num</span>
       </button>
     </div>
   </div>

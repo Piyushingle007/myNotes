@@ -17,6 +17,7 @@ export interface CalcBoxSnapshot {
   noteName: string;
   boxTitle: string;
   income: number;
+  incomeLabel?: string;
   currencyCode: string;
   rows: CalcBoxRow[];
   excludeChecked: boolean;
@@ -73,6 +74,7 @@ export class BudgetAggregator {
         metricsBlocks.forEach(block => {
           const title = block.getAttribute('data-title') || 'Metrics List';
           const income = parseFloat(block.getAttribute('data-income') || '0') || 0;
+          const incomeLabel = block.getAttribute('data-income-label') || 'Income';
           const currencyCode = block.getAttribute('data-currency-code') || defaultCurrency || '₹';
           const excludeChecked = block.getAttribute('data-exclude-checked') === 'true';
           const metricsDataAttr = block.getAttribute('data-metrics');
@@ -160,6 +162,7 @@ export class BudgetAggregator {
             noteName: note.name,
             boxTitle: title,
             income,
+            incomeLabel,
             currencyCode,
             excludeChecked,
             rows,
