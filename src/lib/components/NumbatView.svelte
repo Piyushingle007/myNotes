@@ -536,55 +536,6 @@
     </div>
 
     <div class="header-actions flex-row">
-      <!-- Sync status badge + popover anchor (desktop only) -->
-      <div class="sync-popover-anchor note-status-group">
-        <span class="status-badge save-status clean" title="All changes saved to local storage">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
-            <polyline points="17 21 17 13 7 13 7 21"/>
-            <polyline points="7 3 7 8 15 8"/>
-          </svg>
-          Saved Locally
-        </span>
-
-        <button 
-          class="status-badge sync-status flex-row {appState.googleConnected && appState.syncEnabled ? (appState.syncStatus === 'syncing' ? 'syncing' : appState.syncStatus === 'error' ? 'error' : 'synced') : 'offline'}" 
-          onclick={() => { showSyncPopover = !showSyncPopover; }}
-          title="Sync & Account"
-          aria-expanded={showSyncPopover}
-        >
-          {#if appState.googleConnected && appState.syncEnabled}
-            {#if appState.syncStatus === 'syncing'}
-              <svg class="spin" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
-              </svg>
-              Syncing...
-            {:else if appState.syncStatus === 'error'}
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-              </svg>
-              Sync Error
-            {:else}
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M17.5 19A3.5 3.5 0 0 0 21 15.5c0-2.79-2.54-4.5-5-4.5-.47 0-.89.09-1.29.27A5 5 0 0 0 5 14c0 .34.05.67.15 1A4.5 4.5 0 0 0 8.5 19H17.5z"/>
-                <polyline points="9 15 11 17 15 13"/>
-              </svg>
-              Drive Synced
-            {/if}
-          {:else}
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M5 14c-.33 0-.66-.03-1-.1A4.5 4.5 0 0 0 8.5 19h7a4.5 4.5 0 0 0 4-2.5"/>
-              <path d="M16 11c1 .5 2.5.5 3.5-1.5M10.3 5.3A5 5 0 0 1 19 8c0 .33-.03.66-.1 1"/>
-              <line x1="2" y1="2" x2="22" y2="22"/>
-            </svg>
-            Sync Offline
-          {/if}
-        </button>
-  
-        {#if showSyncPopover}
-          <SyncPopover onclose={() => { showSyncPopover = false; }} />
-        {/if}
-      </div>
 
       <button class="hdr-icon-btn" onclick={() => showHelp = !showHelp} class:active={showHelp} title="Syntax Guide">
         <HelpCircle size={15} />
@@ -636,6 +587,56 @@
           {:else}
             <h1 class="title-display" ondblclick={startRenaming}>{activeTitle || 'Calculation Session'}</h1>
           {/if}
+
+          <!-- Sync status badges moved next to title -->
+          <div class="sync-popover-anchor note-status-group">
+            <span class="status-badge save-status clean" title="All changes saved to local storage">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+                <polyline points="17 21 17 13 7 13 7 21"/>
+                <polyline points="7 3 7 8 15 8"/>
+              </svg>
+              Saved Locally
+            </span>
+
+            <button 
+              class="status-badge sync-status flex-row {appState.googleConnected && appState.syncEnabled ? (appState.syncStatus === 'syncing' ? 'syncing' : appState.syncStatus === 'error' ? 'error' : 'synced') : 'offline'}" 
+              onclick={() => { showSyncPopover = !showSyncPopover; }}
+              title="Sync & Account"
+              aria-expanded={showSyncPopover}
+            >
+              {#if appState.googleConnected && appState.syncEnabled}
+                {#if appState.syncStatus === 'syncing'}
+                  <svg class="spin" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+                  </svg>
+                  Syncing...
+                {:else if appState.syncStatus === 'error'}
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                  </svg>
+                  Sync Error
+                {:else}
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M17.5 19A3.5 3.5 0 0 0 21 15.5c0-2.79-2.54-4.5-5-4.5-.47 0-.89.09-1.29.27A5 5 0 0 0 5 14c0 .34.05.67.15 1A4.5 4.5 0 0 0 8.5 19H17.5z"/>
+                    <polyline points="9 15 11 17 15 13"/>
+                  </svg>
+                  Drive Synced
+                {/if}
+              {:else}
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M5 14c-.33 0-.66-.03-1-.1A4.5 4.5 0 0 0 8.5 19h7a4.5 4.5 0 0 0 4-2.5"/>
+                  <path d="M16 11c1 .5 2.5.5 3.5-1.5M10.3 5.3A5 5 0 0 1 19 8c0 .33-.03.66-.1 1"/>
+                  <line x1="2" y1="2" x2="22" y2="22"/>
+                </svg>
+                Sync Offline
+              {/if}
+            </button>
+      
+            {#if showSyncPopover}
+              <SyncPopover onclose={() => { showSyncPopover = false; }} />
+            {/if}
+          </div>
         </div>
 
         <div class="numbat-body flex-col">
@@ -1007,6 +1008,9 @@ fn f(x) = x^2</code></pre>
 
   .session-title-area {
     margin-bottom: var(--spacing-md);
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
   }
 
   .title-display {
