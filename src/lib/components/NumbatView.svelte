@@ -642,6 +642,7 @@
               oninput={handleEditorInput}
               onscroll={handleEditorScroll}
               onkeydown={handleTextareaKeydown}
+              onblur={() => setTimeout(() => showCompletions = false, 150)}
               placeholder="# Type calculations here...&#10;100 usd -> inr&#10;12 km / 2 h -> mph"
               autocomplete="off"
               autocorrect="off"
@@ -660,7 +661,7 @@
                   <button 
                     class="completion-item" 
                     class:active={idx === activeCompletionIdx}
-                    onclick={() => insertCompletion(completion)}
+                    onmousedown={(e) => { e.preventDefault(); insertCompletion(completion); }}
                   >
                     {completion}
                   </button>
@@ -929,8 +930,8 @@ fn f(x) = x^2</code></pre>
   }
 
   .completion-item:hover, .completion-item.active {
-    background: rgba(255, 255, 255, 0.1);
-    color: var(--accent);
+    background: var(--accent-primary, #007acc);
+    color: #ffffff;
   }
 
   /* Sync Indicator */
