@@ -200,7 +200,7 @@
         
         {#if showCompletions}
           <div 
-            class="autocomplete-dropdown flex-col"
+            class="autocomplete-dropdown"
             style="top: {dropdownTop}px; left: {dropdownLeft}px;"
           >
             {#each completions as completion, i}
@@ -349,12 +349,17 @@
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 8px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-    min-width: 150px;
+    width: 320px;
     max-height: 200px;
     overflow-y: auto;
-    padding: 4px;
+    padding: 8px;
     scrollbar-width: thin;
     scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+    display: flex;
+    flex-wrap: wrap;
+    flex-direction: row;
+    gap: 6px;
+    align-content: flex-start;
   }
 
   .completion-item {
@@ -362,7 +367,7 @@
     border: none;
     color: var(--text-primary);
     padding: 6px 12px;
-    text-align: left;
+    text-align: center;
     font-family: 'JetBrains Mono', 'Fira Code', monospace;
     font-size: 0.85rem;
     border-radius: 4px;

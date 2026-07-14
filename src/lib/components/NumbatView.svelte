@@ -642,7 +642,6 @@
               oninput={handleEditorInput}
               onscroll={handleEditorScroll}
               onkeydown={handleTextareaKeydown}
-              onblur={() => setTimeout(() => showCompletions = false, 150)}
               placeholder="# Type calculations here...&#10;100 usd -> inr&#10;12 km / 2 h -> mph"
               autocomplete="off"
               autocorrect="off"
@@ -654,14 +653,14 @@
             <!-- Autocomplete Dropdown -->
             {#if showCompletions}
               <div 
-                class="autocomplete-dropdown flex-col"
+                class="autocomplete-dropdown"
                 style="top: {dropdownTop}px; left: {dropdownLeft}px;"
               >
                 {#each completions as completion, idx}
                   <button 
                     class="completion-item" 
                     class:active={idx === activeCompletionIdx}
-                    onmousedown={(e) => { e.preventDefault(); insertCompletion(completion); }}
+                    onclick={() => insertCompletion(completion)}
                   >
                     {completion}
                   </button>
@@ -906,13 +905,18 @@ fn f(x) = x^2</code></pre>
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 8px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-    min-width: 150px;
+    width: 320px;
     max-height: 200px;
     overflow-y: auto;
-    padding: 4px;
+    padding: 8px;
     /* Prevent default scrollbar styling to look clean */
     scrollbar-width: thin;
     scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+    display: flex;
+    flex-wrap: wrap;
+    flex-direction: row;
+    gap: 6px;
+    align-content: flex-start;
   }
 
   .completion-item {
@@ -920,13 +924,12 @@ fn f(x) = x^2</code></pre>
     border: none;
     color: var(--text-primary);
     padding: 6px 12px;
-    text-align: left;
+    text-align: center;
     font-family: 'JetBrains Mono', 'Fira Code', monospace;
     font-size: 0.85rem;
     border-radius: 4px;
     cursor: pointer;
     transition: background 0.1s;
-    width: 100%;
   }
 
   .completion-item:hover, .completion-item.active {
