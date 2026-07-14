@@ -249,8 +249,12 @@
       const paddingLeft = 16;
       const paddingTop = 16;
 
+      const assumedDropdownWidth = 220; // Approximate max width of the dropdown
+      const maxLeft = (editorEl?.clientWidth || 400) - assumedDropdownWidth;
+      const calculatedLeft = gutterWidth + paddingLeft + (currentCharIdx * charWidth);
+
       dropdownTop = paddingTop + (currentLineIdx + 1) * lineHeight;
-      dropdownLeft = gutterWidth + paddingLeft + (currentCharIdx * charWidth);
+      dropdownLeft = Math.min(calculatedLeft, Math.max(0, maxLeft));
     } else {
       showCompletions = false;
     }
