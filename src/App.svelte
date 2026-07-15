@@ -7,6 +7,7 @@
   import GoogleLogo from './lib/components/GoogleLogo.svelte';
   import { runTagDbTest } from './lib/storage/test_tag_db';
   import { runTransactionAddTest } from './lib/storage/test_transaction_add';
+  import TldrawView from './lib/components/TldrawView.svelte';
 
   let initializing = $state(true);
   let ignoreHashSync = false;
@@ -25,6 +26,8 @@
       }
     } else if (appState.activeTab === 'num') {
       newHash = `#/num`;
+    } else if (appState.activeTab === 'draw') {
+      newHash = `#/draw`;
     } else if (appState.activeTab === 'focus') {
       newHash = `#/focus`;
     } else if (appState.activeTab === 'budget') {
@@ -111,6 +114,10 @@
           appState.selectedTag = null;
         } else if (hash === '#/num') {
           appState.activeTab = 'num';
+          appState.activeNotebook = null;
+          appState.selectedTag = null;
+        } else if (hash === '#/draw') {
+          appState.activeTab = 'draw';
           appState.activeNotebook = null;
           appState.selectedTag = null;
         } else if (hash === '#/focus') {
