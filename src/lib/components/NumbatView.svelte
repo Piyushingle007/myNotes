@@ -677,7 +677,7 @@
                 </div>
               </div>
 
-              {#if results[i] && !results[i].isEmpty}
+              {#if results[i] && !results[i].isEmpty && (results[i].plain || results[i].output || '').replace(/<[^>]*>/g, '').trim() !== ''}
                 <div class="cell-result-row flex-row">
                   <div class="result-spacer"></div>
                   <div class="cell-result" class:error={results[i].isError}>

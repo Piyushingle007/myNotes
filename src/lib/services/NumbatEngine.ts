@@ -217,8 +217,17 @@ ${cubes}\t\t</Cube>
         outputHtml = outputHtml.substring(eqIdx).trim();
       }
 
-      const plainText = this.stripHtml(outputHtml);
-      const isEmpty = plainText.trim() === '' || plainText.trim() === 'let';
+      let plainText = this.stripHtml(outputHtml);
+      
+      // Variable assignments in Numbat sometimes return just the type or name, or are completely blank.
+      // Or they might return something that looks empty.
+      let isEmpty = plainText.trim() === '' || plainText.trim() === 'let';
+      
+      // If the original outputHtml contains no actual values (e.g. no numbers, no equals sign),
+      // and it was an assignment, Numbat often just prints nothing useful.
+      if (preprocessed.trim().startsWith('let ') || preprocessed.trim().startsWith('fn ')) {
+        isEmpty = true;
+      }
 
       return {
         output: outputHtml,
