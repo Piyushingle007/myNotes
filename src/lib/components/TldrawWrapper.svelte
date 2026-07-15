@@ -1,9 +1,5 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import React from 'react';
-  import { createRoot } from 'react-dom/client';
-  import { Tldraw } from 'tldraw';
-  import 'tldraw/tldraw.css';
 
   interface Props {
     persistenceKey?: string;
@@ -29,50 +25,78 @@
   let root: any = null;
   let editorInstance: any = null;
   let unsubscribe: (() => void) | null = null;
+  let isLoaded = $state(false);
 
   onMount(() => {
+    let mounted = true;
     if (container) {
-      root = createRoot(container);
-      
-      const handleMount = (editor: any) => {
-        editorInstance = editor;
+      // Lazy load massive dependencies
+      Promise.all([
+        import('react'),
+        import('react-dom/client'),
+        import('tldraw'),
+        import('tldraw/tldraw.css')
+      ]).then(([ReactModule, ReactDOMClient, TldrawModule]) => {
+        if (!mounted) return;
+        const React = ReactModule.default || ReactModule;
+        const createRoot = ReactDOMClient.createRoot;
+        const Tldraw = TldrawModule.Tldraw;
+
+        root = createRoot(container!);
         
-        if (initialSnapshot && !persistenceKey) {
-          try {
-            editor.store.loadSnapshot(initialSnapshot);
-          } catch (e) {
-            console.error("Failed to load tldraw snapshot", e);
+        const handleMount = (editor: any) => {
+          editorInstance = editor;
+          
+          if (initialSnapshot && !persistenceKey) {
+            try {
+              editor.store.loadSnapshot(initialSnapshot);
+            } catch (e) {
+              console.error("Failed to load tldraw snapshot", e);
+            }
           }
-        }
 
-        if (onChange) {
-          unsubscribe = editor.store.listen(() => {
-            onChange(editor.store.getSnapshot());
-          });
-        }
+          if (onChange) {
+            unsubscribe = editor.store.listen(() => {
+              onChange(editor.store.getSnapshot());
+            });
+          }
 
-        if (onMountCb) {
-          onMountCb(editor);
-        }
-      };
+          if (onMountCb) {
+            onMountCb(editor);
+          }
+        };
 
-      const tldrawProps = {
-        persistenceKey,
-        autoFocus,
-        onMount: handleMount
-      };
+        const tldrawProps = {
+          persistenceKey,
+          autoFocus,
+          onMount: handleMount
+        };
 
-      const el = React.createElement(Tldraw, tldrawProps);
-      root.render(el);
+        const element = React.createElement(Tldraw, tldrawProps);
+        root.render(element);
+        isLoaded = true;
+      });
     }
-    
+
     return () => {
+      mounted = false;
       if (unsubscribe) unsubscribe();
       if (root) {
-        root.unmount();
+        // Need to wait for next tick to unmount React safely if it was just rendering
+        setTimeout(() => {
+          try { root.unmount(); } catch (e) {}
+        }, 0);
       }
     };
   });
 </script>
 
-<div bind:this={container} class={className} style="width: 100%; height: 100%; position: relative; {style}"></div>
+<div class="tldraw-svelte-wrapper {className}" style="width: 100%; height: 100%; position: relative; {style}">
+  {#if !isLoaded}
+    <div class="loading-state flex-col" style="width: 100%; height: 100%; align-items: center; justify-content: center; color: var(--text-muted); font-size: 0.85rem;">
+      <div class="spinner" style="margin-bottom: 8px;"></div>
+      Loading Tldraw...
+    </div>
+  {/if}
+  <div bind:this={container} style="width: 100%; height: 100%;"></div>
+</div>
