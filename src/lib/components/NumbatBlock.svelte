@@ -40,7 +40,7 @@
     let res = [];
     for (const line of lines) {
       if (!line.trim() || line.trim().startsWith('#') || line.trim().startsWith('//')) {
-        res.push({ output: '', isError: false });
+        res.push({ output: '', isError: false, isEmpty: true });
         continue;
       }
       const evalRes = NumbatEngine.interpret(line);

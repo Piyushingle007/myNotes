@@ -194,7 +194,7 @@ ${cubes}\t\t</Cube>
   /**
    * Interpret a line of Numbat code.
    */
-  public interpret(code: string): { output: string; plainOutput: string; isError: boolean; isCommand: boolean; shouldClear: boolean; shouldReset: boolean } {
+  public interpret(code: string): { output: string; plainOutput: string; isError: boolean; isEmpty: boolean; isCommand: boolean; shouldClear: boolean; shouldReset: boolean } {
     if (!this.instance) {
       throw new Error('Numbat engine not initialized. Call init() first.');
     }
@@ -202,7 +202,7 @@ ${cubes}\t\t</Cube>
     const preprocessed = this.preprocess(code);
     const trimmed = preprocessed.trim();
     if (!trimmed || trimmed.startsWith('#')) {
-      return { output: '', plainOutput: '', isError: false, isCommand: false, shouldClear: false, shouldReset: false };
+      return { output: '', plainOutput: '', isError: false, isEmpty: true, isCommand: false, shouldClear: false, shouldReset: false };
     }
 
     // Run standard interpreter
@@ -217,10 +217,14 @@ ${cubes}\t\t</Cube>
         outputHtml = outputHtml.substring(eqIdx).trim();
       }
 
+      const plainText = this.stripHtml(outputHtml);
+      const isEmpty = plainText.trim() === '' || plainText.trim() === 'let';
+
       return {
         output: outputHtml,
-        plainOutput: this.stripHtml(outputHtml),
+        plainOutput: plainText,
         isError: result.is_error,
+        isEmpty: isEmpty,
         isCommand: false,
         shouldClear: false,
         shouldReset: false
@@ -231,6 +235,7 @@ ${cubes}\t\t</Cube>
         output: `<span class="numbat-diagnostic-red">Interpreter error: ${e?.message || e}</span>`,
         plainOutput: `Interpreter error: ${e?.message || e}`,
         isError: true,
+        isEmpty: false,
         isCommand: false,
         shouldClear: false,
         shouldReset: false
