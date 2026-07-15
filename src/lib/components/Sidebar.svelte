@@ -670,7 +670,7 @@
     </div>
   </div>
 
-  <!-- Draw Whiteboard Section -->
+  <!-- Draw Whiteboard Section (Disabled temporarily)
   <div class="section-container flex-col" class:active={appState.activeTab === 'draw'}>
     <div class="section-header flex-row" style="justify-content: space-between; width: 100%;">
       <button
@@ -683,6 +683,7 @@
       </button>
     </div>
   </div>
+  -->
 
   <!-- Footer Actions -->
   <div class="footer-actions flex-col">

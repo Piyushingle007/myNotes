@@ -15,7 +15,7 @@
     { id: 'tags', label: 'Tags', icon: TagIcon },
     { id: 'library', label: 'Library', icon: Library },
     { id: 'num', label: 'Num', icon: Calculator },
-    { id: 'draw', label: 'Draw', icon: PenTool },
+    // { id: 'draw', label: 'Draw', icon: PenTool }, // Disabled temporarily
     { id: 'budget', label: 'Budget', icon: Wallet },
     { id: 'focus', label: 'Focus', icon: Target },
   ] as const;
