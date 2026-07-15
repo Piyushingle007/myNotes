@@ -40,7 +40,7 @@
         if (!mounted) return;
         const React = ReactModule.default || ReactModule;
         const createRoot = ReactDOMClient.createRoot;
-        const Tldraw = TldrawModule.Tldraw;
+        const { Tldraw, getSnapshot, loadSnapshot } = TldrawModule;
 
         root = createRoot(container!);
         
@@ -49,7 +49,7 @@
           
           if (initialSnapshot && !persistenceKey) {
             try {
-              editor.store.loadSnapshot(initialSnapshot);
+              loadSnapshot(editor.store, initialSnapshot);
             } catch (e) {
               console.error("Failed to load tldraw snapshot", e);
             }
@@ -61,7 +61,7 @@
               if (timeoutId) clearTimeout(timeoutId);
               timeoutId = setTimeout(() => {
                 if (mounted && editorInstance) {
-                  onChange(editorInstance.store.getSnapshot());
+                  onChange(getSnapshot(editorInstance.store));
                 }
               }, 300);
             }, { scope: 'document', source: 'user' });
