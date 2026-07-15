@@ -64,8 +64,9 @@
       const path = await DrawFileManager.createDrawFile('Whiteboard');
       refreshFileList();
       await selectFile(path);
-    } catch (e) {
-      appState.showToast('Failed to create whiteboard.', 'error');
+    } catch (e: any) {
+      console.error('Failed to create whiteboard:', e);
+      appState.showToast(`Failed to create whiteboard: ${e.message || e}`, 'error');
     }
   }
 
