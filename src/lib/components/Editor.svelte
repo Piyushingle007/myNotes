@@ -4047,6 +4047,74 @@
 		}
 	});
 
+	const TldrawBlockExt = TiptapNode.create({
+		name: 'tldraw',
+		group: 'block',
+		atom: true,
+		draggable: true,
+		addAttributes() {
+			return {
+				snapshot: {
+					default: null,
+					parseHTML: (el: HTMLElement) => {
+						const snap = el.getAttribute('data-tldraw-snapshot');
+						try { return snap ? JSON.parse(decodeURIComponent(snap)) : null; } catch(e) { return null; }
+					},
+					renderHTML: (attrs) => {
+						try { return { 'data-tldraw-snapshot': encodeURIComponent(JSON.stringify(attrs.snapshot)) }; } catch(e) { return {}; }
+					}
+				}
+			};
+		},
+		parseHTML() {
+			return [{ tag: 'div[data-type="tldraw"]' }];
+		},
+		renderHTML({ HTMLAttributes }) {
+			return ['div', mergeAttributes(HTMLAttributes, { 'data-type': 'tldraw' })];
+		},
+		addNodeView() {
+			return ({ node, getPos, editor }) => {
+				const dom = document.createElement('div');
+				dom.className = 'tldraw-block-view-container';
+				dom.contentEditable = 'false';
+				
+				let currentNode = node;
+				const nodeStore = writable(node);
+				
+				const component = mount(TldrawBlock, {
+					target: dom,
+					props: {
+						nodeStore,
+						getPos,
+						editor,
+						updateAttributes: (attrs: any) => {
+							const pos = typeof getPos === 'function' ? getPos() : null;
+							if (pos !== null && pos !== undefined) {
+								editor.view.dispatch(editor.state.tr.setNodeMarkup(pos, undefined, {
+									...currentNode.attrs,
+									...attrs
+								}));
+							}
+						}
+					}
+				});
+				
+				return {
+					dom,
+					update: (updatedNode) => {
+						if (updatedNode.type.name !== 'tldraw') return false;
+						currentNode = updatedNode;
+						nodeStore.set(updatedNode);
+						return true;
+					},
+					destroy: () => {
+						unmount(component);
+					}
+				};
+			};
+		}
+	});
+
 	const MermaidRenderer = Extension.create({
 		name: 'mermaidRendererOptIn',
 		addProseMirrorPlugins() {

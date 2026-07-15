@@ -198,7 +198,7 @@
             </button>
             <div class="menu-divider"></div>
             {#if activeFilePath}
-              <button onclick={() => handleDeleteFile(activeFilePath)} class="destructive-action">
+              <button onclick={() => handleDeleteFile(activeFilePath!)} class="destructive-action">
                 <Trash2 size={14} /> Delete Whiteboard
               </button>
             {/if}
