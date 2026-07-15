@@ -40,7 +40,7 @@
     let res = [];
     for (const line of lines) {
       if (!line.trim() || line.trim().startsWith('#') || line.trim().startsWith('//')) {
-        res.push({ output: '', isError: false });
+        res.push({ output: '', isError: false, isEmpty: true });
         continue;
       }
       const evalRes = NumbatEngine.interpret(line);
@@ -276,7 +276,7 @@
           </div>
         </div>
 
-        {#if results[i] && !results[i].isEmpty}
+        {#if results[i] && !results[i].isEmpty && (results[i].plainOutput || results[i].output || '').replace(/<[^>]*>/g, '').trim() !== ''}
           <div class="cell-result-row flex-row">
             <div class="result-spacer"></div>
             <div class="cell-result" class:error={results[i].isError}>

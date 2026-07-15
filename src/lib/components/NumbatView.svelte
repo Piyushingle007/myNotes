@@ -388,7 +388,7 @@
       if (res.isCommand) {
         newResults.push({ output: `<span class="numbat-dimmed">// Command executed</span>`, plain: 'Command executed', isError: false, expr: lineText, lineNo: i + 1, isEmpty: false });
       } else {
-        newResults.push({ output: res.output, plain: res.plainOutput, isError: res.isError, expr: lineText, lineNo: i + 1, isEmpty: false });
+        newResults.push({ output: res.output, plain: res.plainOutput, isError: res.isError, expr: lineText, lineNo: i + 1, isEmpty: res.isEmpty });
       }
     }
     results = newResults;
@@ -677,7 +677,7 @@
                 </div>
               </div>
 
-              {#if results[i] && !results[i].isEmpty}
+              {#if results[i] && !results[i].isEmpty && (results[i].plain || results[i].output || '').replace(/<[^>]*>/g, '').trim() !== ''}
                 <div class="cell-result-row flex-row">
                   <div class="result-spacer"></div>
                   <div class="cell-result" class:error={results[i].isError}>
