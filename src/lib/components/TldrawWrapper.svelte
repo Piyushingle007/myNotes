@@ -58,12 +58,13 @@
           if (onChange) {
             let timeoutId: any;
             unsubscribe = editor.store.listen(() => {
-              if (timeoutId) clearTimeout(timeoutId);
-              timeoutId = setTimeout(() => {
-                if (mounted && editorInstance) {
-                  onChange(getSnapshot(editorInstance.store));
-                }
-              }, 300);
+              // TEMPORARILY DISABLED AUTOSAVE FOR DEBUGGING
+              // if (timeoutId) clearTimeout(timeoutId);
+              // timeoutId = setTimeout(() => {
+              //   if (mounted && editorInstance) {
+              //     onChange(getSnapshot(editorInstance.store));
+              //   }
+              // }, 300);
             }, { scope: 'document', source: 'user' });
           }
 
