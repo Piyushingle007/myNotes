@@ -28,6 +28,7 @@
   import ConflictResolver from './ConflictResolver.svelte';
   import BudgetView from './BudgetView.svelte';
   import NumbatView from './NumbatView.svelte';
+  import TldrawView from './TldrawView.svelte';
   import { mobileNav } from '../stores/mobileNav.svelte';
   import { LONG_PRESS_MS, TOUCH_MOVE_TOLERANCE, edgeSwipeBack } from '../actions/touch';
 
@@ -2044,6 +2045,12 @@
             <NumbatView />
           </div>
 
+        <!-- 6. DRAW TAB -->
+        {:else if appState.activeTab === 'draw'}
+          <div class="mobile-tab-view flex-col">
+            <TldrawView />
+          </div>
+
         <!-- 6. FOCUS TAB -->
         {:else if appState.activeTab === 'focus'}
           <div class="mobile-tab-view flex-col">
@@ -2482,6 +2489,10 @@
         <!-- Num View takes over the main area on desktop -->
         <div class="editor-panel flex-row" style="min-width: 0;">
           <NumbatView />
+        </div>
+      {:else if appState.activeTab === 'draw'}
+        <div class="editor-panel flex-row" style="min-width: 0;">
+          <TldrawView />
         </div>
       {:else}
         <!-- Right Panel (Editor) -->

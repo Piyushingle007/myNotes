@@ -45,6 +45,7 @@
 	import MermaidEditor from './MermaidEditor.svelte';
 	import MetricsBlock from './MetricsBlock.svelte';
 	import NumbatBlock from './NumbatBlock.svelte';
+	import TldrawBlock from './TldrawBlock.svelte';
 	import Modal from './Modal.svelte';
 	import { exportMultipleMetricsToXlsx, getRowNumbers, getCleanDescription, extractRowDate } from '../utils/exportMetricsXlsx';
 	import { renderDiagramSVG, decodeDiagram } from '../utils/diagram';
@@ -1791,6 +1792,21 @@
 				aliases: ['num', 'numbat', 'numbat block'],
 				icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 22h14a2 2 0 0 0 2-2V7.5L14.5 2H6a2 2 0 0 0-2 2v4"/><polyline points="14 2 14 8 20 8"/><path d="M2 15h10"/><path d="M9 18l3-3-3-3"/></svg>',
 				action: () => editor?.chain().focus().insertContent({ type: 'numbat' }).command(({ tr }) => {
+					const { selection } = tr;
+					if (selection instanceof NodeSelection) {
+						tr.setSelection(TextSelection.near(tr.doc.resolve(selection.to)));
+					}
+					return true;
+				}).run(),
+				category: 'insert',
+				badge: 'New'
+			},
+			{
+				label: 'Draw / Sketch',
+				description: 'Insert an inline Tldraw whiteboard canvas',
+				aliases: ['draw', 'sketch', 'whiteboard', 'canvas', 'tldraw'],
+				icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/><circle cx="11" cy="11" r="2"/></svg>',
+				action: () => editor?.chain().focus().insertContent({ type: 'tldraw' }).command(({ tr }) => {
 					const { selection } = tr;
 					if (selection instanceof NodeSelection) {
 						tr.setSelection(TextSelection.near(tr.doc.resolve(selection.to)));
@@ -6653,6 +6669,7 @@
 				Callout,
 				Metrics,
 				NumbatBlockExt,
+				TldrawBlockExt,
 				TypingKeyboardShortcuts,
 				FocusModeHighlight,
 				TypewriterScrolling,
