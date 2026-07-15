@@ -72,13 +72,36 @@
           }
         };
 
+        class ErrorBoundary extends React.Component {
+          constructor(props) {
+            super(props);
+            this.state = { hasError: false, error: null };
+          }
+          static getDerivedStateFromError(error) {
+            return { hasError: true, error };
+          }
+          componentDidCatch(error, errorInfo) {
+            console.error("Tldraw crashed:", error, errorInfo);
+          }
+          render() {
+            if (this.state.hasError) {
+              return React.createElement('div', { style: { color: '#ff4444', padding: '20px', fontFamily: 'sans-serif' } }, 
+                React.createElement('h3', null, 'Tldraw crashed'),
+                React.createElement('p', null, String(this.state.error))
+              );
+            }
+            return this.props.children;
+          }
+        }
+
         const tldrawProps = {
           persistenceKey,
           autoFocus,
           onMount: handleMount
         };
 
-        const element = React.createElement(Tldraw, tldrawProps);
+        const tldrawElement = React.createElement(Tldraw, tldrawProps);
+        const element = React.createElement(ErrorBoundary, null, tldrawElement);
         root.render(element);
         isLoaded = true;
       });
