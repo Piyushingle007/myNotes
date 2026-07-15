@@ -56,9 +56,15 @@
           }
 
           if (onChange) {
+            let timeoutId: any;
             unsubscribe = editor.store.listen(() => {
-              onChange(editor.store.getSnapshot());
-            });
+              if (timeoutId) clearTimeout(timeoutId);
+              timeoutId = setTimeout(() => {
+                if (mounted && editorInstance) {
+                  onChange(editorInstance.store.getSnapshot());
+                }
+              }, 300);
+            }, { scope: 'document', source: 'user' });
           }
 
           if (onMountCb) {
