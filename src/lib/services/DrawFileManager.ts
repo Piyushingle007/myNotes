@@ -99,7 +99,8 @@ ${JSON.stringify(doc, null, 2)}
 </body>
 </html>`;
 
-    await appState.saveNote(path, htmlContent);
+    await appState.storage.writeNote(path, htmlContent);
+    await appState.refreshNotes();
   }
 
   /**
@@ -137,7 +138,8 @@ ${JSON.stringify(doc, null, 2)}
    * Delete a Draw file.
    */
   public async deleteDrawFile(path: string): Promise<void> {
-    await appState.deleteNote(path);
+    await appState.storage.deleteNote(path);
+    await appState.refreshNotes();
   }
 }
 
