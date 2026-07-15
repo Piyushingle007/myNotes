@@ -4107,6 +4107,9 @@
 						nodeStore.set(updatedNode);
 						return true;
 					},
+					ignoreMutation() {
+						return true;
+					},
 					destroy: () => {
 						unmount(component);
 					}
