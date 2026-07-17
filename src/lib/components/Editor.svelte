@@ -46,6 +46,8 @@
 	import MetricsBlock from './MetricsBlock.svelte';
 	import NumbatBlock from './NumbatBlock.svelte';
 	import TldrawBlock from './TldrawBlock.svelte';
+	import { noteDocManager } from '../sync/NoteDocManager';
+	import Collaboration from '@tiptap/extension-collaboration';
 	import Modal from './Modal.svelte';
 	import { exportMultipleMetricsToXlsx, getRowNumbers, getCleanDescription, extractRowDate } from '../utils/exportMetricsXlsx';
 	import { renderDiagramSVG, decodeDiagram } from '../utils/diagram';
@@ -343,6 +345,16 @@
 			appState.notes[noteIdx].modified = Date.now();
 		}
 		await appState.saveActiveNote();
+		// Persist Y.Doc sidecar when Yjs is enabled
+		if (yjsSyncEnabled && currentYDoc && currentNoteId) {
+			try {
+				const update = noteDocManager.exportUpdate(currentYDoc);
+				const blob = new Blob([update]);
+				await appState.storage.writeBlob?.(`.ydocs/${currentNoteId}.ydoc`, blob);
+			} catch (e) {
+				console.error('Failed to persist .ydoc sidecar:', e);
+			}
+		}
 	}
 
 	async function readNote(path: string) {
@@ -798,6 +810,10 @@
 	let pendingContent = $state<string | null>(null);
 	let ignoreNextUpdate = false;
 	let isLoadingNote = $state(false);
+	// Yjs CRDT state
+	let yjsSyncEnabled = $state(localStorage.getItem('mynotes_yjs_sync_enabled') === 'true');
+	let currentNoteId: string | null = null;
+	let currentYDoc: import('yjs').Doc | null = null;
 	let fixingBlobsPromise: Promise<void> = Promise.resolve();
 	let hasPendingBlobs = false;
 	let lastSourceMode = $sourceMode;
@@ -5656,6 +5672,8 @@
 
 	function clearEditorHistory() {
 		if (!editor) return;
+		// With Yjs Collaboration, undo history is per-Y.Doc and managed by yUndoPlugin — skip
+		if (yjsSyncEnabled && currentYDoc) return;
 		// Recreate editor state with same doc/schema/plugins but fresh plugin state (clears undo/redo)
 		const { doc, schema, plugins } = editor.state;
 		const newState = EditorState.create({ doc, schema, plugins });
@@ -5741,7 +5759,37 @@
 			if (editorBody) editorBody.scrollTop = 0;
 			isLoadingNote = false;
 		} else if (editorElement && editor) {
-			// Editor already exists, just swap content
+			// Yjs CRDT path: recreate editor bound to Y.Doc for this note
+			if (yjsSyncEnabled && path.endsWith('.html')) {
+				const parsed = parseHtmlMetadata(content);
+				const noteId = parsed.meta.id || path;
+				const { doc, readyPromise } = noteDocManager.getDoc(noteId);
+				readyPromise.then(() => {
+					// Seed from HTML if fragment is empty (first open / legacy note)
+					if (editor) {
+						noteDocManager.seedFromHtml(doc, parsed.content, editor.schema);
+					}
+					currentNoteId = noteId;
+					currentYDoc = doc;
+					const fragment = noteDocManager.getXmlFragment(doc);
+					// Recreate editor with Collaboration bound to this note's Y.Doc
+					createEditor(content, fragment);
+					foldState.clear();
+					foldState = new Map(foldState);
+					tick().then(() => {
+						if (editorBody) editorBody.scrollTop = 0;
+						if (editor) {
+							const tr = editor.state.tr.setSelection(TextSelection.atStart(editor.state.doc));
+							editor.view.dispatch(tr);
+						}
+						resolveLocalAssets();
+						requestAnimationFrame(() => { if (editorBody) editorBody.scrollTop = 0; });
+						isLoadingNote = false;
+					});
+				});
+				return;
+			}
+			// Legacy path: swap content directly
 			const html = path.endsWith('.html') ? parseHtmlMetadata(content).content : markdownToHtml(content);
 			ignoreNextUpdate = true;
 			editor.commands.setContent(html);
@@ -6686,27 +6734,27 @@
 		clearResolvedAssets();
 	}
 
-	function createEditor(content: string) {
+	function createEditor(content: string, yjsFragment?: import('yjs').XmlFragment) {
 		if (!editorElement) return;
 		destroyEditor();
 
+		const useYjs = yjsSyncEnabled && !!yjsFragment;
 		isLargeDoc = content.length > LARGE_DOC_CHARS;
 		let html = '';
-		if ($activeNotePath && $activeNotePath.endsWith('.html')) {
-			if (content.includes('<html') || content.includes('<head') || content.includes('<body')) {
-				html = parseHtmlMetadata(content).content;
+		if (!useYjs) {
+			if ($activeNotePath && $activeNotePath.endsWith('.html')) {
+				if (content.includes('<html') || content.includes('<head') || content.includes('<body')) {
+					html = parseHtmlMetadata(content).content;
+				} else {
+					html = content;
+				}
 			} else {
-				html = content;
+				html = markdownToHtml(content);
 			}
-		} else {
-			html = markdownToHtml(content);
 		}
 
-		editor = new Editor({
-			element: editorElement,
-			editable: !$readOnly,
-			extensions: [
-				StarterKit.configure({ codeBlock: false }),
+		const baseExtensions = [
+			StarterKit.configure({ codeBlock: false, ...(useYjs ? { undoRedo: false } : {}) }),
 				TaskList,
 				TaskItem.configure({ nested: true, HTMLAttributes: { 'data-type': 'taskItem' } }),
 				Placeholder.configure({
@@ -6810,8 +6858,18 @@
 				NoteSearchExtension,
 				ColorSwatch,
 				...($appConfig?.enable_wiki_links ? [WikiLink, WikiLinkAutocomplete] : []),
-			],
-			content: html,
+			];
+			// When Yjs is active, add Collaboration extension bound to the Y.XmlFragment
+			if (useYjs && yjsFragment) {
+				baseExtensions.push(Collaboration.configure({ fragment: yjsFragment }));
+			}
+
+		editor = new Editor({
+			element: editorElement,
+			editable: !$readOnly,
+			extensions: baseExtensions,
+			// When Yjs is active, content comes from the Y.Doc (do NOT pass content)
+			...(useYjs ? {} : { content: html }),
 			editorProps: {
 				attributes: { class: 'editor-content', spellcheck: 'false' },
 				handleDOMEvents: {

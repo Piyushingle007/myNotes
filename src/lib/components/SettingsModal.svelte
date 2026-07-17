@@ -359,6 +359,25 @@
               </label>
             </div>
 
+            <!-- Yjs CRDT Sync toggle -->
+            <div class="setting-row">
+              <div class="setting-info">
+                <span class="setting-label">CRDT Merge Sync (Experimental)</span>
+                <span class="setting-desc">Use Yjs CRDT for conflict-free merging of concurrent edits across devices. Eliminates data loss from sync conflicts.</span>
+              </div>
+              <label class="switch-container">
+                <input
+                  type="checkbox"
+                  checked={appState.yjsSyncEnabled}
+                  onchange={(e) => {
+                    appState.yjsSyncEnabled = e.currentTarget.checked;
+                    localStorage.setItem('mynotes_yjs_sync_enabled', String(e.currentTarget.checked));
+                  }}
+                />
+                <span class="slider"></span>
+              </label>
+            </div>
+
             <!-- Stats -->
             <div class="stat-grid">
               <div class="stat-item">
@@ -367,7 +386,7 @@
               </div>
               <div class="stat-item">
                 <span class="stat-label">Conflict Policy</span>
-                <span class="stat-value">Last Modified Wins</span>
+                <span class="stat-value">{appState.yjsSyncEnabled ? 'CRDT Auto-Merge' : 'Last Modified Wins'}</span>
               </div>
             </div>
 

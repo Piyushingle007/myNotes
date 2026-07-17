@@ -3,6 +3,7 @@ import { TagDatabase, type Tag } from '../storage/TagSchema';
 import { CalcTagDatabase, type CalcTag } from '../storage/CalcTagSchema';
 import { FocusCardStore, type FocusCard, type CardStatus, createBlankCard } from '../storage/FocusCardStore';
 import { GoogleDriveSync } from '../sync/GoogleDriveSync';
+import { noteDocManager } from '../sync/NoteDocManager';
 import MiniSearch from 'minisearch';
 import { createMarkdownConverter } from '../utils/markdownConverter';
 
@@ -12,6 +13,7 @@ export interface SyncMapping {
   id: string;
   lastSyncRemoteTime: number;
   lastSyncLocalTime: number;
+  ydocDriveId?: string;       // Drive fileId of the .ydocs/<noteId>.ydoc blob
 }
 
 export interface Toast {
@@ -211,6 +213,7 @@ class AppState {
   defaultCurrency = $state<string>(localStorage.getItem('mynotes_calc_currency') || '₹');
   defaultIncomeLabel = $state<string>(localStorage.getItem('mynotes_calc_income_label') || 'Income');
   customDriveFolderId = $state<string | null>(localStorage.getItem('mynotes_custom_drive_folder_id') || null);
+  yjsSyncEnabled = $state<boolean>(localStorage.getItem('mynotes_yjs_sync_enabled') === 'true');
   customDriveFolderName = $state<string | null>(localStorage.getItem('mynotes_custom_drive_folder_name') || null);
   googleDriveFolders = $state<any[]>([]);
   fetchingFolders = $state<boolean>(false);
@@ -1122,8 +1125,31 @@ class AppState {
 
       // Step 1: Sync local files to remote
       for (const note of this.notes) {
-        // Never sync conflict copies or backups to Drive
-        if (note.path.startsWith('.conflicts/') || note.path.startsWith('.trash/')) continue;
+        // Never sync conflict copies, backups, or ydoc sidecars to Drive
+        if (note.path.startsWith('.conflicts/') || note.path.startsWith('.trash/') || note.path.startsWith('.ydocs/')) continue;
+
+        // Yjs CRDT merge path for text notes (when enabled)
+        if (this.yjsSyncEnabled && note.path.endsWith('.html')) {
+          try {
+            const mapEntry = mappings[note.path];
+            let remoteId: string | undefined;
+            if (mapEntry) {
+              remoteId = typeof mapEntry === 'string' ? mapEntry : mapEntry.id;
+            }
+            const driveFile = remoteId
+              ? driveFiles.find(f => f.id === remoteId)
+              : driveFileMap.get(note.path.toLowerCase());
+
+            const yjsMapping = await this.syncNoteYjs(note, folderId, mappings, driveFile, uploadNoteToDrive);
+            if (yjsMapping) {
+              activeMappings[note.path] = yjsMapping;
+              console.log(`  Yjs merge sync completed for: ${note.path}`);
+              continue;
+            }
+          } catch (e) {
+            console.error(`  Yjs sync failed for ${note.path}, falling back to legacy:`, e);
+          }
+        }
 
         const mapEntry = mappings[note.path];
         let remoteId: string | undefined;
@@ -1506,6 +1532,105 @@ class AppState {
     }
   }
 
+  /**
+   * Yjs CRDT merge sync for a single text note.
+   * Downloads remote .ydoc if it exists, merges via Y.applyUpdate, 
+   * uploads the merged state, and re-derives the HTML.
+   * Returns the updated SyncMapping or null if it fell through to legacy.
+   */
+  private async syncNoteYjs(
+    note: NoteFile,
+    folderId: string,
+    mappings: Record<string, string | SyncMapping>,
+    driveFile: { id: string; name: string; modifiedTime: string } | undefined,
+    uploadNoteToDrive: (notePath: string, filename: string, content: string, fileId?: string) => Promise<{ id: string; modifiedTime: string }>
+  ): Promise<SyncMapping | null> {
+    const parsed = parseHtmlMetadata(note.content);
+    const noteId = parsed.meta.id || note.path;
+    if (!noteId) return null;
+
+    const { doc, readyPromise } = noteDocManager.getDoc(noteId);
+    await readyPromise;
+
+    // Get or create .ydocs folder on Drive
+    const ydocsFolderId = await this.syncService.getOrCreateSubfolders(folderId, ['.ydocs']);
+    const ydocFilename = `${noteId}.ydoc`;
+
+    // Get existing mapping
+    const mapEntry = mappings[note.path];
+    let ydocDriveId: string | undefined;
+    if (mapEntry && typeof mapEntry !== 'string') {
+      ydocDriveId = mapEntry.ydocDriveId;
+    }
+
+    // Try to find remote .ydoc if we don't have its Drive ID
+    if (!ydocDriveId) {
+      try {
+        const found = await this.syncService.findFileByName(ydocsFolderId, ydocFilename);
+        if (found) ydocDriveId = found.id;
+      } catch (e) {
+        console.warn(`Failed to find remote .ydoc for ${noteId}:`, e);
+      }
+    }
+
+    // Seed from HTML if fragment is empty (legacy note, first-time Yjs)
+    const fragment = noteDocManager.getXmlFragment(doc);
+    if (fragment.length === 0) {
+      if (ydocDriveId) {
+        // Remote .ydoc exists — adopt it (prevent double-seed duplication)
+        try {
+          const remoteBytes = await this.syncService.downloadFileBinary(ydocDriveId);
+          noteDocManager.applyRemoteUpdate(doc, remoteBytes);
+          console.log(`  Yjs: Adopted remote .ydoc for ${noteId}`);
+        } catch (e) {
+          console.warn(`  Yjs: Failed to download remote .ydoc, will seed on next editor open`, e);
+        }
+      }
+      // If no remote .ydoc and fragment still empty, the editor will seed on open via loadNote
+    }
+
+    // Pull-merge: apply remote update into local doc
+    if (ydocDriveId) {
+      try {
+        const remoteBytes = await this.syncService.downloadFileBinary(ydocDriveId);
+        noteDocManager.applyRemoteUpdate(doc, remoteBytes);
+        console.log(`  Yjs: Merged remote update for ${noteId}`);
+      } catch (e) {
+        console.warn(`  Yjs: Failed to download/apply remote .ydoc for ${noteId}:`, e);
+      }
+    }
+
+    // Push-merge: upload local state
+    const localUpdate = noteDocManager.exportUpdate(doc);
+    try {
+      const uploadRes = await this.syncService.uploadFileBinary(
+        ydocFilename, localUpdate, ydocDriveId, ydocsFolderId
+      );
+      ydocDriveId = uploadRes.id;
+      console.log(`  Yjs: Uploaded merged .ydoc for ${noteId}`);
+    } catch (e) {
+      console.error(`  Yjs: Failed to upload .ydoc for ${noteId}:`, e);
+    }
+
+    // Also persist the .ydoc locally
+    try {
+      await this.storage.writeBlob?.(`.ydocs/${noteId}.ydoc`, new Blob([localUpdate]));
+    } catch (e) {
+      console.warn(`  Yjs: Failed to persist local .ydoc for ${noteId}:`, e);
+    }
+
+    // Also sync the .html via the normal upload path
+    const filename = note.path.split('/').pop() || `${note.name}.html`;
+    let htmlDriveId = driveFile?.id;
+    const htmlUploadRes = await uploadNoteToDrive(note.path, filename, note.content, htmlDriveId);
+
+    return {
+      id: htmlUploadRes.id,
+      lastSyncLocalTime: note.modified,
+      lastSyncRemoteTime: new Date(htmlUploadRes.modifiedTime).getTime(),
+      ydocDriveId
+    };
+  }
 
 
   async migrateOldNotes() {
@@ -1621,7 +1746,7 @@ class AppState {
     try {
       const allNotes = await this.storage.listNotes();
       // Filter out conflict copies and trash backups — they are safety nets, not user notes
-      const list = allNotes.filter(n => !n.path.startsWith('.conflicts/') && !n.path.includes('/.conflicts/') && !n.path.startsWith('.trash/') && !n.path.includes('/.trash/'));
+      const list = allNotes.filter(n => !n.path.startsWith('.conflicts/') && !n.path.includes('/.conflicts/') && !n.path.startsWith('.trash/') && !n.path.includes('/.trash/') && !n.path.startsWith('.ydocs/') && !n.path.includes('/.ydocs/'));
       this.notes = list;
       
       // Reindex search
@@ -2678,6 +2803,17 @@ class AppState {
 
     try {
       await this.storage.deleteNote(path);
+      // Clean up Yjs sidecar if it exists
+      if (this.yjsSyncEnabled) {
+        const parsed = parseHtmlMetadata(this.notes.find(n => n.path === path)?.content || '');
+        const noteId = parsed.meta.id || path;
+        try { await this.storage.deleteNote(`.ydocs/${noteId}.ydoc`); } catch {}
+        noteDocManager.destroy(noteId);
+        // Delete remote .ydoc if we have its Drive ID
+        if (mapEntry && typeof mapEntry !== 'string' && mapEntry.ydocDriveId && this.syncService) {
+          try { await this.syncService.deleteFile(mapEntry.ydocDriveId); } catch {}
+        }
+      }
       await this.refreshNotes();
       
       this.showToast(`Deleted note "${noteName}" locally.`, 'success', 3000);

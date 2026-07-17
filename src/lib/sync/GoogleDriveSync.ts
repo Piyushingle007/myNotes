@@ -313,4 +313,62 @@ export class GoogleDriveSync {
     const data = await res.json();
     return data.user?.emailAddress || 'Google User';
   }
+
+  // ─── Binary download/upload for Yjs .ydoc blobs ──────────────────
+
+  async downloadFileBinary(fileId: string): Promise<Uint8Array> {
+    const url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`;
+    const res = await this.apiCall(url);
+    return new Uint8Array(await res.arrayBuffer());
+  }
+
+  async uploadFileBinary(
+    filename: string,
+    bytes: Uint8Array,
+    fileId?: string,
+    parentFolderId?: string
+  ): Promise<{ id: string; modifiedTime: string }> {
+    const rootFolderId = await this.getOrCreateSyncFolder();
+    const folderId = parentFolderId || rootFolderId;
+
+    const metadata: any = { name: filename };
+    if (!fileId) {
+      metadata.parents = [folderId];
+    }
+
+    const url = fileId
+      ? `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=multipart&fields=id,modifiedTime`
+      : 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,modifiedTime';
+
+    const boundary = 'mynotes_binary_boundary';
+    // Build multipart body as Blob to avoid binary corruption
+    const body = new Blob([
+      `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n`,
+      JSON.stringify(metadata),
+      `\r\n--${boundary}\r\nContent-Type: application/octet-stream\r\n\r\n`,
+      bytes,
+      `\r\n--${boundary}--`,
+    ]);
+
+    const res = await this.apiCall(url, {
+      method: fileId ? 'PATCH' : 'POST',
+      headers: {
+        'Content-Type': `multipart/related; boundary=${boundary}`
+      },
+      body
+    });
+
+    const file = await res.json();
+    return { id: file.id, modifiedTime: file.modifiedTime };
+  }
+
+  /** Find a file by name within a specific folder. Returns null if not found. */
+  async findFileByName(parentFolderId: string, name: string): Promise<DriveFileMeta | null> {
+    const escapedName = name.replace(/'/g, "\\'");
+    const query = `'${parentFolderId}' in parents and name = '${escapedName}' and trashed = false`;
+    const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id,name,modifiedTime)&pageSize=1`;
+    const res = await this.apiCall(url);
+    const data = await res.json();
+    return data.files?.length > 0 ? data.files[0] : null;
+  }
 }
