@@ -113,7 +113,7 @@
       if (root) {
         // Need to wait for next tick to unmount React safely if it was just rendering
         setTimeout(() => {
-          try { root.unmount(); } catch (e) {}
+          // try { root.unmount(); } catch (e) {}
         }, 0);
       }
     };
