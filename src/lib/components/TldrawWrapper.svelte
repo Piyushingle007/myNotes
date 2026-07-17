@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount } from 'svelte';
+  import 'tldraw/tldraw.css';
 
   interface Props {
     persistenceKey?: string;
@@ -26,6 +27,7 @@
   let editorInstance: any = null;
   let unsubscribe: (() => void) | null = null;
   let isLoaded = $state(false);
+  let loadError = $state<string | null>(null);
 
   onMount(() => {
     let mounted = true;
@@ -35,7 +37,6 @@
         import('react'),
         import('react-dom/client'),
         import('tldraw'),
-        import('tldraw/tldraw.css')
       ]).then(([ReactModule, ReactDOMClient, TldrawModule]) => {
         if (!mounted) return;
         const React = ReactModule.default || ReactModule;
@@ -105,6 +106,10 @@
         const element = React.createElement(ErrorBoundary, null, tldrawElement);
         root.render(element);
         isLoaded = true;
+      }).catch((error) => {
+        if (!mounted) return;
+        console.error('Failed to load Tldraw', error);
+        loadError = error instanceof Error ? error.message : String(error);
       });
     }
 
@@ -132,12 +137,17 @@
   });
 </script>
 
-<div class="tldraw-svelte-wrapper {className}" style="width: 100%; height: 100%; position: relative; {style}">
-  {#if !isLoaded}
+<div class="tldraw-svelte-wrapper {className}" style="width: 100%; height: 100%; position: relative; background: var(--bg-surface); overflow: hidden; {style}">
+  {#if loadError}
+    <div class="loading-state flex-col" style="width: 100%; height: 100%; align-items: center; justify-content: center; color: var(--semantic-error, #ff4444); font-size: 0.85rem; padding: 16px; text-align: center;">
+      <div style="font-weight: 600; margin-bottom: 8px;">Sketch failed to load</div>
+      <div>{loadError}</div>
+    </div>
+  {:else if !isLoaded}
     <div class="loading-state flex-col" style="width: 100%; height: 100%; align-items: center; justify-content: center; color: var(--text-muted); font-size: 0.85rem;">
       <div class="spinner" style="margin-bottom: 8px;"></div>
       Loading Tldraw...
     </div>
   {/if}
-  <div bind:this={container} style="width: 100%; height: 100%;"></div>
+  <div bind:this={container} style="width: 100%; height: 100%; background: var(--bg-surface);"></div>
 </div>
