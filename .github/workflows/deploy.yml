@@ -1,8 +1,20 @@
 name: Deploy to GitHub Pages
 
 on:
+  # Auto-trigger on a push to ANY branch, but the "gate" job below decides whether
+  # to actually deploy: it only proceeds if the pushed branch is the currently
+  # "active" deployed branch (or main).
   push:
-    branches: 'main'
+    branches: ['**']
+  # Manual deploy of a specific branch from the Actions tab. Running this also marks
+  # that branch as the active deployed branch, so future pushes to it auto-deploy.
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch (or tag/SHA) to build and deploy'
+        required: true
+        default: 'main'
+        type: string
 
 # Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
 permissions:
@@ -17,7 +29,40 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Decide whether this run should deploy.
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      should_deploy: ${{ steps.decide.outputs.should_deploy }}
+      target_ref: ${{ steps.decide.outputs.target_ref }}
+    steps:
+      - id: decide
+        env:
+          DEPLOYED_BRANCH: ${{ vars.DEPLOYED_BRANCH }}
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_BRANCH: ${{ github.event.inputs.branch }}
+          PUSHED_BRANCH: ${{ github.ref_name }}
+        run: |
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "Manual deploy requested for '$INPUT_BRANCH'."
+            echo "should_deploy=true" >> "$GITHUB_OUTPUT"
+            echo "target_ref=$INPUT_BRANCH" >> "$GITHUB_OUTPUT"
+          elif [ "$PUSHED_BRANCH" = "main" ]; then
+            echo "Push to main always deploys."
+            echo "should_deploy=true" >> "$GITHUB_OUTPUT"
+            echo "target_ref=$PUSHED_BRANCH" >> "$GITHUB_OUTPUT"
+          elif [ -n "$DEPLOYED_BRANCH" ] && [ "$PUSHED_BRANCH" = "$DEPLOYED_BRANCH" ]; then
+            echo "Push to the active deployed branch '$DEPLOYED_BRANCH' — deploying."
+            echo "should_deploy=true" >> "$GITHUB_OUTPUT"
+            echo "target_ref=$PUSHED_BRANCH" >> "$GITHUB_OUTPUT"
+          else
+            echo "Branch '$PUSHED_BRANCH' is not the active deployed branch ('${DEPLOYED_BRANCH:-none}'). Skipping."
+            echo "should_deploy=false" >> "$GITHUB_OUTPUT"
+          fi
+
   deploy:
+    needs: gate
+    if: needs.gate.outputs.should_deploy == 'true'
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -25,6 +70,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.gate.outputs.target_ref }}
 
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -50,3 +97,15 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
+      # After a MANUAL deploy, remember this branch so future pushes to it auto-deploy.
+      # Requires a repo secret GH_PAT (a PAT/token with "Variables: read and write" on this repo).
+      # If GH_PAT is not set, this step is skipped and you can set the DEPLOYED_BRANCH
+      # repository variable manually under Settings → Secrets and variables → Actions → Variables.
+      - name: Record active deployed branch
+        if: github.event_name == 'workflow_dispatch' && env.GH_PAT != ''
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+          GH_PAT: ${{ secrets.GH_PAT }}
+          NEW_BRANCH: ${{ github.event.inputs.branch }}
+        run: gh variable set DEPLOYED_BRANCH --body "$NEW_BRANCH"
