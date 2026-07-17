@@ -3,7 +3,7 @@ import { appState, parseHtmlMetadata } from '../stores/appState.svelte';
 export interface DrawDocument {
   version: 1;
   title: string;
-  snapshot: any; // Tldraw snapshot object
+  snapshot: any; // Excalidraw scene data { elements, appState, files }
   createdAt: string;
   modifiedAt: string;
 }

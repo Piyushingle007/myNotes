@@ -16,7 +16,7 @@
   let renameInputEl = $state<HTMLInputElement | null>(null);
   let saveStatus = $state<'clean' | 'saving'>('clean');
   
-  let editorInstance: any = $state(null);
+  let excalidrawApi: any = $state(null);
   let activeSnapshot: any = $state(null);
   let saveTimeout: any = null;
 
@@ -41,9 +41,11 @@
     if (activeFilePath === path) return;
     
     // Save current before switching
-    if (activeFilePath && editorInstance) {
-      const snap = editorInstance.store.getSnapshot();
-      await saveCurrentDocument(snap);
+    if (activeFilePath && excalidrawApi) {
+      const elements = excalidrawApi.getSceneElements();
+      const appStateData = excalidrawApi.getAppState();
+      const files = excalidrawApi.getFiles();
+      await saveCurrentDocument({ elements, appState: appStateData, files });
     }
     
     activeFilePath = null; // Unmount current
@@ -127,14 +129,13 @@
     };
   }
 
-  function handleEditorChange(snapshot: any) {
+  function handleEditorChange(elements: any[], appStateData: any, files: any) {
     if (!activeFilePath) return;
     saveStatus = 'saving';
     clearTimeout(saveTimeout);
     
-    // Debounce saves to prevent blocking the UI
     saveTimeout = setTimeout(() => {
-      saveCurrentDocument(snapshot).then(() => {
+      saveCurrentDocument({ elements, appState: { ...appStateData, collaborators: undefined }, files }).then(() => {
         saveStatus = 'clean';
       });
     }, 1000);
@@ -240,16 +241,14 @@
         </div>
       </div>
       
-      <!-- Tldraw Canvas -->
+      <!-- Excalidraw Canvas -->
       <div class="tldraw-container" style="flex: 1; width: 100%; height: 100%; position: relative;">
         {#if activeFilePath}
-          <!-- Use keyed block to completely destroy and re-mount tldraw when changing files, 
-               preventing state bleed and ensuring fresh loadSnapshot -->
           {#key activeFilePath}
             <TldrawWrapper 
-              initialSnapshot={activeSnapshot}
+              initialData={activeSnapshot ? { elements: activeSnapshot.elements || [], appState: activeSnapshot.appState || {}, files: activeSnapshot.files || {} } : undefined}
               onChange={handleEditorChange}
-              onMountCb={(editor) => { editorInstance = editor; }}
+              onMountCb={(api) => { excalidrawApi = api; }}
             />
           {/key}
         {:else}

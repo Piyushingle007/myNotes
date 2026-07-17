@@ -1803,8 +1803,8 @@
 			},
 			{
 				label: 'Draw / Sketch',
-				description: 'Insert an inline Tldraw whiteboard canvas',
-				aliases: ['draw', 'sketch', 'whiteboard', 'canvas', 'tldraw'],
+				description: 'Insert an inline Excalidraw whiteboard canvas',
+				aliases: ['draw', 'sketch', 'whiteboard', 'canvas', 'excalidraw'],
 				icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/><circle cx="11" cy="11" r="2"/></svg>',
 				action: () => editor?.chain().focus().insertContent({ type: 'tldraw' }).command(({ tr }) => {
 					const { selection } = tr;
@@ -4057,11 +4057,12 @@
 				snapshot: {
 					default: null,
 					parseHTML: (el: HTMLElement) => {
-						const snap = el.getAttribute('data-tldraw-snapshot');
+						// Support both old tldraw and new excalidraw attribute names
+						const snap = el.getAttribute('data-excalidraw-data') || el.getAttribute('data-tldraw-snapshot');
 						try { return snap ? JSON.parse(decodeURIComponent(snap)) : null; } catch(e) { return null; }
 					},
 					renderHTML: (attrs) => {
-						try { return { 'data-tldraw-snapshot': encodeURIComponent(JSON.stringify(attrs.snapshot)) }; } catch(e) { return {}; }
+						try { return { 'data-excalidraw-data': encodeURIComponent(JSON.stringify(attrs.snapshot)) }; } catch(e) { return {}; }
 					}
 				}
 			};

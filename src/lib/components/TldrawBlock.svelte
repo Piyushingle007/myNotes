@@ -14,12 +14,20 @@
 
   let snapshot = $state($nodeStore.attrs.snapshot || null);
   let isFullscreen = $state(false);
-  let editorInstance: any = $state(null);
+  let excalidrawApi: any = $state(null);
   let container: HTMLDivElement;
 
-  function onChange(newSnapshot: any) {
+  // Build initialData from stored snapshot (Excalidraw format)
+  let initialData = $derived(snapshot ? {
+    elements: snapshot.elements || [],
+    appState: snapshot.appState || {},
+    files: snapshot.files || {}
+  } : undefined);
+
+  function onChange(elements: any[], appState: any, files: any) {
+    const newSnapshot = { elements, appState: { ...appState, collaborators: undefined }, files };
     snapshot = newSnapshot;
-    updateAttributes({ snapshot });
+    updateAttributes({ snapshot: newSnapshot });
   }
 
   function deleteBlock() {
@@ -32,19 +40,14 @@
   function toggleFullscreen() {
     isFullscreen = !isFullscreen;
     
-    // Manage body scroll
     if (isFullscreen) {
       document.body.style.overflow = 'hidden';
     } else {
       document.body.style.overflow = '';
     }
     
-    // Resize tldraw canvas
     tick().then(() => {
-      if (editorInstance) {
-        editorInstance.updateInstanceState({ isReadonly: false });
-        window.dispatchEvent(new Event('resize'));
-      }
+      window.dispatchEvent(new Event('resize'));
     });
   }
 </script>
@@ -74,16 +77,15 @@
   </div>
   
   <div class="canvas-wrapper">
-    <!-- Prevent drag selecting the block when drawing -->
     <div 
       class="canvas-inner" 
       onpointerdown={(e) => e.stopPropagation()}
       onmousedown={(e) => e.stopPropagation()}
     >
       <TldrawWrapper 
-        initialSnapshot={snapshot}
+        {initialData}
         {onChange}
-        onMountCb={(e) => { editorInstance = e; }}
+        onMountCb={(api) => { excalidrawApi = api; }}
       />
     </div>
   </div>

@@ -25,7 +25,7 @@ export const TldrawExtension = Node.create({
               snapshot: snapshotData ? JSON.parse(decodeURIComponent(snapshotData)) : null,
             };
           } catch (e) {
-            console.error('Failed to parse tldraw snapshot', e);
+            console.error('Failed to parse excalidraw snapshot', e);
             return { snapshot: null };
           }
         },
@@ -39,7 +39,7 @@ export const TldrawExtension = Node.create({
       try {
         snapshotStr = encodeURIComponent(JSON.stringify(HTMLAttributes.snapshot));
       } catch (e) {
-        console.error('Failed to stringify tldraw snapshot', e);
+        console.error('Failed to stringify excalidraw snapshot', e);
       }
     }
     
