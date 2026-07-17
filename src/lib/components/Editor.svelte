@@ -4051,7 +4051,8 @@
 		name: 'tldraw',
 		group: 'block',
 		atom: true,
-		draggable: true,
+		draggable: false,
+		selectable: true,
 		addAttributes() {
 			return {
 				snapshot: {
