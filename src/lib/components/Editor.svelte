@@ -4107,9 +4107,10 @@
 						nodeStore.set(updatedNode);
 						return true;
 					},
-					// CRITICAL: Prevent Prosemirror from destroying the React canvas 
-					// when Tldraw updates its internal DOM while drawing.
 					ignoreMutation() {
+						return true;
+					},
+					stopEvent(event) {
 						return true;
 					},
 					destroy: () => {
