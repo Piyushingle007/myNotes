@@ -97,7 +97,8 @@
         const tldrawProps = {
           persistenceKey,
           autoFocus,
-          onMount: handleMount
+          onMount: handleMount,
+          licenseKey: "open-source"
         };
 
         const tldrawElement = React.createElement(Tldraw, tldrawProps);
@@ -117,6 +118,17 @@
         }, 0);
       }
     };
+  });
+
+  $effect(() => {
+    if (container) {
+      const interval = setInterval(() => {
+        if (container.children.length === 0 && isLoaded) {
+          console.error("TLDRAW CONTAINER IS EMPTY! React unmounted the tree or crashed!");
+        }
+      }, 2000);
+      return () => clearInterval(interval);
+    }
   });
 </script>
 
