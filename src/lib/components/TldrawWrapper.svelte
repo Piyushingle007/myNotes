@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import '@excalidraw/excalidraw/index.css';
 
   interface Props {
     initialData?: any;
