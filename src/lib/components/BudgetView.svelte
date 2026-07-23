@@ -221,6 +221,66 @@
     };
   });
 
+  let breakdownCanvas = $state<HTMLCanvasElement | null>(null);
+  let breakdownChart: any = null;
+
+  $effect(() => {
+    if (breakdownCanvas && (selectedBoxBreakdown.tagBreakdown.size > 0 || selectedBoxBreakdown.untagged.spent > 0)) {
+      import('chart.js').then(({ Chart, registerables }) => {
+        Chart.register(...registerables);
+        if (breakdownChart) {
+          breakdownChart.destroy();
+        }
+        
+        const tags = Array.from(selectedBoxBreakdown.tagBreakdown.values())
+          .filter(t => t.spent > 0)
+          .map(t => ({
+            tagId: t.tagId,
+            name: appState.calcTags.find(c => c.id === t.tagId)?.name || 'Unknown',
+            color: appState.calcTags.find(c => c.id === t.tagId)?.color || '#666',
+            spent: t.spent
+          }));
+          
+        if (selectedBoxBreakdown.untagged.spent > 0) {
+          tags.push({ tagId: 'untagged', name: 'Untagged', color: '#666', spent: selectedBoxBreakdown.untagged.spent });
+        }
+
+        if (tags.length > 0) {
+          breakdownChart = new Chart(breakdownCanvas!, {
+            type: 'doughnut',
+            data: {
+              labels: tags.map(t => t.name),
+              datasets: [{
+                data: tags.map(t => t.spent),
+                backgroundColor: tags.map(t => t.color),
+                borderWidth: 0,
+                hoverOffset: 4
+              }]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              cutout: '70%',
+              plugins: {
+                legend: { display: false },
+                tooltip: {
+                  callbacks: {
+                    label: function(context) {
+                      let label = context.label || '';
+                      if (label) { label += ': '; }
+                      if (context.parsed !== null) { label += currencyCode + context.parsed.toLocaleString(); }
+                      return label;
+                    }
+                  }
+                }
+              }
+            }
+          });
+        }
+      });
+    }
+  });
+
   // Sort the selected box categories list
   let sortedCategories = $derived.by(() => {
     const list = Array.from(selectedBoxBreakdown.tagBreakdown.values());
@@ -1210,6 +1270,12 @@
         </div>
       </div>
     </div>
+
+    {#if selectedBoxBreakdown.tagBreakdown.size > 0 || selectedBoxBreakdown.untagged.spent > 0}
+      <div class="metrics-chart-container" style="height: 180px; margin: 20px 0 10px 0; position: relative;">
+        <canvas bind:this={breakdownCanvas}></canvas>
+      </div>
+    {/if}
 
     <div class="categories-list flex-col">
         {#each sortedCategories as details (details.tagId)}

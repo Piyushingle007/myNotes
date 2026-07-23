@@ -29,6 +29,7 @@
   import BudgetView from './BudgetView.svelte';
   import NumbatView from './NumbatView.svelte';
   import TldrawView from './TldrawView.svelte';
+  import TimelineView from './TimelineView.svelte';
   import { mobileNav } from '../stores/mobileNav.svelte';
   import { LONG_PRESS_MS, TOUCH_MOVE_TOLERANCE, edgeSwipeBack } from '../actions/touch';
 
@@ -2062,6 +2063,10 @@
           <div class="mobile-tab-view flex-col">
             <BudgetView />
           </div>
+        {:else if appState.activeTab === 'timeline'}
+          <div class="mobile-tab-view flex-col">
+            <TimelineView />
+          </div>
 
         {/if}
       </div>
@@ -2493,6 +2498,10 @@
       {:else if appState.activeTab === 'draw'}
         <div class="editor-panel flex-row" style="min-width: 0;">
           <TldrawView />
+        </div>
+      {:else if appState.activeTab === 'timeline'}
+        <div class="editor-panel flex-row" style="min-width: 0;">
+          <TimelineView />
         </div>
       {:else}
         <!-- Right Panel (Editor) -->

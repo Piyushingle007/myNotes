@@ -670,7 +670,7 @@
     </div>
   </div>
 
-  <!-- Draw Whiteboard Section (Disabled temporarily)
+  <!-- Tldraw Section -->
   <div class="section-container flex-col" class:active={appState.activeTab === 'draw'}>
     <div class="section-header flex-row" style="justify-content: space-between; width: 100%;">
       <button
@@ -678,12 +678,25 @@
         style="flex-grow: 1; cursor: pointer; background: none; border: none; color: inherit; padding: 0; align-items: center; gap: var(--spacing-xs);"
         onclick={() => { appState.activeTab = 'draw'; }}
       >
-        <PenTool size={18} class="sec-icon" />
-        <span class="section-title">Draw</span>
+        <Palette size={18} class="sec-icon" />
+        <span class="section-title">Whiteboard</span>
       </button>
     </div>
   </div>
-  -->
+
+  <!-- Timeline Section -->
+  <div class="section-container flex-col" class:active={appState.activeTab === 'timeline'}>
+    <div class="section-header flex-row" style="justify-content: space-between; width: 100%;">
+      <button
+        class="flex-row"
+        style="flex-grow: 1; cursor: pointer; background: none; border: none; color: inherit; padding: 0; align-items: center; gap: var(--spacing-xs);"
+        onclick={() => { appState.activeTab = 'timeline'; }}
+      >
+        <Calendar size={18} class="sec-icon" />
+        <span class="section-title">Timeline</span>
+      </button>
+    </div>
+  </div>
 
   <!-- Footer Actions -->
   <div class="footer-actions flex-col">

@@ -780,6 +780,58 @@
 		incomeVal + stats.net
 	);
 
+	let breakdownCanvas = $state<HTMLCanvasElement | null>(null);
+	let breakdownChart: any = null;
+
+	$effect(() => {
+		if (breakdownCanvas && tagsToRenderInBreakdown.length > 0) {
+			import('chart.js').then(({ Chart, registerables }) => {
+				Chart.register(...registerables);
+				if (breakdownChart) {
+					breakdownChart.destroy();
+				}
+				
+				const labels = tagsToRenderInBreakdown.map(t => t.name);
+				const data = tagsToRenderInBreakdown.map(t => tagBudgetTotals.map.get(t.id)?.spent || 0);
+				const backgroundColors = tagsToRenderInBreakdown.map(t => t.color);
+				
+				// Only render if there's actual data > 0
+				if (data.some(d => d > 0)) {
+					breakdownChart = new Chart(breakdownCanvas!, {
+						type: 'doughnut',
+						data: {
+							labels,
+							datasets: [{
+								data,
+								backgroundColor: backgroundColors,
+								borderWidth: 0,
+								hoverOffset: 4
+							}]
+						},
+						options: {
+							responsive: true,
+							maintainAspectRatio: false,
+							cutout: '70%',
+							plugins: {
+								legend: { display: false },
+								tooltip: {
+									callbacks: {
+										label: function(context) {
+											let label = context.label || '';
+											if (label) { label += ': '; }
+											if (context.parsed !== null) { label += currencyCode + context.parsed.toLocaleString(); }
+											return label;
+										}
+									}
+								}
+							}
+						}
+					});
+				}
+			});
+		}
+	});
+
 	function saveRows() {
 		updateAttributes({ data: JSON.stringify(rows) });
 	}
@@ -2353,6 +2405,12 @@
 					<span class="savings-amount">{savingsVal.toLocaleString()}</span>
 				</div>
 			</div>
+		</div>
+	{/if}
+
+	{#if tagsToRenderInBreakdown.length > 0}
+		<div class="metrics-chart-container" style="height: 180px; margin: 20px 0 10px 0; position: relative;">
+			<canvas bind:this={breakdownCanvas}></canvas>
 		</div>
 	{/if}
 

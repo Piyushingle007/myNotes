@@ -26,6 +26,7 @@
     { id: 'styling' as const, label: 'Appearance', icon: Palette },
     { id: 'editor' as const, label: 'Editor & Files', icon: FileText },
     { id: 'calculation' as const, label: 'Calculation', icon: Calculator },
+    { id: 'ai' as const, label: 'AI Settings', icon: Settings },
   ];
 
   // --- Search filtering ---
@@ -34,6 +35,7 @@
     styling: ['theme', 'appearance', 'color', 'dark', 'light', 'vivid', 'look', 'style'],
     editor: ['editor', 'diagram', 'mermaid', 'drawio', 'native', 'import', 'export', 'file', 'tag', 'prune', 'vault', 'folder'],
     calculation: ['calculation', 'calc', 'currency', 'income', 'label', 'money', 'finance'],
+    ai: ['ai', 'local', 'model', 'summary', 'extract', 'tag', 'suggestions'],
   };
 
   let matchingTabs = $derived.by(() => {
@@ -654,6 +656,26 @@
               placeholder="Income"
               style="max-width: 200px;"
             />
+          </div>
+        </div>
+
+      <!-- ==================== AI SETTINGS PANEL ==================== -->
+      {:else if appState.settingsActiveTab === 'ai'}
+        <div class="section-group">
+          <span class="section-title">AI Settings</span>
+          <div class="setting-row">
+            <div class="setting-info">
+              <span class="setting-label">Enable AI Features</span>
+              <span class="setting-desc">Local models for semantic tags and summaries (~100MB download)</span>
+            </div>
+            <label class="switch-container">
+              <input
+                type="checkbox"
+                checked={appState.aiFeaturesEnabled}
+                onchange={(e) => appState.setAiFeaturesEnabled(e.currentTarget.checked)}
+              />
+              <span class="slider"></span>
+            </label>
           </div>
         </div>
       {/if}

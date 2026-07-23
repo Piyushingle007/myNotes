@@ -2,6 +2,8 @@
 	import { onDestroy, tick, untrack, mount, unmount } from 'svelte';
 	import * as XLSX from 'xlsx-js-style';
 	import { get } from 'svelte/store';
+	import LinkPreview from './LinkPreview.svelte';
+	import { computePosition, offset, flip, shift, size } from '@floating-ui/dom';
 	import { Editor } from '@tiptap/core';
 	import StarterKit from '@tiptap/starter-kit';
 	import Placeholder from '@tiptap/extension-placeholder';
@@ -32,20 +34,25 @@
 	import markdownItSub from 'markdown-it-sub';
 	import katex from 'katex';
 	import 'katex/dist/katex.min.css';
-	import { Extension, Node as TiptapNode, Mark as TiptapMark, mergeAttributes } from '@tiptap/core';
+	import { Extension, Node as TiptapNode, Mark as TiptapMark, mergeAttributes, InputRule } from '@tiptap/core';
 	import { Plugin, PluginKey, EditorState, TextSelection, NodeSelection } from '@tiptap/pm/state';
 	import { Decoration, DecorationSet } from '@tiptap/pm/view';
 	import { DOMSerializer, DOMParser as PMParser } from '@tiptap/pm/model';
 	import { writable, derived } from 'svelte/store';
 	import { appState, parseHtmlMetadata, generateHtmlNote } from '../stores/appState.svelte';
+	import * as chrono from 'chrono-node';
+	import { AiService } from '../services/ai/AiService';
 	import { debounce } from '../utils/debounce';
 	import GraphView from './GraphView.svelte';
 	import DiagramEditor from './DiagramEditor.svelte';
+	import TldrawWrapper from './TldrawWrapper.svelte';
+	import TagSuggestions from './TagSuggestions.svelte';
 	import DrawIOEditor from './DrawIOEditor.svelte';
 	import MermaidEditor from './MermaidEditor.svelte';
 	import MetricsBlock from './MetricsBlock.svelte';
 	import NumbatBlock from './NumbatBlock.svelte';
 	import TldrawBlock from './TldrawBlock.svelte';
+	import ChartBlock from './ChartBlock.svelte';
 	import { noteDocManager } from '../sync/NoteDocManager';
 	import Collaboration from '@tiptap/extension-collaboration';
 	import Modal from './Modal.svelte';
@@ -240,6 +247,89 @@
 				},
 			];
 		},
+	});
+
+	function getDateDecorations(doc: any) {
+		const decorations: any[] = [];
+		doc.descendants((node: any, pos: number) => {
+			if (node.isText && node.text) {
+				const results = chrono.parse(node.text);
+				results.forEach((res: any) => {
+					decorations.push(
+						Decoration.inline(pos + res.index, pos + res.index + res.text.length, {
+							class: 'date-highlight-deco',
+							title: res.date()?.toLocaleString()
+						})
+					);
+				});
+			}
+		});
+		return DecorationSet.create(doc, decorations);
+	}
+
+	const DateHighlight = Extension.create({
+		name: 'dateHighlight',
+		addProseMirrorPlugins() {
+			return [
+				new Plugin({
+					key: new PluginKey('dateHighlight'),
+					state: {
+						init(_, { doc }) { return getDateDecorations(doc); },
+						apply(tr, oldState) {
+							if (!tr.docChanged) return oldState.map(tr.mapping, tr.doc);
+							return getDateDecorations(tr.doc);
+						}
+					},
+					props: {
+						decorations(state) {
+							return this.getState(state);
+						}
+					}
+				})
+			];
+		}
+	});
+
+	const DueDateNode = TiptapNode.create({
+		name: 'dueDateNode',
+		group: 'inline',
+		inline: true,
+		selectable: true,
+		atom: true,
+		addAttributes() {
+			return {
+				date: { default: null },
+				text: { default: '' }
+			};
+		},
+		parseHTML() {
+			return [{ tag: 'span.due-date-node' }];
+		},
+		renderHTML({ HTMLAttributes }) {
+			return ['span', { class: 'due-date-node', 'data-date': HTMLAttributes.date }, `Due: ${HTMLAttributes.text}`];
+		},
+		addInputRules() {
+			return [
+				new InputRule({
+					find: /\[@due:\s+([^\]]+)\]$/,
+					handler: ({ state, range, match }) => {
+						const { tr } = state;
+						const start = range.from;
+						const end = range.to;
+						const text = match[1];
+						const parsed = chrono.parseDate(text);
+						if (parsed) {
+							tr.replaceWith(start, end, this.type.create({
+								date: parsed.toISOString(),
+								text: text
+							}));
+							return tr;
+						}
+						return null;
+					}
+				})
+			];
+		}
 	});
 
 	// Types
@@ -1655,6 +1745,11 @@
 
 	// Slash commands
 	let slashMenu = $state<{ x: number; y: number; query: string; from: number; to: number } | null>(null);
+	let slashMenuEl = $state<HTMLElement | null>(null);
+	
+	let linkPreviewHoverTarget = $state<HTMLElement | null>(null);
+	let linkPreviewHref = $state<string>('');
+	let linkPreviewTimer: ReturnType<typeof setTimeout> | null = null;
 	let slashSelectedIndex = $state(0);
 	let slashTablePicker = $state(false);
 	let slashTableHover = $state({ rows: 0, cols: 0 });
@@ -1699,8 +1794,250 @@
 		editor.chain().focus().insertContent(text).run();
 	}
 
+	function importCsvFile() {
+		const input = document.createElement('input');
+		input.type = 'file';
+		input.accept = '.csv,.tsv,text/csv,text/tab-separated-values';
+		input.onchange = (e: any) => {
+			const file = e.target.files[0];
+			if (!file) return;
+			const reader = new FileReader();
+			reader.onload = (re) => {
+				const text = re.target?.result as string;
+				if (!text) return;
+				import('papaparse').then((Papa) => {
+					const result = Papa.default.parse(text.trim(), { header: false });
+					if (result.errors.length === 0 && result.data.length > 0) {
+						const rows = result.data as string[][];
+						const cols = Math.max(...rows.map(r => r.length));
+						let html = '<table>';
+						rows.forEach((row, rowIndex) => {
+							html += '<tr>';
+							for (let i = 0; i < cols; i++) {
+								const cellTag = rowIndex === 0 ? 'th' : 'td';
+								const content = (row[i] || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+								html += `<${cellTag}>${content}</${cellTag}>`;
+							}
+							html += '</tr>';
+						});
+						html += '</table>';
+						editor?.chain().focus().insertContent(html).run();
+					}
+				});
+			};
+			reader.readAsText(file);
+		};
+		input.click();
+	}
+
+	function exportTableToCsv() {
+		if (!editor) return;
+		const { selection } = editor.state;
+		
+		let tableNode: any = null;
+		editor.state.doc.nodesBetween(selection.from, selection.to, (node) => {
+			if (node.type.name === 'table' && !tableNode) {
+				tableNode = node;
+			}
+		});
+		
+		if (!tableNode) {
+			appState.showToast('Select a table first.', 'info', 3000);
+			return;
+		}
+		
+		const rows: string[][] = [];
+		tableNode.forEach((row: any) => {
+			const cells: string[] = [];
+			row.forEach((cell: any) => {
+				cells.push(cell.textContent || '');
+			});
+			rows.push(cells);
+		});
+		
+		import('papaparse').then((Papa) => {
+			const csv = Papa.default.unparse(rows);
+			const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+			const url = URL.createObjectURL(blob);
+			const link = document.createElement('a');
+			link.href = url;
+			link.setAttribute('download', 'export.csv');
+			document.body.appendChild(link);
+			link.click();
+			document.body.removeChild(link);
+		});
+	}
+
+	function visualizeSelectedTable() {
+		if (!editor) return;
+		const { selection } = editor.state;
+		let tableNode: any = null;
+		editor.state.doc.nodesBetween(selection.from, selection.to, (node) => {
+			if (node.type.name === 'table' && !tableNode) {
+				tableNode = node;
+			}
+		});
+		
+		if (!tableNode) {
+			appState.showToast('Select a table first.', 'info', 3000);
+			return;
+		}
+
+		const headers: string[] = [];
+		const rows: number[][] = [];
+		const labelList: string[] = [];
+
+		tableNode.forEach((row: any, rowIndex: number) => {
+			const rowData: string[] = [];
+			row.forEach((cell: any) => {
+				rowData.push(cell.textContent || '');
+			});
+
+			if (rowIndex === 0) {
+				headers.push(...rowData);
+			} else {
+				labelList.push(rowData[0] || `Row ${rowIndex}`);
+				const numericRow = rowData.slice(1).map(val => {
+					const num = parseFloat(val.replace(/[^\d\.-]/g, ''));
+					return isNaN(num) ? 0 : num;
+				});
+				rows.push(numericRow);
+			}
+		});
+
+		if (headers.length < 2) {
+			appState.showToast('Table needs at least a label column and one numeric column.', 'error', 3000);
+			return;
+		}
+
+		appState.showPrompt({
+			title: 'Select Chart Type',
+			message: 'Enter chart type (bar, line, pie, doughnut):',
+			value: 'bar',
+			placeholder: 'bar, line, pie, doughnut',
+			onConfirm: (chartType) => {
+				const type = ['bar', 'line', 'pie', 'doughnut'].includes(chartType.toLowerCase()) ? chartType.toLowerCase() : 'bar';
+				
+				const datasets = [];
+				const colCount = headers.length - 1;
+				for (let i = 0; i < colCount; i++) {
+					const dataName = headers[i + 1] || `Data ${i + 1}`;
+					const dataPoints = rows.map(r => r[i] || 0);
+					datasets.push({
+						label: dataName,
+						data: dataPoints
+					});
+				}
+
+				const chartConfig = {
+					type: type,
+					data: {
+						labels: labelList,
+						datasets: datasets
+					},
+					options: {
+						responsive: true,
+						maintainAspectRatio: false
+					}
+				};
+
+				editor?.chain().focus().insertContent({
+					type: 'chartBlock',
+					attrs: {
+						chartConfig
+					}
+				}).run();
+
+				appState.showToast('Chart generated from table.', 'success', 3000);
+			}
+		});
+	}
+
 	function getSlashCommands(): SlashCommand[] {
 		return [
+			// ═══ CATEGORY: AI TOOLS ═══
+			{
+				label: 'Summarize Note',
+				description: 'Use local AI to summarize this note',
+				aliases: ['summarize', 'ai summarize', 'summary'],
+				icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path><path d="m13 8 2 2"></path><path d="m13 12 2 2"></path></svg>',
+				category: 'utility',
+				badge: 'AI',
+				action: async () => {
+					if (!appState.aiFeaturesEnabled) {
+						appState.showToast('Please enable AI Features in Settings first.', 'info', 4000);
+						return;
+					}
+					if (!editor) return;
+					
+					appState.showToast('Generating summary (this may take a while)...', 'info', 4000);
+					try {
+						const text = editor.getText();
+						if (text.length < 50) {
+							appState.showToast('Note is too short to summarize.', 'error', 3000);
+							return;
+						}
+						const summary = await AiService.summarize(text);
+						editor.chain().focus().insertContent(`<blockquote><strong>AI Summary:</strong> ${summary}</blockquote><p></p>`).run();
+						appState.showToast('Summary generated.', 'success', 3000);
+					} catch (e: any) {
+						appState.showToast('Failed to generate summary.', 'error', 3000);
+					}
+				}
+			},
+			{
+				label: 'Extract Tasks',
+				description: 'Use AI to extract action items',
+				aliases: ['tasks', 'extract tasks', 'ai tasks'],
+				icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 11 12 14 22 4"></polyline><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>',
+				category: 'utility',
+				badge: 'AI',
+				action: async () => {
+					if (!appState.aiFeaturesEnabled) {
+						appState.showToast('Please enable AI Features in Settings first.', 'info', 4000);
+						return;
+					}
+					if (!editor) return;
+					
+					appState.showToast('Extracting tasks...', 'info', 4000);
+					try {
+						const text = editor.getText();
+						const sentences = text.split(/[.?!]\s+/).filter(s => s.length > 10);
+						if (sentences.length === 0) {
+							appState.showToast('No sentences found.', 'error', 3000);
+							return;
+						}
+						const queryEmbedding = await AiService.embed('task action item to do must finish');
+						
+						const scored = [];
+						for (const sentence of sentences) {
+							const emb = await AiService.embed(sentence);
+							const score = AiService.dotProduct(queryEmbedding, emb);
+							scored.push({ sentence, score });
+						}
+						
+						scored.sort((a, b) => b.score - a.score);
+						const topTasks = scored.slice(0, 3).filter(s => s.score > 0.3);
+						
+						if (topTasks.length === 0) {
+							appState.showToast('No clear tasks found.', 'info', 3000);
+							return;
+						}
+						
+						let html = '<h3>Extracted Tasks</h3><ul data-type="taskList">';
+						for (const task of topTasks) {
+							html += `<li data-type="taskItem"><label><input type="checkbox"><span></span></label><div><p>${task.sentence}</p></div></li>`;
+						}
+						html += '</ul><p></p>';
+						
+						editor.chain().focus().insertContent(html).run();
+						appState.showToast('Tasks extracted.', 'success', 3000);
+					} catch (e: any) {
+						appState.showToast('Failed to extract tasks.', 'error', 3000);
+					}
+				}
+			},
+
 			// ═══ CATEGORY: INSERT ═══
 			{
 				label: 'Table',
@@ -1708,6 +2045,57 @@
 				aliases: ['table', 'grid'],
 				icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg>',
 				action: () => editor?.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(),
+				category: 'insert'
+			},
+			{
+				label: 'Chart',
+				description: 'Insert an interactive chart (bar, line, pie)',
+				aliases: ['chart', 'graph', 'visualization', 'bar chart', 'pie chart'],
+				icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>',
+				action: () => editor?.chain().focus().insertContent({ type: 'chartBlock' }).run(),
+				category: 'insert',
+				badge: 'New'
+			},
+			{
+				label: 'Sparkline',
+				description: 'Tiny inline chart from comma-separated numbers',
+				aliases: ['sparkline', 'mini chart', 'inline chart'],
+				icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 18 8 12 12 16 16 8 20 14"/></svg>',
+				action: () => {
+					appState.showPrompt({
+						title: 'Sparkline Data',
+						message: 'Enter comma-separated numbers:',
+						value: '10, 20, 15, 30, 25, 22, 35',
+						placeholder: '10, 20, 30...',
+						onConfirm: (data) => {
+							editor?.chain().focus().insertContent({ type: 'sparkline', attrs: { data } }).run();
+						}
+					});
+				},
+				category: 'insert'
+			},
+			{
+				label: 'Visualize Table',
+				description: 'Create a chart from the selected table',
+				aliases: ['visualize table', 'chart from table', 'table chart'],
+				icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>',
+				action: visualizeSelectedTable,
+				category: 'insert'
+			},
+			{
+				label: 'Import CSV',
+				description: 'Import a CSV file as a table',
+				aliases: ['import', 'csv', 'tsv', 'import table'],
+				icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>',
+				action: importCsvFile,
+				category: 'insert'
+			},
+			{
+				label: 'Export to CSV',
+				description: 'Export selected table to CSV',
+				aliases: ['export', 'csv', 'export table'],
+				icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>',
+				action: exportTableToCsv,
 				category: 'insert'
 			},
 			{
@@ -4063,6 +4451,108 @@
 		}
 	});
 
+	const SparklineNode = TiptapNode.create({
+		name: 'sparkline',
+		group: 'inline',
+		inline: true,
+		atom: true,
+		addAttributes() {
+			return {
+				data: { default: '10,20,15,30,25' }
+			};
+		},
+		parseHTML() { return [{ tag: 'span[data-type="sparkline"]' }]; },
+		renderHTML({ HTMLAttributes }) {
+			return ['span', mergeAttributes(HTMLAttributes, { 'data-type': 'sparkline' })];
+		},
+		addNodeView() {
+			return ({ node }) => {
+				const dom = document.createElement('span');
+				dom.className = 'sparkline-inline';
+				dom.contentEditable = 'false';
+				
+				const values = node.attrs.data.split(',').map(Number).filter((n: number) => !isNaN(n));
+				if (values.length > 1) {
+					const w = 60, h = 18;
+					const max = Math.max(...values), min = Math.min(...values);
+					const range = max - min || 1;
+					const points = values.map((v: number, i: number) => 
+						`${(i / (values.length - 1)) * w},${h - ((v - min) / range) * h}`
+					).join(' ');
+					dom.innerHTML = `<svg width="${w}" height="${h}" style="vertical-align:middle; display:inline-block; margin:0 2px;"><polyline points="${points}" fill="none" stroke="rgb(99,102,241)" stroke-width="1.5"/></svg>`;
+				}
+				
+				return { dom };
+			};
+		}
+	});
+
+	const ChartBlockExt = TiptapNode.create({
+		name: 'chartBlock',
+		group: 'block',
+		atom: true,
+		draggable: false,
+		selectable: true,
+		addAttributes() {
+			return {
+				chartConfig: {
+					default: null,
+					parseHTML: (el: HTMLElement) => {
+						const data = el.getAttribute('data-chart-config');
+						try { return data ? JSON.parse(decodeURIComponent(data)) : null; } catch { return null; }
+					},
+					renderHTML: (attrs) => {
+						try { return { 'data-chart-config': encodeURIComponent(JSON.stringify(attrs.chartConfig)) }; } catch { return {}; }
+					}
+				}
+			};
+		},
+		parseHTML() {
+			return [{ tag: 'div[data-type="chart"]' }];
+		},
+		renderHTML({ HTMLAttributes }) {
+			return ['div', mergeAttributes(HTMLAttributes, { 'data-type': 'chart' })];
+		},
+		addNodeView() {
+			return ({ node, getPos, editor }) => {
+				const dom = document.createElement('div');
+				dom.className = 'chart-block-view-container';
+				dom.contentEditable = 'false';
+				
+				let currentNode = node;
+				const nodeStore = writable(node);
+				
+				const component = mount(ChartBlock, {
+					target: dom,
+					props: {
+						nodeStore,
+						getPos,
+						editor,
+						updateAttributes: (attrs: any) => {
+							const pos = typeof getPos === 'function' ? getPos() : null;
+							if (pos !== null && pos !== undefined) {
+								editor.view.dispatch(editor.state.tr.setNodeMarkup(pos, undefined, { ...currentNode.attrs, ...attrs }));
+							}
+						}
+					}
+				});
+				
+				return {
+					dom,
+					update: (updatedNode) => {
+						if (updatedNode.type.name !== 'chartBlock') return false;
+						currentNode = updatedNode;
+						nodeStore.set(updatedNode);
+						return true;
+					},
+					ignoreMutation: () => true,
+					stopEvent: () => true,
+					destroy: () => { unmount(component); }
+				};
+			};
+		}
+	});
+
 	const TldrawBlockExt = TiptapNode.create({
 		name: 'tldraw',
 		group: 'block',
@@ -4885,8 +5375,8 @@
 		}
 
 		const textBefore = parentNode.textContent.slice(0, resolvedFrom.parentOffset);
-		// Match "." at start of line or after whitespace
-		const match = textBefore.match(/(^|\s)\.([^\s]*)$/);
+		// Match "." or "/" at start of line or after whitespace
+		const match = textBefore.match(/(^|\s)[\.\/]([^\s]*)$/);
 		if (!match) {
 			closeSlashMenu();
 			return;
@@ -4903,21 +5393,47 @@
 		const from = resolvedFrom.start() + slashOffset;
 		const to = resolvedFrom.pos;
 
-		// Get cursor coordinates for menu positioning
-		const coords = editor.view.coordsAtPos(from);
-
-		let x = coords.left;
-
-		// Keep menu within viewport (account for virtual keyboard on mobile)
-		if (x + 240 > window.innerWidth) x = window.innerWidth - 250;
-		const visibleBottom = window.innerHeight - keyboardHeight;
-		const menuHeight = 300;
-		let y = coords.bottom + 4;
-		if (y + menuHeight > visibleBottom) y = coords.top - menuHeight - 4;
-		if (y < 4) y = 4;
-
-		slashMenu = { x, y, query, from, to };
+		// Temporarily position at 0,0 until computed by Floating UI
+		slashMenu = { x: 0, y: 0, query, from, to };
 		slashSelectedIndex = 0;
+
+		setTimeout(async () => {
+			if (!slashMenuEl || !slashMenu) return;
+			const coords = editor.view.coordsAtPos(from);
+			const virtualRef = {
+				getBoundingClientRect: () => ({
+					x: coords.left,
+					y: coords.top,
+					top: coords.top,
+					left: coords.left,
+					bottom: coords.bottom,
+					right: coords.left,
+					width: 0,
+					height: coords.bottom - coords.top,
+					toJSON: () => {}
+				})
+			};
+
+			const { x, y } = await computePosition(virtualRef, slashMenuEl, {
+				placement: 'bottom-start',
+				middleware: [
+					offset(4),
+					flip({ fallbackPlacements: ['top-start'] }),
+					shift({ padding: 8 }),
+					size({
+						apply({ availableHeight }) {
+							Object.assign(slashMenuEl!.style, {
+								maxHeight: `${Math.min(availableHeight - 16, 320)}px`
+							});
+						}
+					})
+				]
+			});
+			if (slashMenu) {
+				slashMenu.x = x;
+				slashMenu.y = y;
+			}
+		}, 0);
 	}
 
 	const SlashCommands = Extension.create({
@@ -4928,7 +5444,7 @@
 					key: new PluginKey('slashCommands'),
 					props: {
 						handleTextInput: (_view, _from, _to, text) => {
-							if (text === '.') {
+							if (text === '.' || text === '/') {
 								slashTypedByUser = true;
 							}
 							return false;
@@ -6793,6 +7309,8 @@
 				Callout,
 				Metrics,
 				NumbatBlockExt,
+				SparklineNode,
+				ChartBlockExt,
 				TldrawBlockExt,
 				TypingKeyboardShortcuts,
 				FocusModeHighlight,
@@ -6855,6 +7373,8 @@
 				SlashCommands,
 				MoveLineShortcuts,
 				TabIndent,
+				DateHighlight,
+				DueDateNode,
 				NoteSearchExtension,
 				ColorSwatch,
 				...($appConfig?.enable_wiki_links ? [WikiLink, WikiLinkAutocomplete] : []),
@@ -6878,6 +7398,27 @@
 					// hasFocus()=true and skips its scrolling view.focus() call.
 					// For task checkboxes: lock scroll on mousedown (before any dispatch fires)
 					// so that any synchronous or async scroll caused by the toggle is reverted.
+					mouseover: (view, event) => {
+						const target = event.target as HTMLElement;
+						const link = target.closest('a, [data-type="wikiLink"]');
+						if (!link) return false;
+						
+						if (linkPreviewTimer) clearTimeout(linkPreviewTimer);
+						linkPreviewTimer = setTimeout(() => {
+							const href = link.getAttribute('href') || link.textContent || '';
+							linkPreviewHoverTarget = link as HTMLElement;
+							linkPreviewHref = href;
+						}, 400);
+						return false;
+					},
+					mouseout: (view, event) => {
+						const target = event.target as HTMLElement;
+						if (target.closest('a, [data-type="wikiLink"]')) {
+							if (linkPreviewTimer) clearTimeout(linkPreviewTimer);
+							linkPreviewHoverTarget = null;
+						}
+						return false;
+					},
 					mousedown: (view, event) => {
 						const target = event.target as HTMLElement;
 						if (target.closest('[data-type="details"] > button')) {
@@ -6993,6 +7534,45 @@
 				},
 				handleDrop: (_view, event) => handleFileDrop(event),
 				handlePaste: (_view, event) => {
+					if (event.clipboardData && event.clipboardData.types.includes('text/plain')) {
+						const text = event.clipboardData.getData('text/plain');
+						if (text.includes(',') || text.includes('\t')) {
+							const lines = text.trim().split('\n');
+							if (lines.length > 1) {
+								const commaCounts = lines.map(l => (l.match(/,/g) || []).length);
+								const tabCounts = lines.map(l => (l.match(/\t/g) || []).length);
+								const isCsv = commaCounts.every(c => c === commaCounts[0] && c > 0);
+								const isTsv = tabCounts.every(c => c === tabCounts[0] && c > 0);
+								
+								if (isCsv || isTsv) {
+									event.preventDefault();
+									import('papaparse').then((Papa) => {
+										const result = Papa.default.parse(text.trim(), { header: false });
+										if (result.errors.length === 0 && result.data.length > 0) {
+											const rows = result.data as string[][];
+											const cols = Math.max(...rows.map(r => r.length));
+											let html = '<table>';
+											rows.forEach((row, rowIndex) => {
+												html += '<tr>';
+												for (let i = 0; i < cols; i++) {
+													const cellTag = rowIndex === 0 ? 'th' : 'td';
+													const content = (row[i] || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+													html += `<${cellTag}>${content}</${cellTag}>`;
+												}
+												html += '</tr>';
+											});
+											html += '</table>';
+											editor?.chain().focus().insertContent(html).run();
+										} else {
+											editor?.chain().focus().insertContent(text).run();
+										}
+									});
+									return true;
+								}
+							}
+						}
+					}
+
 					const handled = handleFilePaste(event);
 					if (!handled) hasPendingBlobs = true; // ProseMirror may insert blob: images from web paste
 					return handled;
@@ -8944,6 +9524,9 @@
 								</ul>
 							{/if}
 						</div>
+						{#if appState.aiFeaturesEnabled && editor}
+							<TagSuggestions currentText={editor.getText()} onSelectTag={(t) => { selectSuggestion(t); }} />
+						{/if}
 					{/if}
 				</span>
 				{/if}
@@ -10401,11 +10984,19 @@
 	</div>
 {/if}
 
+{#if linkPreviewHoverTarget && linkPreviewHref}
+	<LinkPreview 
+		targetElement={linkPreviewHoverTarget} 
+		href={linkPreviewHref} 
+		onDismiss={() => { linkPreviewHoverTarget = null; }} 
+	/>
+{/if}
+
 {#if slashMenu}
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div class="slash-menu-overlay" onclick={closeSlashMenu}>
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
-		<div class="slash-menu" style="left: {slashMenu.x}px; top: {slashMenu.y}px" onclick={(e) => e.stopPropagation()}>
+		<div bind:this={slashMenuEl} class="slash-menu" style="left: {slashMenu.x}px; top: {slashMenu.y}px" onclick={(e) => e.stopPropagation()}>
 			{#if slashTablePicker}
 				<div class="slash-table-picker">
 					<div class="slash-table-picker-grid">
@@ -16736,5 +17327,24 @@
 	.mobile-note-title-input::placeholder {
 		color: var(--text-tertiary);
 		opacity: 0.5;
+	}
+
+	:global(.date-highlight-deco) {
+		background-color: color-mix(in srgb, var(--accent) 20%, transparent);
+		border-bottom: 2px solid var(--accent);
+		cursor: help;
+		padding: 0 2px;
+		border-radius: 2px;
+	}
+
+	:global(.due-date-node) {
+		display: inline-block;
+		background-color: var(--accent);
+		color: var(--bg-primary);
+		padding: 2px 6px;
+		border-radius: 4px;
+		font-size: 0.9em;
+		font-weight: 600;
+		margin: 0 4px;
 	}
 </style>

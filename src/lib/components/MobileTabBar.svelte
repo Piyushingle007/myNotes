@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Home, Tag as TagIcon, Library, Calculator, Target, Wallet, PenTool } from 'lucide-svelte';
+  import { Home, Tag as TagIcon, Library, Calculator, Target, Wallet, PenTool, Calendar } from 'lucide-svelte';
   import { appState } from '../stores/appState.svelte';
   import { mobileNav } from '../stores/mobileNav.svelte';
 
@@ -18,6 +18,7 @@
     // { id: 'draw', label: 'Draw', icon: PenTool }, // Disabled temporarily
     { id: 'budget', label: 'Budget', icon: Wallet },
     { id: 'focus', label: 'Focus', icon: Target },
+    { id: 'timeline', label: 'Timeline', icon: Calendar },
   ] as const;
 
   function select(id: (typeof tabs)[number]['id']) {

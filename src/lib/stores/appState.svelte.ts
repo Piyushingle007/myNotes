@@ -215,6 +215,7 @@ class AppState {
   customDriveFolderId = $state<string | null>(localStorage.getItem('mynotes_custom_drive_folder_id') || null);
   yjsSyncEnabled = $state<boolean>(localStorage.getItem('mynotes_yjs_sync_enabled') === 'true');
   customDriveFolderName = $state<string | null>(localStorage.getItem('mynotes_custom_drive_folder_name') || null);
+  aiFeaturesEnabled = $state<boolean>(localStorage.getItem('mynotes_ai_enabled') === 'true');
   googleDriveFolders = $state<any[]>([]);
   fetchingFolders = $state<boolean>(false);
   onForceSave = null as (() => Promise<void>) | null;
@@ -537,6 +538,11 @@ class AppState {
         }
       }, 100);
     });
+  }
+
+  setAiFeaturesEnabled(enabled: boolean) {
+    this.aiFeaturesEnabled = enabled;
+    localStorage.setItem('mynotes_ai_enabled', String(enabled));
   }
 
   setTheme(newTheme: string) {
