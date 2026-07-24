@@ -29,6 +29,7 @@
   import BudgetView from './BudgetView.svelte';
   import NumbatView from './NumbatView.svelte';
   import TldrawView from './TldrawView.svelte';
+  import SmsTransactionsView from './SmsTransactionsView.svelte';
   import { mobileNav } from '../stores/mobileNav.svelte';
   import { LONG_PRESS_MS, TOUCH_MOVE_TOLERANCE, edgeSwipeBack } from '../actions/touch';
 
@@ -2063,6 +2064,12 @@
             <BudgetView />
           </div>
 
+        <!-- 8. SMS TAB -->
+        {:else if appState.activeTab === 'sms'}
+          <div class="mobile-tab-view flex-col">
+            <SmsTransactionsView />
+          </div>
+
         {/if}
       </div>
 
@@ -2484,6 +2491,11 @@
         <!-- Budget View takes over the main area on desktop -->
         <div class="editor-panel flex-row" style="min-width: 0;">
           <BudgetView />
+        </div>
+      {:else if appState.activeTab === 'sms'}
+        <!-- SMS Inbox View takes over the main area on desktop -->
+        <div class="editor-panel flex-row" style="min-width: 0;">
+          <SmsTransactionsView />
         </div>
       {:else if appState.activeTab === 'num'}
         <!-- Num View takes over the main area on desktop -->

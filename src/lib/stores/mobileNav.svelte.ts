@@ -1,6 +1,6 @@
 import { appState } from './appState.svelte';
 
-export type MobileTab = 'home' | 'tags' | 'library' | 'num' | 'focus' | 'budget';
+export type MobileTab = 'home' | 'tags' | 'library' | 'num' | 'focus' | 'budget' | 'sms';
 
 /**
  * MobileNav — centralized mobile navigation model (UI-M-001).
@@ -21,7 +21,7 @@ export type MobileTab = 'home' | 'tags' | 'library' | 'num' | 'focus' | 'budget'
  */
 class MobileNav {
   /** Bottom-navigation tabs in display order. */
-  readonly tabs: MobileTab[] = ['home', 'tags', 'library', 'num', 'budget', 'focus'];
+  readonly tabs: MobileTab[] = ['home', 'budget', 'num', 'sms', 'tags', 'library'];
 
   // ───────────────────────── Derived position ─────────────────────────
 

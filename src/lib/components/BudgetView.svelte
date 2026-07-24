@@ -2,7 +2,8 @@
   import { appState, parseHtmlMetadata, generateHtmlNote } from '../stores/appState.svelte';
   import { BudgetAggregator, type CalcBoxRow } from '../services/BudgetAggregator';
   import { getRowNumbers, exportMultipleMetricsToXlsx, extractRowDate } from '../utils/exportMetricsXlsx';
-  import { Wallet, Landmark, TrendingUp, TrendingDown, ArrowUpRight, FileText, ChevronRight, ChevronDown, Plus, X, Check, Pin, ArrowUpDown, Download, RefreshCw, Edit3, Trash2, Settings } from 'lucide-svelte';
+  import { Wallet, Landmark, TrendingUp, TrendingDown, ArrowUpRight, FileText, ChevronRight, ChevronDown, Plus, X, Check, Pin, ArrowUpDown, Download, RefreshCw, Edit3, Trash2, Settings, MessageSquare } from 'lucide-svelte';
+  import { smsService } from '../services/smsService.svelte';
 
   // Local state for the active selected calculation box
   let activeBoxId = $state<string>(localStorage.getItem('mynotes_active_budget_box_id') || '');
@@ -1047,6 +1048,17 @@
         >
           <Download size={15} />
           <span class="btn-label-desktop">Export Excel</span>
+        </button>
+
+        <button 
+          type="button" 
+          class="header-action-btn flex-row"
+          style="background: rgba(99, 102, 241, 0.12); color: #6366f1; border-color: rgba(99, 102, 241, 0.3);"
+          onclick={() => appState.activeTab = 'sms'}
+          title="Auto-detect transactions from SMS"
+        >
+          <MessageSquare size={15} />
+          <span>SMS Auto ({smsService.pendingTransactions.length})</span>
         </button>
 
         <button 
