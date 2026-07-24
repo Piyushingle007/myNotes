@@ -196,7 +196,8 @@ class MobileNav {
 
     if (this.isNative) {
       try {
-        const { App } = await import('@capacitor/app');
+        const capPkg = '@capacitor/app';
+        const { App } = await import(/* @vite-ignore */ capPkg);
         const handle = await App.addListener('backButton', () => {
           void this.handleHardwareBack();
         });
@@ -214,7 +215,8 @@ class MobileNav {
     if (!handled && this.isNative) {
       // At the home root on a native device → exit the app.
       try {
-        const { App } = await import('@capacitor/app');
+        const capPkg = '@capacitor/app';
+        const { App } = await import(/* @vite-ignore */ capPkg);
         await App.exitApp();
       } catch {
         /* ignore — plugin unavailable */

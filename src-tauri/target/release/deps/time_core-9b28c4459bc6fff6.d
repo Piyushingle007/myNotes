@@ -1,0 +1,10 @@
+/Volumes/SSD SN770/piyush/Documents/GitHub/myNotes/src-tauri/target/release/deps/time_core-9b28c4459bc6fff6.d: /Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/time-core-0.1.9/src/lib.rs /Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/time-core-0.1.9/src/hint.rs /Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/time-core-0.1.9/src/unit.rs /Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/time-core-0.1.9/src/util.rs
+
+/Volumes/SSD SN770/piyush/Documents/GitHub/myNotes/src-tauri/target/release/deps/libtime_core-9b28c4459bc6fff6.rlib: /Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/time-core-0.1.9/src/lib.rs /Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/time-core-0.1.9/src/hint.rs /Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/time-core-0.1.9/src/unit.rs /Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/time-core-0.1.9/src/util.rs
+
+/Volumes/SSD SN770/piyush/Documents/GitHub/myNotes/src-tauri/target/release/deps/libtime_core-9b28c4459bc6fff6.rmeta: /Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/time-core-0.1.9/src/lib.rs /Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/time-core-0.1.9/src/hint.rs /Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/time-core-0.1.9/src/unit.rs /Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/time-core-0.1.9/src/util.rs
+
+/Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/time-core-0.1.9/src/lib.rs:
+/Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/time-core-0.1.9/src/hint.rs:
+/Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/time-core-0.1.9/src/unit.rs:
+/Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/time-core-0.1.9/src/util.rs:

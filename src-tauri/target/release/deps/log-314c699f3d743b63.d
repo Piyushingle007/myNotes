@@ -1,0 +1,10 @@
+/Volumes/SSD SN770/piyush/Documents/GitHub/myNotes/src-tauri/target/release/deps/log-314c699f3d743b63.d: /Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/log-0.4.33/src/lib.rs /Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/log-0.4.33/src/macros.rs /Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/log-0.4.33/src/serde.rs /Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/log-0.4.33/src/__private_api.rs
+
+/Volumes/SSD SN770/piyush/Documents/GitHub/myNotes/src-tauri/target/release/deps/liblog-314c699f3d743b63.rlib: /Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/log-0.4.33/src/lib.rs /Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/log-0.4.33/src/macros.rs /Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/log-0.4.33/src/serde.rs /Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/log-0.4.33/src/__private_api.rs
+
+/Volumes/SSD SN770/piyush/Documents/GitHub/myNotes/src-tauri/target/release/deps/liblog-314c699f3d743b63.rmeta: /Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/log-0.4.33/src/lib.rs /Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/log-0.4.33/src/macros.rs /Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/log-0.4.33/src/serde.rs /Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/log-0.4.33/src/__private_api.rs
+
+/Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/log-0.4.33/src/lib.rs:
+/Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/log-0.4.33/src/macros.rs:
+/Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/log-0.4.33/src/serde.rs:
+/Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/log-0.4.33/src/__private_api.rs:

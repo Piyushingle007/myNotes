@@ -1,0 +1,10 @@
+/Volumes/SSD SN770/piyush/Documents/GitHub/myNotes/src-tauri/target/release/deps/litemap-b514e134e0da2ad0.d: /Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/litemap-0.8.2/src/lib.rs /Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/litemap-0.8.2/src/map.rs /Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/litemap-0.8.2/src/store/mod.rs /Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/litemap-0.8.2/src/store/slice_impl.rs
+
+/Volumes/SSD SN770/piyush/Documents/GitHub/myNotes/src-tauri/target/release/deps/liblitemap-b514e134e0da2ad0.rlib: /Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/litemap-0.8.2/src/lib.rs /Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/litemap-0.8.2/src/map.rs /Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/litemap-0.8.2/src/store/mod.rs /Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/litemap-0.8.2/src/store/slice_impl.rs
+
+/Volumes/SSD SN770/piyush/Documents/GitHub/myNotes/src-tauri/target/release/deps/liblitemap-b514e134e0da2ad0.rmeta: /Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/litemap-0.8.2/src/lib.rs /Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/litemap-0.8.2/src/map.rs /Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/litemap-0.8.2/src/store/mod.rs /Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/litemap-0.8.2/src/store/slice_impl.rs
+
+/Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/litemap-0.8.2/src/lib.rs:
+/Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/litemap-0.8.2/src/map.rs:
+/Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/litemap-0.8.2/src/store/mod.rs:
+/Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/litemap-0.8.2/src/store/slice_impl.rs:

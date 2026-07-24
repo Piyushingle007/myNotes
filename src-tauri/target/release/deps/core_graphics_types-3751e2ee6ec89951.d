@@ -1,0 +1,9 @@
+/Volumes/SSD SN770/piyush/Documents/GitHub/myNotes/src-tauri/target/release/deps/core_graphics_types-3751e2ee6ec89951.d: /Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/core-graphics-types-0.2.0/src/lib.rs /Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/core-graphics-types-0.2.0/src/base.rs /Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/core-graphics-types-0.2.0/src/geometry.rs
+
+/Volumes/SSD SN770/piyush/Documents/GitHub/myNotes/src-tauri/target/release/deps/libcore_graphics_types-3751e2ee6ec89951.rlib: /Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/core-graphics-types-0.2.0/src/lib.rs /Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/core-graphics-types-0.2.0/src/base.rs /Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/core-graphics-types-0.2.0/src/geometry.rs
+
+/Volumes/SSD SN770/piyush/Documents/GitHub/myNotes/src-tauri/target/release/deps/libcore_graphics_types-3751e2ee6ec89951.rmeta: /Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/core-graphics-types-0.2.0/src/lib.rs /Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/core-graphics-types-0.2.0/src/base.rs /Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/core-graphics-types-0.2.0/src/geometry.rs
+
+/Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/core-graphics-types-0.2.0/src/lib.rs:
+/Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/core-graphics-types-0.2.0/src/base.rs:
+/Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/core-graphics-types-0.2.0/src/geometry.rs:

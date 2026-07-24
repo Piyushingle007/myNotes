@@ -1,4 +1,6 @@
 import { type NoteFile, type StorageAdapter, IndexedDBAdapter, FileSystemAccessAdapter } from '../storage/StorageAdapter';
+import { TauriFSAdapter } from '../storage/TauriFSAdapter';
+import { isTauri } from '../utils/platform';
 import { TagDatabase, type Tag } from '../storage/TagSchema';
 import { CalcTagDatabase, type CalcTag } from '../storage/CalcTagSchema';
 import { FocusCardStore, type FocusCard, type CardStatus, createBlankCard } from '../storage/FocusCardStore';
@@ -961,7 +963,8 @@ class AppState {
     this.clearMobileAuthRedirectListener();
     if (!this.isNativePlatform) return;
     try {
-      const { App } = await import('@capacitor/app');
+      const capPkg = '@capacitor/app';
+      const { App } = await import(/* @vite-ignore */ capPkg);
       const handle = await App.addListener('appUrlOpen', (event: { url: string }) => {
         if (event?.url && event.url.includes('access_token')) {
           void this.completeMobileGoogleAuth(event.url).catch(() => {/* surfaced via state */});
@@ -1527,11 +1530,20 @@ class AppState {
   async initSandbox() {
     console.log('[MyNotes] initSandbox started');
     try {
-      this.storage = new IndexedDBAdapter();
-      console.log('[MyNotes] IndexedDBAdapter instance created');
+      if (isTauri()) {
+        const savedPath = localStorage.getItem('mynotes_tauri_vault_path') || undefined;
+        this.storage = new TauriFSAdapter(savedPath);
+        console.log('[MyNotes] TauriFSAdapter created with savedPath:', savedPath);
+      } else {
+        this.storage = new IndexedDBAdapter();
+        console.log('[MyNotes] IndexedDBAdapter instance created');
+      }
       const name = await this.storage.selectDirectory();
       console.log('[MyNotes] selectDirectory returned:', name);
       this.vaultName = name;
+      if (this.storage instanceof TauriFSAdapter && this.storage.getRootPath()) {
+        localStorage.setItem('mynotes_tauri_vault_path', this.storage.getRootPath());
+      }
       if (this.tagDb) this.tagDb.close();
       if (this.calcTagDb) this.calcTagDb.close();
       if (this.focusCardStore) this.focusCardStore.close();
@@ -1581,10 +1593,13 @@ class AppState {
 
   async openDirectory() {
     try {
-      const adapter = new FileSystemAccessAdapter();
+      const adapter = isTauri() ? new TauriFSAdapter() : new FileSystemAccessAdapter();
       const name = await adapter.selectDirectory();
       this.storage = adapter;
       this.vaultName = name;
+      if (adapter instanceof TauriFSAdapter && adapter.getRootPath()) {
+        localStorage.setItem('mynotes_tauri_vault_path', adapter.getRootPath());
+      }
       if (this.tagDb) this.tagDb.close();
       if (this.calcTagDb) this.calcTagDb.close();
       if (this.focusCardStore) this.focusCardStore.close();

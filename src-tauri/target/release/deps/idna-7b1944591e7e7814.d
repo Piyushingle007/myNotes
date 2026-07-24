@@ -1,0 +1,10 @@
+/Volumes/SSD SN770/piyush/Documents/GitHub/myNotes/src-tauri/target/release/deps/idna-7b1944591e7e7814.d: /Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/idna-1.1.0/src/lib.rs /Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/idna-1.1.0/src/deprecated.rs /Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/idna-1.1.0/src/punycode.rs /Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/idna-1.1.0/src/uts46.rs
+
+/Volumes/SSD SN770/piyush/Documents/GitHub/myNotes/src-tauri/target/release/deps/libidna-7b1944591e7e7814.rlib: /Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/idna-1.1.0/src/lib.rs /Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/idna-1.1.0/src/deprecated.rs /Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/idna-1.1.0/src/punycode.rs /Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/idna-1.1.0/src/uts46.rs
+
+/Volumes/SSD SN770/piyush/Documents/GitHub/myNotes/src-tauri/target/release/deps/libidna-7b1944591e7e7814.rmeta: /Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/idna-1.1.0/src/lib.rs /Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/idna-1.1.0/src/deprecated.rs /Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/idna-1.1.0/src/punycode.rs /Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/idna-1.1.0/src/uts46.rs
+
+/Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/idna-1.1.0/src/lib.rs:
+/Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/idna-1.1.0/src/deprecated.rs:
+/Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/idna-1.1.0/src/punycode.rs:
+/Volumes/SSD\ SN770/piyush/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/idna-1.1.0/src/uts46.rs:

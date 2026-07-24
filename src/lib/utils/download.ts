@@ -1,4 +1,24 @@
+import { isTauri } from './platform';
+
 export async function saveOrShareBlob(blob: Blob, filename: string, mime: string): Promise<boolean> {
+	if (isTauri()) {
+		try {
+			const dialog = await import('@tauri-apps/plugin-dialog');
+			const fs = await import('@tauri-apps/plugin-fs');
+			const filePath = await dialog.save({
+				defaultPath: filename,
+				title: `Save ${filename}`
+			});
+			if (filePath) {
+				const buffer = await blob.arrayBuffer();
+				await fs.writeFile(filePath, new Uint8Array(buffer));
+				return true;
+			}
+			return false;
+		} catch (err) {
+			console.warn('Tauri save dialog failed, falling back to anchor download:', err);
+		}
+	}
 	if (
 		typeof navigator !== 'undefined' &&
 		navigator.share &&

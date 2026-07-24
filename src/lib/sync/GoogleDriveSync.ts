@@ -1,3 +1,6 @@
+import { isTauri } from '../utils/platform';
+import { TauriOAuth } from './TauriOAuth';
+
 declare const google: any;
 
 export interface DriveFileMeta {
@@ -26,6 +29,16 @@ export class GoogleDriveSync {
 
   // Initialize GIS and request token
   login(onSuccess: (token: string) => void, onFailure: (error: any) => void): void {
+    if (isTauri()) {
+      TauriOAuth.login(this.clientId)
+        .then(token => {
+          this.accessToken = token;
+          onSuccess(token);
+        })
+        .catch(err => onFailure(err));
+      return;
+    }
+
     if (typeof google === 'undefined') {
       return onFailure(new Error('Google Identity Services SDK not loaded yet.'));
     }

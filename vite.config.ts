@@ -9,4 +9,15 @@ export default defineConfig({
     // Feature flags — set to false to exclude from production bundle (tree-shaking)
     '__FEATURE_CANVAS__': JSON.stringify(false),
   },
+  server: {
+    port: 1420,
+    strictPort: true,
+    watch: {
+      ignored: ['**/scratch/**', '**/src-tauri/**']
+    }
+  },
+  optimizeDeps: {
+    entries: ['index.html'],
+    exclude: ['scratch']
+  }
 })
