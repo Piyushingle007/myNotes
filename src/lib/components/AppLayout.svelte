@@ -2782,21 +2782,38 @@
     height: 100%;
     background-color: var(--bg-base);
     overflow: hidden;
+    overflow-x: hidden !important;
     position: relative;
+    max-width: 100vw;
   }
 
   .mobile-content {
     flex-grow: 1;
     overflow-y: auto;
+    overflow-x: hidden !important;
     padding-bottom: 90px; /* space for bottom nav and FAB */
     min-height: 0;
+    width: 100%;
+    max-width: 100vw;
+    box-sizing: border-box;
     -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .mobile-content::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
   }
 
   .mobile-tab-view {
     padding: var(--spacing-lg) var(--spacing-md);
     gap: var(--spacing-lg);
     min-height: 100%;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    overflow-x: hidden !important;
   }
 
   .mobile-header {

@@ -35,7 +35,7 @@ class MobileNav {
 
   /** True when there is somewhere to go back to within the app. */
   get canGoBack(): boolean {
-    return this.depth > 0 || appState.activeTab !== 'home';
+    return this.depth > 0 || appState.activeTab !== 'budget';
   }
 
   // ─────────────────────── Forward navigation ───────────────────────
@@ -158,12 +158,12 @@ class MobileNav {
       this.closeTag();
       return true;
     }
-    // 0 (non-home) → fall back to the Home root.
-    if (appState.activeTab !== 'home') {
-      this.goToTab('home');
+    // 0 (non-dashboard) → fall back to the Dashboard root.
+    if (appState.activeTab !== 'budget') {
+      this.goToTab('budget');
       return true;
     }
-    // Already at the home root — nothing left to pop.
+    // Already at the dashboard root — nothing left to pop.
     return false;
   }
 

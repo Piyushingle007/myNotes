@@ -193,7 +193,7 @@ class AppState {
   activeNoteContent = $state<string>('');
   activeNoteTitle = $state<string>('');
   activeNotebook = $state<string | null>(null);
-  activeTab = $state<'home' | 'search' | 'library' | 'num' | 'tags' | 'focus' | 'budget' | 'sms'>('home');
+  activeTab = $state<'home' | 'search' | 'library' | 'num' | 'tags' | 'focus' | 'budget' | 'sms'>('budget');
   favorites = $state<string[]>(JSON.parse(localStorage.getItem('mynotes_favorites') || '[]'));
   searchQuery = $state<string>('');
   showSettings = $state<boolean>(false);

@@ -110,8 +110,6 @@
       activeTitle = doc.title;
       rawText = doc.text || '';
       evaluateDocument(rawText);
-      await tick();
-      inputRefs[0]?.focus();
     } catch (e) {
       console.error('Failed to load Num file:', e);
       appState.showToast('Failed to load calculation session.', 'error', 4000);

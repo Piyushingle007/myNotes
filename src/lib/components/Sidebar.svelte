@@ -642,7 +642,7 @@
     </div>
   </div>
 
-  <!-- Budget Dashboard Section -->
+  <!-- Dashboard Section -->
   <div class="section-container flex-col" class:active={appState.activeTab === 'budget'}>
     <div class="section-header flex-row" style="justify-content: space-between; width: 100%;">
       <button
@@ -651,7 +651,7 @@
         onclick={() => { appState.activeTab = 'budget'; }}
       >
         <Wallet size={18} class="sec-icon" />
-        <span class="section-title">Budget</span>
+        <span class="section-title">Dashboard</span>
       </button>
     </div>
   </div>

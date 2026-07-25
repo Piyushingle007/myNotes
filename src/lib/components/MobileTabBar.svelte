@@ -11,7 +11,7 @@
   let { onNavigate }: Props = $props();
 
   const tabs = [
-    { id: 'budget', label: 'Budget', icon: Wallet },
+    { id: 'budget', label: 'Dashboard', icon: Wallet },
     { id: 'sms', label: 'Inbox', icon: MessageSquare },
     { id: 'tags', label: 'Tags', icon: TagIcon },
     { id: 'library', label: 'Library', icon: Library },
@@ -55,7 +55,7 @@
   }
 
   .android-bottom-nav {
-    position: absolute;
+    position: fixed;
     bottom: calc(16px + env(safe-area-inset-bottom, 0px));
     left: calc(16px + env(safe-area-inset-left, 0px));
     right: calc(16px + env(safe-area-inset-right, 0px));
@@ -66,7 +66,7 @@
     box-shadow: 0 8px 32px 0 color-mix(in srgb, var(--bg-base) 40%, transparent);
     justify-content: space-around;
     align-items: stretch;
-    z-index: 10;
+    z-index: 100;
     padding: 0 var(--spacing-xs);
   }
 

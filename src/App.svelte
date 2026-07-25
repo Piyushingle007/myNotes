@@ -45,7 +45,7 @@
         newHash = `#/tags`;
       }
     } else {
-      newHash = `#/home`;
+      newHash = `#/budget`;
     }
 
     if (window.location.hash !== newHash) {
@@ -129,7 +129,7 @@
           appState.activeNotebook = null;
           appState.selectedTag = null;
         } else {
-          appState.activeTab = 'home';
+          appState.activeTab = 'budget';
           appState.activeNotebook = null;
           appState.selectedTag = null;
         }
