@@ -1,4 +1,5 @@
 import { registerPlugin, Capacitor } from '@capacitor/core';
+import { appState } from '../stores/appState.svelte';
 
 // ────────────────────────────────────────────────────────────────────────
 // Types
@@ -32,6 +33,7 @@ export type ScanResult = {
 interface SmsTransactionPluginApi {
   checkPermissions(): Promise<{ sms: string }>;
   requestPermissions(): Promise<{ sms: string }>;
+  requestNotificationPermission(): Promise<{ notifications: string }>;
   scanInbox(opts: { limit: number }): Promise<{ transactions: any[]; count: number }>;
   addListener(event: string, cb: (data: any) => void): Promise<any>;
 }
@@ -286,10 +288,18 @@ class SmsService {
       this.hasPermission = result.sms === 'granted';
       this.log(`Permission check: ${result.sms}`);
 
+      // Request notification permission for Android 13+
+      try {
+        await SmsTransactionPlugin.requestNotificationPermission();
+        this.log('Notification permission requested');
+      } catch (e: any) {
+        this.log(`Notification permission request skipped: ${e?.message || String(e)}`);
+      }
+
       await SmsTransactionPlugin.addListener('smsTransactionReceived', (data: any) => {
         this.log(`Real-time SMS received: ${data?.vendor || 'unknown'} ${data?.amount || 0}`);
         if (data && data.amount > 0) {
-          this.addTransaction({
+          const tx: SmsTransaction = {
             id: data.id || `sms_rt_${Date.now()}`,
             amount: Number(data.amount),
             type: data.type === 'inflow' ? 'inflow' : 'expense',
@@ -300,7 +310,27 @@ class SmsService {
             rawBody: data.rawBody || '',
             sender: data.sender || 'Bank',
             status: 'pending',
-          });
+          };
+          const added = this.addTransaction(tx);
+
+          // Show in-app toast notification with action to navigate to SMS tab
+          if (added) {
+            const typeLabel = tx.type === 'inflow' ? 'inflow' : 'expense';
+            const currencySymbol = '₹';
+            appState.showToast(
+              `${currencySymbol}${tx.amount.toLocaleString()} ${typeLabel} detected from ${tx.vendor}`,
+              'info',
+              6000,
+              'Transaction Detected',
+              false,
+              {
+                label: 'Review',
+                callback: () => {
+                  appState.activeTab = 'sms';
+                },
+              }
+            );
+          }
         }
       });
       this.log('Native SMS listener registered successfully');
@@ -321,6 +351,17 @@ class SmsService {
       const res = await SmsTransactionPlugin.requestPermissions();
       this.hasPermission = res.sms === 'granted';
       this.log(`Permission result: ${res.sms}`);
+
+      // Also request notification permission alongside SMS
+      if (this.hasPermission) {
+        try {
+          await SmsTransactionPlugin.requestNotificationPermission();
+          this.log('Notification permission requested alongside SMS');
+        } catch (e: any) {
+          this.log(`Notification permission request skipped: ${e?.message || String(e)}`);
+        }
+      }
+
       return this.hasPermission;
     } catch (e: any) {
       this.log(`Permission request error: ${e?.message || String(e)}`);

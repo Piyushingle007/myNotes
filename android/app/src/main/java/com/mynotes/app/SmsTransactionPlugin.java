@@ -5,6 +5,7 @@ import android.content.ContentResolver;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.net.Uri;
+import android.os.Build;
 import android.util.Log;
 import androidx.core.content.ContextCompat;
 import com.getcapacitor.JSArray;
@@ -15,6 +16,7 @@ import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import com.getcapacitor.annotation.Permission;
 import com.getcapacitor.annotation.PermissionCallback;
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.util.Calendar;
@@ -25,6 +27,10 @@ import java.util.Calendar;
         @Permission(
             strings = { Manifest.permission.READ_SMS, Manifest.permission.RECEIVE_SMS },
             alias = "sms"
+        ),
+        @Permission(
+            strings = { "android.permission.POST_NOTIFICATIONS" },
+            alias = "notifications"
         )
     }
 )
@@ -37,6 +43,7 @@ public class SmsTransactionPlugin extends Plugin {
         super.load();
         Log.i(TAG, "✅ SmsTransactionPlugin loaded successfully");
 
+        // Set up real-time SMS listener for foreground
         SmsReceiver.setListener(new SmsReceiver.SmsListener() {
             @Override
             public void onSmsReceived(JSONObject smsData) {
@@ -49,6 +56,52 @@ public class SmsTransactionPlugin extends Plugin {
                 }
             }
         });
+
+        // Consume any transactions detected in the background and forward to JS
+        forwardPendingBackgroundTransactions();
+    }
+
+    private void forwardPendingBackgroundTransactions() {
+        try {
+            JSONArray pending = SmsReceiver.consumePendingTransactions(getContext());
+            if (pending.length() > 0) {
+                Log.i(TAG, "Forwarding " + pending.length() + " background-detected transactions to JS");
+                for (int i = 0; i < pending.length(); i++) {
+                    JSONObject tx = pending.getJSONObject(i);
+                    JSObject jsObj = JSObject.fromJSONObject(tx);
+                    notifyListeners("smsTransactionReceived", jsObj);
+                }
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error forwarding pending background transactions", e);
+        }
+    }
+
+    @PluginMethod
+    public void requestNotificationPermission(PluginCall call) {
+        if (Build.VERSION.SDK_INT >= 33) {
+            boolean granted = ContextCompat.checkSelfPermission(getContext(), "android.permission.POST_NOTIFICATIONS") == PackageManager.PERMISSION_GRANTED;
+            if (granted) {
+                JSObject res = new JSObject();
+                res.put("notifications", "granted");
+                call.resolve(res);
+            } else {
+                requestPermissionForAlias("notifications", call, "notificationPermCallback");
+            }
+        } else {
+            // Pre-Android 13: no runtime permission needed
+            JSObject res = new JSObject();
+            res.put("notifications", "granted");
+            call.resolve(res);
+        }
+    }
+
+    @PermissionCallback
+    public void notificationPermCallback(PluginCall call) {
+        boolean granted = ContextCompat.checkSelfPermission(getContext(), "android.permission.POST_NOTIFICATIONS") == PackageManager.PERMISSION_GRANTED;
+        JSObject res = new JSObject();
+        res.put("notifications", granted ? "granted" : "denied");
+        call.resolve(res);
     }
 
     private boolean hasSmsPermission() {

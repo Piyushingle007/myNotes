@@ -11,9 +11,9 @@
   let { onNavigate }: Props = $props();
 
   const tabs = [
+    { id: 'home', label: 'Home', icon: Home },
     { id: 'budget', label: 'Dashboard', icon: Wallet },
     { id: 'sms', label: 'Inbox', icon: MessageSquare },
-    { id: 'tags', label: 'Tags', icon: TagIcon },
     { id: 'library', label: 'Library', icon: Library },
     { id: 'num', label: 'CalBox', icon: Calculator },
   ] as const;
