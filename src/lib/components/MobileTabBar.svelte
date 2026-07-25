@@ -12,11 +12,10 @@
 
   const tabs = [
     { id: 'budget', label: 'Budget', icon: Wallet },
-    { id: 'num', label: 'CalBox', icon: Calculator },
-    { id: 'sms', label: 'SMS Inbox', icon: MessageSquare },
-    { id: 'home', label: 'Notes', icon: Home },
+    { id: 'sms', label: 'Inbox', icon: MessageSquare },
     { id: 'tags', label: 'Tags', icon: TagIcon },
     { id: 'library', label: 'Library', icon: Library },
+    { id: 'num', label: 'CalBox', icon: Calculator },
   ] as const;
 
   function select(id: (typeof tabs)[number]['id']) {

@@ -3046,7 +3046,8 @@ class AppState {
   async refreshCalcTags() {
     if (!this.calcTagDb) return;
     try {
-      this.calcTags = await this.calcTagDb.listCalcTags();
+      const tags = await this.calcTagDb.listCalcTags();
+      this.calcTags = tags.sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' }));
     } catch (e) {
       console.error('[MyNotes] refreshCalcTags error:', e);
     }

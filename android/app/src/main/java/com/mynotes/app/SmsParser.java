@@ -5,7 +5,9 @@ import org.json.JSONException;
 import org.json.JSONObject;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.HashSet;
 import java.util.Locale;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -15,7 +17,8 @@ import java.util.regex.Pattern;
  * The algorithm is intentionally conservative: it accepts a message ONLY when it
  * looks like a genuine, completed bank/UPI/card debit or credit for the user's own
  * account, and rejects everything else (OTPs, promotions, failed/pending/reversed
- * transactions, EMI/bill reminders and pure balance-enquiry notifications).
+ * transactions, PF/EPF, orders, points/rewards, bills, insurance, subscriptions,
+ * EMI/bill reminders and pure balance-enquiry notifications).
  *
  * Public contract (unchanged for callers): {@link #parseSms(String, String, long)}
  * returns a JSONObject with keys:
@@ -29,7 +32,117 @@ public class SmsParser {
     // Minimum confidence required before a message is accepted as a transaction.
     private static final int CONFIDENCE_THRESHOLD = 3;
 
-    // ── Stage 1: quick pre-check keywords (cheap short-circuit) ──────────
+    // ═══════════════════════════════════════════════════════════════════════
+    // KNOWN INDIAN BANK SENDER ID WHITELIST
+    // ═══════════════════════════════════════════════════════════════════════
+    // Indian bank SMS senders use DLT format: XX-HDFCBK (2-char telecom prefix + 6-char bank ID).
+    // We extract the last 6 characters and match against this set for confidence boosting.
+    private static final Set<String> KNOWN_BANK_SENDERS = new HashSet<>();
+    static {
+        // ── Public Sector Banks ──
+        addSenders("SBIINB", "SBIBNK", "SBIPSG", "SBISMS", "SBIUPI", "SBISMS");      // SBI
+        addSenders("PNBSMS", "PUNJNB", "PNBBNK");                                       // PNB
+        addSenders("BOIIND", "BKOFIN", "BOISMS");                                        // Bank of India
+        addSenders("BOBIMT", "BKOFBD", "BOBSMS", "BRBSMS");                              // Bank of Baroda
+        addSenders("CANBNK", "CANARA", "CANBKN", "CANSMS");                              // Canara Bank
+        addSenders("UCOBNK", "UCOBKN");                                                   // UCO Bank
+        addSenders("IOBIND", "IOBBNK", "IOBSMS");                                        // Indian Overseas Bank
+        addSenders("CBIIND", "CENTBK", "CBISMS");                                         // Central Bank of India
+        addSenders("INDBNK", "INDBKN", "INDBKS");                                         // Indian Bank
+        addSenders("BKOFMH", "MAHBNK", "BOMSMS");                                         // Bank of Maharashtra
+        addSenders("PUNSNB", "PSBSMS");                                                    // Punjab & Sind Bank
+        addSenders("UNBKIN", "UNIONB", "UBISMS");                                          // Union Bank of India
+
+        // ── Private Sector Banks ──
+        addSenders("HDFCBK", "HDFCBN", "HDFCSM", "HDFCRD");                              // HDFC Bank
+        addSenders("ICICIB", "ICICIT", "ICICIS", "ICICSD", "ICICIP");                     // ICICI Bank
+        addSenders("AXISBK", "AXSBNK", "AXISMS");                                         // Axis Bank
+        addSenders("KOTAKB", "KOTKBK", "KOTKSM");                                         // Kotak Mahindra Bank
+        addSenders("YESBNK", "YESBKL", "YESSMS");                                         // Yes Bank
+        addSenders("IABORB", "IDBIBD", "IDBISM");                                         // IDBI Bank
+        addSenders("FEDBKN", "FEDBNK", "FEDSMS");                                         // Federal Bank
+        addSenders("INDUSB", "INDSMS", "INDUSD");                                         // IndusInd Bank
+        addSenders("RBLBNK", "RBLSMS");                                                    // RBL Bank
+        addSenders("BANDHN", "BNDHSM");                                                    // Bandhan Bank
+        addSenders("IDFCFB", "IDFCBK", "IDFCSM");                                         // IDFC First Bank
+        addSenders("DHNBNK");                                                               // Dhanlaxmi Bank
+        addSenders("TMBLNK", "TMBBNK");                                                    // Tamilnad Mercantile Bank
+        addSenders("CSBBNK", "CSBKRL");                                                    // CSB Bank (Catholic Syrian)
+        addSenders("KVBANK", "KVBSMS");                                                    // Karur Vysya Bank
+        addSenders("CITYUN", "CUBSMS");                                                    // City Union Bank
+        addSenders("SVCBNK");                                                               // SVC Co-operative Bank
+        addSenders("KTKBNK", "KRNBNK", "KTKSMS");                                         // Karnataka Bank
+        addSenders("SOUINB", "SIBLNK", "SIBSMS");                                         // South Indian Bank
+        addSenders("LAKSHV");                                                               // Lakshmi Vilas Bank
+        addSenders("NAINIT");                                                               // Nainital Bank
+        addSenders("JKBANK", "JKBSMS");                                                    // Jammu & Kashmir Bank
+        addSenders("DCBBKL", "DCBSMS");                                                    // DCB Bank
+
+        // ── Payments Banks / Small Finance Banks ──
+        addSenders("PAYTMB", "PAYTMS", "PYTMSM");                                         // Paytm Payments Bank
+        addSenders("AIRPAY", "AIRTLB", "AIRTLS");                                         // Airtel Payments Bank
+        addSenders("JIOFIN", "JIOPAY", "JIOSMS");                                         // Jio Payments
+        addSenders("FNOBNK", "FINOPB");                                                    // Fino Payments Bank
+        addSenders("AABORB", "AUSFIN", "AUBANK");                                         // AU Small Finance Bank
+        addSenders("EQITAS", "EQTSFB");                                                    // Equitas Small Finance Bank
+        addSenders("UJJIVN", "UJJSFB");                                                    // Ujjivan Small Finance Bank
+        addSenders("JANASG", "JANSFB");                                                    // Jana Small Finance Bank
+        addSenders("SURYOD");                                                               // Suryoday Small Finance Bank
+        addSenders("UTKARB");                                                               // Utkarsh Small Finance Bank
+        addSenders("NESFIN");                                                               // NorthEast Small Finance Bank
+        addSenders("CAPTLF");                                                               // Capital Small Finance Bank
+        addSenders("ESFBNK");                                                               // ESAF Small Finance Bank
+
+        // ── NBFCs / Wallets / Fintech ──
+        addSenders("PHONPE", "PHNEPE", "PHNPSM");                                         // PhonePe
+        addSenders("GOOGPE", "GGLPAY", "GGLSMS");                                         // Google Pay
+        addSenders("AMAZPY", "AMZPAY");                                                    // Amazon Pay
+        addSenders("MOBKWK");                                                               // Mobikwik
+        addSenders("FREERC", "FRCRGE");                                                    // Freecharge
+        addSenders("BAJFIN", "BAJFNC", "BAJFSM");                                         // Bajaj Finance / Finserv
+        addSenders("HDFCSC", "HDFCSL", "HDFCLD");                                         // HDFC Securities / HDFC Ltd
+        addSenders("ABORIG", "ABCLSM");                                                    // Aditya Birla Capital
+        addSenders("TATCAP", "TATACL");                                                    // Tata Capital
+        addSenders("LICIND", "LICHFL", "LICSMS");                                          // LIC / LIC Housing
+        addSenders("MAHFIN", "MHFSMS");                                                    // Mahindra Finance
+        addSenders("CHLAMD", "CHOLSM");                                                    // Cholamandalam
+        addSenders("HROAFN");                                                               // Hero FinCorp
+        addSenders("SHRIFL", "SHRFIN");                                                    // Shriram Finance
+        addSenders("MABORB", "MUTHOT");                                                    // Muthoot Finance
+        addSenders("MANAFN", "MNAPFN");                                                    // Manappuram Finance
+        addSenders("PIRAML");                                                               // Piramal Finance
+        addSenders("BHARPE", "BRTPSM");                                                    // BharatPe
+
+        // ── UPI / Payment Networks ──
+        addSenders("NPCIUP", "NPCISM");                                                    // NPCI (UPI)
+        addSenders("UPIREF");                                                               // UPI Reference
+
+        // ── Foreign Banks in India ──
+        addSenders("CITIBK", "CITIND", "CITISM");                                          // Citibank
+        addSenders("SCBANK", "STCBKN", "SCBSMS");                                         // Standard Chartered
+        addSenders("HSBCBK", "HSBCIN", "HSBCSM");                                         // HSBC
+        addSenders("DBSBNK", "DBSSMS");                                                    // DBS Bank
+        addSenders("DEUTBK");                                                               // Deutsche Bank
+        addSenders("BARCLY");                                                               // Barclays
+
+        // ── Regional / Co-operative Banks / RRBs ──
+        addSenders("SARASB", "SARSWT");                                                    // Saraswat Bank
+        addSenders("COSMBN");                                                               // Cosmos Bank
+        addSenders("APNABN");                                                               // Apna Sahakari Bank
+        addSenders("ABHYUD");                                                               // Abhyudaya Co-op Bank
+        addSenders("TJSBBN");                                                               // TJSB Bank
+        addSenders("GPPBNK");                                                               // GP Parsik Bank
+    }
+
+    private static void addSenders(String... ids) {
+        for (String id : ids) {
+            KNOWN_BANK_SENDERS.add(id.toUpperCase(Locale.US));
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Stage 1: Quick Pre-Check Keywords (cheap short-circuit)
+    // ═══════════════════════════════════════════════════════════════════════
     private static final String[] FINANCIAL_KEYWORDS = {
         "debited", "credited", "spent", "paid", "deducted", "withdrawn",
         "transferred", "deposited", "received", "refunded", "payment",
@@ -39,8 +152,11 @@ public class SmsParser {
         "sent to", "vpa"
     };
 
-    // ── Stage 2: unconditional REJECT patterns (run before acceptance) ───
-    // OTP / verification codes.
+    // ═══════════════════════════════════════════════════════════════════════
+    // Stage 2: Hard REJECT Patterns (run before any acceptance logic)
+    // ═══════════════════════════════════════════════════════════════════════
+
+    // OTP / verification codes
     private static final Pattern OTP_PATTERN = Pattern.compile(
         "\\botp\\b|one[\\s-]?time[\\s-]?password|do not share|don't share|" +
         "verification code|security code|is your (?:otp|code|password|pin|verification)|" +
@@ -48,7 +164,7 @@ public class SmsParser {
         Pattern.CASE_INSENSITIVE
     );
 
-    // Marketing / promotional / offers / loan pitches.
+    // Marketing / promotional / offers / loan pitches
     private static final Pattern PROMO_PATTERN = Pattern.compile(
         "\\boffer\\b|cashback up to|upto \\d|\\bsale\\b|discount|pre[\\s-]?approved|" +
         "apply now|\\bwin\\b|reward points|lowest interest|loan (?:offer|approved|of)|" +
@@ -57,7 +173,7 @@ public class SmsParser {
         Pattern.CASE_INSENSITIVE
     );
 
-    // Failed / declined / pending / reversed / not-yet-happened transactions.
+    // Failed / declined / pending / reversed / not-yet-happened
     private static final Pattern FAILED_PATTERN = Pattern.compile(
         "\\bfailed\\b|declined|unsuccessful|could not be|not processed|not completed|" +
         "will be (?:credited|debited|deducted)|has been requested|is pending|\\bpending\\b|" +
@@ -66,23 +182,85 @@ public class SmsParser {
         Pattern.CASE_INSENSITIVE
     );
 
-    // Reminders / due dates / mandates (a reminder is not a completed transaction).
+    // Reminders / due dates / mandates
     private static final Pattern REMINDER_PATTERN = Pattern.compile(
         "\\bdue\\b|reminder|pay your|payment is due|\\boutstanding\\b|" +
         "\\bautopay\\b|e[\\s-]?mandate|\\bmandate\\b|will be auto[\\s-]?debited|" +
-        "\\bscheduled\\b|last date|kindly pay|please pay|bill generated|statement is ready",
+        "\\bscheduled\\b|last date|kindly pay|please pay",
         Pattern.CASE_INSENSITIVE
     );
 
-    // Other non-money notifications (card activation, PIN change, delivery, KYC, etc.).
+    // Non-money notifications (card activation, PIN change, KYC, etc.)
     private static final Pattern MISC_NONTXN_PATTERN = Pattern.compile(
         "card (?:activated|blocked|dispatched|delivered)|pin (?:changed|generated|set)|" +
         "\\bkyc\\b|update your|\\bregistered\\b successfully|has been (?:activated|dispatched|delivered)|" +
-        "delivery|out for delivery|password (?:changed|reset)",
+        "out for delivery|password (?:changed|reset)",
         Pattern.CASE_INSENSITIVE
     );
 
-    // ── Stage 3: transaction verbs (debit vs credit), used for type + anchoring ──
+    // ── NEW: PF / EPF / PPF / NPS / Gratuity ────────────────────────────
+    private static final Pattern PF_PATTERN = Pattern.compile(
+        "\\bpf\\b|\\bepf\\b|\\bppf\\b|\\bnps\\b|provident\\s+fund|pension\\s+fund|" +
+        "pf\\s+contribution|pf\\s+balance|uan\\s*\\d|passbook.*(?:pf|epf)|" +
+        "employer.+contribution|\\bgratuity\\b",
+        Pattern.CASE_INSENSITIVE
+    );
+
+    // ── NEW: Orders / E-Commerce / Delivery tracking ────────────────────
+    private static final Pattern ORDER_PATTERN = Pattern.compile(
+        "\\border\\b.*(?:placed|confirmed|shipped|dispatched|delivered|cancelled|returned)|" +
+        "order\\s*(?:id|no\\.?|number)|tracking\\s*(?:id|no\\.?|number|link|update)|" +
+        "your\\s+(?:package|parcel|shipment)|" +
+        "\\bawb\\b|consignment|estimated\\s+delivery|" +
+        "add(?:ed)?\\s+to\\s+(?:cart|bag|wishlist)|\\binvoice\\b",
+        Pattern.CASE_INSENSITIVE
+    );
+
+    // ── NEW: Points / Rewards / Loyalty (not real currency) ─────────────
+    private static final Pattern POINTS_PATTERN = Pattern.compile(
+        "(?:points?|coins?|stars?)\\s+(?:credited|earned|added|received|redeemed|expir)|" +
+        "(?:credited|earned|added|received)\\s+(?:\\d+\\s+)?(?:points?|coins?|stars?)|" +
+        "reward\\s*points?|loyalty\\s*points?|bonus\\s*points?|" +
+        "cashback\\s*(?:points?|coins?)|miles?\\s+(?:credited|earned)|" +
+        "(?:super|edge|program|club)\\s*(?:points?|coins?)",
+        Pattern.CASE_INSENSITIVE
+    );
+
+    // ── NEW: Bills / Invoices / Utility ─────────────────────────────────
+    private static final Pattern BILL_PATTERN = Pattern.compile(
+        "\\bbill\\b\\s*(?:generated|raised|of\\s+rs|for\\s+rs|amount|is\\s+rs|ready)|" +
+        "(?:electricity|water|gas|broadband|internet|dth|telephone|postpaid)\\s*(?:bill|recharge)|" +
+        "bill\\s*(?:no|number|date|period)|" +
+        "total\\s+(?:due|payable|amount\\s+due)|" +
+        "pay\\s+(?:your|the)\\s+bill|view\\s+(?:your\\s+)?bill|" +
+        "\\bbiller\\b|billing\\s+cycle|statement\\s+(?:date|period|summary)|" +
+        "statement\\s+is\\s+ready|bill\\s+generated",
+        Pattern.CASE_INSENSITIVE
+    );
+
+    // ── NEW: Insurance / SIP / Mutual Fund / Investment ─────────────────
+    private static final Pattern INVESTMENT_PATTERN = Pattern.compile(
+        "\\bsip\\b|mutual\\s*fund|\\bnav\\b|units?\\s+allot|" +
+        "(?:policy|premium)\\s+(?:no|number|due|renewal|amount)|" +
+        "insurance\\s+(?:premium|policy|plan|renewal)|" +
+        "\\bfolio\\b|portfolio|maturity\\s+(?:date|amount|proceeds)|" +
+        "fixed\\s+deposit\\s+(?:maturing|matured|booked)|\\bfd\\b\\s+(?:maturing|booked)|" +
+        "(?:term|endowment|ulip|money.back)\\s+(?:plan|policy)",
+        Pattern.CASE_INSENSITIVE
+    );
+
+    // ── NEW: Subscription / Plan renewals ───────────────────────────────
+    private static final Pattern SUBSCRIPTION_PATTERN = Pattern.compile(
+        "subscription\\s+(?:renewed|activated|started|cancelled)|" +
+        "auto[\\s-]?(?:renewal|renew)|plan\\s+(?:activated|renewed|upgraded)|" +
+        "membership\\s+(?:renewed|activated|expir)|" +
+        "trial\\s+(?:started|ending|expired)",
+        Pattern.CASE_INSENSITIVE
+    );
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Stage 3: Transaction Verbs (debit vs credit)
+    // ═══════════════════════════════════════════════════════════════════════
     private static final Pattern DEBIT_VERB = Pattern.compile(
         "debited|\\bdebit\\b|spent|\\bpaid\\b|purchase[d]?|sent to|deducted|withdrawn|" +
         "withdrawal|\\bdr\\b|paying|transferred to|payment of",
@@ -95,25 +273,32 @@ public class SmsParser {
         Pattern.CASE_INSENSITIVE
     );
 
-    // ── Stage 4: amount extraction ──────────────────────────────────────
-    // Currency-prefixed amount, e.g. "Rs.1,234.56", "INR 1234", "₹1,23,456", "Rs 500/-".
+    // Currency context required near credit verbs to filter out "points credited"
+    private static final Pattern CURRENCY_CONTEXT = Pattern.compile(
+        "rs\\.?|\\binr\\b|₹|rupees?|\\bamt\\b|\\bamount\\b|a/c|acc|account|card",
+        Pattern.CASE_INSENSITIVE
+    );
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Stage 4: Amount Extraction
+    // ═══════════════════════════════════════════════════════════════════════
     private static final Pattern AMOUNT_WITH_CURRENCY = Pattern.compile(
         "(?:rs\\.?|inr|₹)\\s*[:.]?\\s*([0-9][0-9,]*(?:\\.[0-9]{1,2})?)",
         Pattern.CASE_INSENSITIVE
     );
-    // Amount adjacent to a transaction verb without an explicit currency symbol.
     private static final Pattern AMOUNT_NEAR_VERB = Pattern.compile(
         "(?:debited|credited|spent|paid|transferred|deposited|sent|received|deducted|withdrawn)" +
         "\\s*(?:by|for|of|with|to)?\\s*(?:rs\\.?|inr|₹)?\\s*[:.]?\\s*([0-9][0-9,]*(?:\\.[0-9]{1,2})?)",
         Pattern.CASE_INSENSITIVE
     );
-    // Anything that looks like a running/available balance — used to EXCLUDE that amount.
     private static final Pattern BALANCE_CONTEXT = Pattern.compile(
         "(?:avl|avbl|available|avail|closing|current|a/c|acct|account)\\s*(?:bal|balance)",
         Pattern.CASE_INSENSITIVE
     );
 
-    // ── Stage 5: vendor / merchant extraction ───────────────────────────
+    // ═══════════════════════════════════════════════════════════════════════
+    // Stage 5: Vendor / Merchant Extraction
+    // ═══════════════════════════════════════════════════════════════════════
     private static final Pattern VPA_PATTERN = Pattern.compile(
         "(?:to vpa|vpa|to|paid to|sent to|at|towards|info[:\\s]|merchant)\\s+" +
         "([a-z0-9][a-z0-9._\\-]{1,40}@[a-z]{2,15})",
@@ -125,21 +310,25 @@ public class SmsParser {
         Pattern.CASE_INSENSITIVE
     );
 
-    // ── Account number (last 3-4 digits) ────────────────────────────────
+    // Account number (last 3-4 digits)
     private static final Pattern ACC_PATTERN = Pattern.compile(
         "(?:a/c|acc|account|ac|card)\\s*(?:no\\.?|number|ending|x)?\\s*[xX*]*\\s*([0-9]{3,4})\\b",
         Pattern.CASE_INSENSITIVE
     );
 
-    // ── False-positive vendor fragments ─────────────────────────────────
+    // False-positive vendor fragments
     private static final String[] FALSE_VENDORS = {
         "your account", "upi ref", "avl bal", "your a/c", "ref no",
         "available balance", "bal", "ref", "avl", "txn", "block", "call",
         "sms block", "info", "vpa", "the amount", "your card", "your"
     };
 
-    // ── Stage 6: sender classification ──────────────────────────────────
+    // Sender classification
     private static final Pattern PERSONAL_NUMBER = Pattern.compile("^\\+?\\d{10,13}$");
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // PUBLIC API
+    // ═══════════════════════════════════════════════════════════════════════
 
     /**
      * Parse a single SMS message body and return a JSONObject with transaction
@@ -158,13 +347,49 @@ public class SmsParser {
             return null;
         }
 
-        // ── Stage 2: hard rejects ────────────────────────────────────────
-        if (OTP_PATTERN.matcher(cleanBody).find()
-                || PROMO_PATTERN.matcher(cleanBody).find()
-                || FAILED_PATTERN.matcher(cleanBody).find()
-                || REMINDER_PATTERN.matcher(cleanBody).find()
-                || MISC_NONTXN_PATTERN.matcher(cleanBody).find()) {
-            Log.d(TAG, "Rejected non-transaction SMS: " + preview(cleanBody));
+        // ── Stage 2: hard rejects (ALL categories) ──────────────────────
+        if (OTP_PATTERN.matcher(cleanBody).find()) {
+            Log.d(TAG, "REJECT [OTP]: " + preview(cleanBody));
+            return null;
+        }
+        if (PROMO_PATTERN.matcher(cleanBody).find()) {
+            Log.d(TAG, "REJECT [PROMO]: " + preview(cleanBody));
+            return null;
+        }
+        if (FAILED_PATTERN.matcher(cleanBody).find()) {
+            Log.d(TAG, "REJECT [FAILED]: " + preview(cleanBody));
+            return null;
+        }
+        if (REMINDER_PATTERN.matcher(cleanBody).find()) {
+            Log.d(TAG, "REJECT [REMINDER]: " + preview(cleanBody));
+            return null;
+        }
+        if (MISC_NONTXN_PATTERN.matcher(cleanBody).find()) {
+            Log.d(TAG, "REJECT [MISC]: " + preview(cleanBody));
+            return null;
+        }
+        if (PF_PATTERN.matcher(cleanBody).find()) {
+            Log.d(TAG, "REJECT [PF/EPF]: " + preview(cleanBody));
+            return null;
+        }
+        if (ORDER_PATTERN.matcher(cleanBody).find()) {
+            Log.d(TAG, "REJECT [ORDER]: " + preview(cleanBody));
+            return null;
+        }
+        if (POINTS_PATTERN.matcher(cleanBody).find()) {
+            Log.d(TAG, "REJECT [POINTS]: " + preview(cleanBody));
+            return null;
+        }
+        if (BILL_PATTERN.matcher(cleanBody).find()) {
+            Log.d(TAG, "REJECT [BILL]: " + preview(cleanBody));
+            return null;
+        }
+        if (INVESTMENT_PATTERN.matcher(cleanBody).find()) {
+            Log.d(TAG, "REJECT [INVESTMENT]: " + preview(cleanBody));
+            return null;
+        }
+        if (SUBSCRIPTION_PATTERN.matcher(cleanBody).find()) {
+            Log.d(TAG, "REJECT [SUBSCRIPTION]: " + preview(cleanBody));
             return null;
         }
 
@@ -175,13 +400,23 @@ public class SmsParser {
         int creditIdx = creditM.find() ? creditM.start() : -1;
 
         if (debitIdx == -1 && creditIdx == -1) {
-            return null; // Keyword present but no completed-transaction verb (e.g. balance enquiry)
+            return null; // Keyword present but no completed-transaction verb
+        }
+
+        // ── Credit verb tightening: require currency context nearby ──────
+        // If ONLY credit verb is found (no debit verb), check for currency context
+        // within ±80 chars of the credit verb position to prevent "points credited" false positives
+        if (debitIdx == -1 && creditIdx >= 0) {
+            if (!hasCurrencyContextNear(cleanBody, creditIdx, 80)) {
+                Log.d(TAG, "REJECT [CREDIT_NO_CURRENCY]: " + preview(cleanBody));
+                return null;
+            }
         }
 
         // ── Stage 4: amount (transaction amount, not balance) ────────────
         AmountMatch am = extractAmount(cleanBody);
         if (am == null || am.value <= 0.0) {
-            Log.d(TAG, "Financial SMS but no valid amount: " + preview(cleanBody));
+            Log.d(TAG, "REJECT [NO_AMOUNT]: " + preview(cleanBody));
             return null;
         }
         double amount = am.value;
@@ -207,15 +442,22 @@ public class SmsParser {
         if (!"Transaction".equals(vendor)) confidence++;
         if (hasVpaSignal) confidence++;
 
+        // Known bank sender boost
+        String senderSuffix = extractSenderSuffix(sender);
+        boolean isKnownBank = isKnownBankSender(senderSuffix);
+        if (isKnownBank) {
+            confidence += 2; // strong signal — verified bank sender
+        }
+
         boolean personalSender = sender != null && PERSONAL_NUMBER.matcher(sender.trim()).matches();
         if (personalSender && accountLast4.isEmpty() && !hasVpaSignal) {
-            // A plain 10-digit number talking about money, with no bank/UPI signal, is unreliable.
-            Log.d(TAG, "Rejected low-trust personal-number SMS: " + preview(cleanBody));
+            // A plain 10-digit number with no bank/UPI signal is unreliable
+            Log.d(TAG, "REJECT [PERSONAL_SENDER]: " + preview(cleanBody));
             return null;
         }
 
         if (confidence < CONFIDENCE_THRESHOLD) {
-            Log.d(TAG, "Rejected low-confidence(" + confidence + ") SMS: " + preview(cleanBody));
+            Log.d(TAG, "REJECT [LOW_CONF=" + confidence + "]: " + preview(cleanBody));
             return null;
         }
 
@@ -236,7 +478,9 @@ public class SmsParser {
             result.put("rawBody", body);
             result.put("sender", sender != null ? sender : "Bank");
 
-            Log.d(TAG, "✅ Parsed: " + type + " " + amount + " at " + vendor + " [" + dateStr + "] conf=" + confidence);
+            Log.d(TAG, "✅ ACCEPT: " + type + " " + amount + " at " + vendor +
+                        " [" + dateStr + "] conf=" + confidence +
+                        " sender=" + (isKnownBank ? senderSuffix + "(BANK)" : sender));
             return result;
         } catch (JSONException e) {
             Log.e(TAG, "JSON build error", e);
@@ -244,7 +488,9 @@ public class SmsParser {
         }
     }
 
-    // ── Helpers ─────────────────────────────────────────────────────────
+    // ═══════════════════════════════════════════════════════════════════════
+    // HELPER METHODS
+    // ═══════════════════════════════════════════════════════════════════════
 
     private static boolean containsAny(String haystack, String[] needles) {
         for (String n : needles) {
@@ -255,6 +501,39 @@ public class SmsParser {
 
     private static String preview(String s) {
         return s.substring(0, Math.min(80, s.length()));
+    }
+
+    /** Extract the 6-character bank sender suffix from an SMS address like "VM-HDFCBK". */
+    private static String extractSenderSuffix(String sender) {
+        if (sender == null || sender.trim().isEmpty()) return "";
+        String s = sender.trim().toUpperCase(Locale.US);
+        // Common format: XX-YYYYYY (2-char telecom prefix + hyphen + 6-char bank ID)
+        int dashIdx = s.lastIndexOf('-');
+        if (dashIdx >= 0 && dashIdx < s.length() - 1) {
+            return s.substring(dashIdx + 1);
+        }
+        // Some senders are just the 6-char code without prefix
+        if (s.length() >= 5 && s.length() <= 8 && s.matches("[A-Z0-9]+")) {
+            return s;
+        }
+        return s;
+    }
+
+    /** Check if a sender suffix matches any known Indian bank sender ID. */
+    private static boolean isKnownBankSender(String suffix) {
+        if (suffix == null || suffix.isEmpty()) return false;
+        return KNOWN_BANK_SENDERS.contains(suffix.toUpperCase(Locale.US));
+    }
+
+    /**
+     * Check if there's a currency context indicator (Rs, INR, ₹, A/c, card, etc.)
+     * within ±windowSize characters of the given position in the body.
+     */
+    private static boolean hasCurrencyContextNear(String body, int position, int windowSize) {
+        int start = Math.max(0, position - windowSize);
+        int end = Math.min(body.length(), position + windowSize);
+        String window = body.substring(start, end);
+        return CURRENCY_CONTEXT.matcher(window).find();
     }
 
     /** Holds a parsed amount and where in the body it was found. */
@@ -281,22 +560,19 @@ public class SmsParser {
 
         // 2) Otherwise take the first currency-prefixed amount that is NOT a balance.
         Matcher cur = AMOUNT_WITH_CURRENCY.matcher(body);
-        AmountMatch firstBalance = null;
         while (cur.find()) {
             int start = cur.start();
-            // Look back a short window to see if this amount is a balance figure.
             int windowStart = Math.max(0, start - 30);
             String before = body.substring(windowStart, start);
             Double v = parseAmount(cur.group(1));
             if (v == null || v <= 0) continue;
             if (BALANCE_CONTEXT.matcher(before).find()) {
-                if (firstBalance == null) firstBalance = new AmountMatch(v, cur.start(1));
                 continue; // skip balance figures
             }
             return new AmountMatch(v, cur.start(1));
         }
 
-        // 3) Only a balance-looking amount was found — not a spendable transaction amount.
+        // 3) Only a balance-looking amount was found
         return null;
     }
 
@@ -341,7 +617,6 @@ public class SmsParser {
     }
 
     private static String cleanVendorCandidate(String candidate) {
-        // Drop reference numbers, phone numbers and trailing bank noise.
         candidate = candidate
             .replaceAll("(?i)\\b(?:on|via|ref|refno|upi|imps|neft|rtgs|txn|info|dated).*$", "")
             .replaceAll("\\d{4,}", " ")
@@ -359,7 +634,6 @@ public class SmsParser {
         for (String fv : FALSE_VENDORS) {
             if (lc.equals(fv) || lc.startsWith(fv + " ") || lc.contains(" " + fv + " ")) return false;
         }
-        // Reject anything that is mostly digits / phone-number-like.
         if (c.matches(".*\\d{5,}.*")) return false;
         if (c.matches("^[0-9.\\s+\\-()]+$")) return false;
         return true;

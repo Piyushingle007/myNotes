@@ -20,17 +20,21 @@
     ArrowUpDown,
     Calendar,
     Edit3,
+    RotateCcw,
     Tag as TagIcon
   } from 'lucide-svelte';
 
   let activeTab = $state<'pending' | 'inserted' | 'dismissed' | 'all'>('pending');
   let selectedBoxId = $state<string>('');
-  let selectedTagId = $state<Record<string, string>>({}); // txId -> tagId mapping
+  let selectedTagIds = $state<Record<string, string[]>>({}); // txId -> array of selected tagIds mapping
   let sortOrder = $state<'latest' | 'oldest' | 'amount-high' | 'amount-low'>('latest');
 
   let currencySymbol = $derived(appState.defaultCurrency || '₹');
   let dashboardData = $derived(BudgetAggregator.aggregate(appState.notes, appState.calcTags));
   let availableBoxes = $derived(dashboardData.boxes);
+  let sortedCalcTags = $derived(
+    [...appState.calcTags].sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' }))
+  );
 
   let showDiagnostics = $state(false);
 
@@ -82,6 +86,16 @@
   let customSmsText = $state('');
   let scanFeedback = $state<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
 
+  // Auto-select text on INITIAL focus only (subsequent clicks allow normal cursor positioning)
+  function handleInputFocus(e: FocusEvent) {
+    const target = e.target as HTMLInputElement | HTMLTextAreaElement;
+    setTimeout(() => {
+      if (document.activeElement === target) {
+        target.select();
+      }
+    }, 0);
+  }
+
   // Auto-resize action for description textareas (guarantees NO SCROLLER EVER)
   function autoResizeTextarea(node: HTMLTextAreaElement) {
     const resize = () => {
@@ -105,17 +119,15 @@
     const isPhoneNumberOrCode = /\d{5,}/.test(text) || /^[0-9.+\-\s()]+$/.test(text) || text === 'Transaction';
 
     if (isPhoneNumberOrCode || !text) {
-      // Extract clean description from rawBody
       text = (rawBody || '')
         .replace(/(?:call|contact|sms block|help|dispute|t&c|http|https|upi:\d+|block\s+\d+)\b.*/gi, '')
         .replace(/(?:debited|credited|spent|paid|transferred|deposited|sent|received|for|of|with|rs\.?|inr|₹|\d+(?:\.\d+)?)/gi, ' ')
         .replace(/\b(?:account|acct|a\/c|acc|card|upi|vpa|ref|no|val|bal|avl|avail)\b/gi, ' ')
         .replace(/[^\w\s]/g, ' ')
-        .replace(/\d+/g, '') // strip all numbers to avoid corrupting CalBox amount parser
+        .replace(/\d+/g, '')
         .replace(/\s+/g, ' ')
         .trim();
     } else {
-      // Strip any embedded digits / phone numbers from vendor name
       text = text.replace(/\d{4,}/g, '').replace(/\s+/g, ' ').trim();
     }
 
@@ -167,11 +179,28 @@
     }
   }
 
-  function handleSelectTag(txId: string, tagId: string) {
-    const current = selectedTagId[txId] || '';
-    const newTagId = current === tagId ? '' : tagId; // toggle if clicked again
-    selectedTagId = { ...selectedTagId, [txId]: newTagId };
-    smsService.updateTransaction(txId, { suggestedTagId: newTagId });
+  // Multi-Tag Toggle Function
+  function handleToggleTag(txId: string, tagId: string) {
+    const currentTx = smsService.allTransactions.find(t => t.id === txId);
+    const defaultTag = currentTx?.suggestedTagId ? [currentTx.suggestedTagId] : [];
+    const currentTags = selectedTagIds[txId] ?? defaultTag;
+
+    let updated: string[];
+    if (!tagId) {
+      // Clicking "No Tag" clears all tags for this transaction
+      updated = [];
+    } else {
+      if (currentTags.includes(tagId)) {
+        // Toggle OFF if already selected
+        updated = currentTags.filter(id => id !== tagId);
+      } else {
+        // Toggle ON if not selected (supports selecting multiple tags!)
+        updated = [...currentTags, tagId];
+      }
+    }
+
+    selectedTagIds = { ...selectedTagIds, [txId]: updated };
+    smsService.updateTransaction(txId, { suggestedTagId: updated[0] || '' });
   }
 
   function handleToggleType(tx: SmsTransaction) {
@@ -243,21 +272,18 @@
         rows = [];
       }
 
-      // Format row label exactly as CalBox & BudgetView expect:
-      // Expense: "2026-07-24 Swiggy -105"  (getRowNumbers parses -105 -> Expense)
-      // Inflow:  "2026-07-24 Salary 25000" (getRowNumbers parses 25000 -> Inflow)
       const cleanDesc = buildCleanCalBoxLabel(tx.vendor, tx.rawBody);
       const amountSign = tx.type === 'expense' ? ` -${tx.amount}` : ` ${tx.amount}`;
       const rowLabel = `${tx.date} ${cleanDesc}${amountSign}`;
 
-      const chosenTag = selectedTagId[tx.id] || tx.suggestedTagId;
-      const tagIds = chosenTag ? [chosenTag] : [];
+      // Multiple tag selection support
+      const activeTags = selectedTagIds[tx.id] ?? (tx.suggestedTagId ? [tx.suggestedTagId] : []);
 
       const newRow = {
         id: 'row_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
         checked: false,
         label: rowLabel,
-        tagIds: tagIds
+        tagIds: activeTags
       };
 
       rows.push(newRow);
@@ -292,6 +318,10 @@
   function handleDismiss(tx: SmsTransaction) {
     smsService.dismissTransaction(tx.id);
   }
+
+  function handleRestore(tx: SmsTransaction) {
+    smsService.updateTransaction(tx.id, { status: 'pending', autoMatched: false });
+  }
 </script>
 
 <div class="sms-view-container">
@@ -302,7 +332,7 @@
         <MessageSquare size={22} class="header-icon" />
       </div>
       <div class="header-text">
-        <h2>SMS Auto-Detection</h2>
+        <h2>Inbox</h2>
         <div class="subtitle">
           {#if smsService.isNative}
             <span class="platform-badge native"><Smartphone size={11} /> Android Native</span>
@@ -377,6 +407,7 @@
       <h4>Paste or Type Bank SMS Message</h4>
       <textarea 
         bind:value={customSmsText} 
+        onfocus={handleInputFocus}
         placeholder='e.g., "Rs 450 debited from A/c XX4321 at SWIGGY on 25-07-2026"' 
         rows="3"
         class="custom-textarea"
@@ -513,6 +544,7 @@
                       type="text" 
                       value={tx.vendor}
                       oninput={(e) => handleVendorChange(tx, (e.target as HTMLInputElement).value)}
+                      onfocus={handleInputFocus}
                       class="vendor-input"
                       placeholder="Transaction description / vendor"
                       title="Edit vendor description"
@@ -554,6 +586,7 @@
                 use:autoResizeTextarea
                 value={tx.rawBody} 
                 oninput={(e) => handleRawBodyChange(tx, (e.target as HTMLTextAreaElement).value)}
+                onfocus={handleInputFocus}
                 class="editable-raw-sms" 
                 rows="1"
                 placeholder="Editable SMS description..."
@@ -561,33 +594,34 @@
               ></textarea>
             </div>
 
-            <!-- Tag Selection Pill Structure (Replaces system select modal) -->
+            <!-- Tag Selection Pill Structure (Supports Multiple Tags Selection) -->
             {#if tx.status === 'pending'}
+              {@const activeTags = selectedTagIds[tx.id] ?? (tx.suggestedTagId ? [tx.suggestedTagId] : [])}
               <div class="tag-pills-section">
-                <span class="tag-pills-label"><TagIcon size={12} /> Tag:</span>
+                <span class="tag-pills-label"><TagIcon size={12} /> Tags:</span>
                 <div class="tag-pills-scroll">
                   <!-- No Tag Pill -->
                   <button 
                     type="button"
                     class="tag-pill" 
-                    class:selected={!selectedTagId[tx.id] && !tx.suggestedTagId}
-                    onclick={() => handleSelectTag(tx.id, '')}
+                    class:selected={activeTags.length === 0}
+                    onclick={() => handleToggleTag(tx.id, '')}
                   >
-                    {#if !selectedTagId[tx.id] && !tx.suggestedTagId}
+                    {#if activeTags.length === 0}
                       <Check size={11} />
                     {/if}
                     No Tag
                   </button>
 
-                  <!-- Existing Calc Tags Pills -->
-                  {#each appState.calcTags as tag (tag.id)}
-                    {@const isSelected = (selectedTagId[tx.id] || tx.suggestedTagId) === tag.id}
+                  <!-- Existing Calc Tags Pills (Multiple Selectable, Alphabetical A-Z) -->
+                  {#each sortedCalcTags as tag (tag.id)}
+                    {@const isSelected = activeTags.includes(tag.id)}
                     <button 
                       type="button"
                       class="tag-pill custom-tag-pill" 
                       class:selected={isSelected}
                       style="--tag-color: {tag.color || '#3b82f6'};"
-                      onclick={() => handleSelectTag(tx.id, tag.id)}
+                      onclick={() => handleToggleTag(tx.id, tag.id)}
                     >
                       {#if isSelected}
                         <Check size={11} />
@@ -605,6 +639,13 @@
                 </button>
                 <button class="btn btn-sm btn-primary" onclick={() => handleInsertToBox(tx)}>
                   <Plus size={14} /> Add to Calculation Box
+                </button>
+              </div>
+            {:else if tx.status === 'dismissed' || tx.status === 'inserted'}
+              <!-- Restore Action for dismissed/inserted cards -->
+              <div class="tx-card-actions">
+                <button class="btn btn-sm btn-secondary" onclick={() => handleRestore(tx)}>
+                  <RotateCcw size={14} /> Restore to Pending
                 </button>
               </div>
             {/if}

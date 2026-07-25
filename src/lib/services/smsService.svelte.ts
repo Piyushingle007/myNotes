@@ -36,15 +36,13 @@ interface SmsTransactionPluginApi {
   addListener(event: string, cb: (data: any) => void): Promise<any>;
 }
 
-// registerPlugin always returns a Proxy; on web it creates a web fallback.
-// On native Android, it routes to the Java plugin registered in MainActivity.
 const SmsTransactionPlugin = registerPlugin<SmsTransactionPluginApi>('SmsTransaction');
 
 // ────────────────────────────────────────────────────────────────────────
 // Constants
 // ────────────────────────────────────────────────────────────────────────
 const STORAGE_KEY = 'mynotes_sms_transactions';
-const SCAN_TIMEOUT_MS = 15_000; // 15 seconds - generous timeout for native scan
+const SCAN_TIMEOUT_MS = 15_000;
 
 // ────────────────────────────────────────────────────────────────────────
 // Utility: check if running on native Android
@@ -58,13 +56,85 @@ function isAndroidNative(): boolean {
 }
 
 // ────────────────────────────────────────────────────────────────────────
+// Hard REJECT Patterns (mirrored from SmsParser.java)
+// ────────────────────────────────────────────────────────────────────────
+const REJECT_PATTERNS: Array<{ name: string; regex: RegExp }> = [
+  // OTP / verification codes
+  {
+    name: 'OTP',
+    regex: /\botp\b|one[\s-]?time[\s-]?password|do not share|don't share|verification code|security code|is your (?:otp|code|password|pin)|(?:otp|code)\s*(?:is|:)\s*\d{3,8}/i,
+  },
+  // Marketing / promotional
+  {
+    name: 'PROMO',
+    regex: /\boffer\b|cashback up to|upto \d|\bsale\b|discount|pre[\s-]?approved|apply now|\bwin\b|reward points|lowest interest|loan (?:offer|approved|of)|emi option|book now|\bhurry\b|limited period|%\s*off|\bcoupon\b|shop now|buy now|voucher|redeem|earn \d|congratulations/i,
+  },
+  // Failed / declined / pending / reversed
+  {
+    name: 'FAILED',
+    regex: /\bfailed\b|declined|unsuccessful|could not be|not processed|not completed|will be (?:credited|debited|deducted)|has been requested|is pending|\bpending\b|reversal|reversed|timed out|transaction (?:cancelled|canceled)|insufficient (?:balance|funds)/i,
+  },
+  // Reminders / due dates / mandates
+  {
+    name: 'REMINDER',
+    regex: /\bdue\b|reminder|pay your|payment is due|\boutstanding\b|\bautopay\b|e[\s-]?mandate|\bmandate\b|will be auto[\s-]?debited|\bscheduled\b|last date|kindly pay|please pay/i,
+  },
+  // Non-money notifications
+  {
+    name: 'MISC',
+    regex: /card (?:activated|blocked|dispatched|delivered)|pin (?:changed|generated|set)|\bkyc\b|update your|\bregistered\b successfully|has been (?:activated|dispatched|delivered)|out for delivery|password (?:changed|reset)/i,
+  },
+  // PF / EPF / PPF / NPS / Gratuity
+  {
+    name: 'PF',
+    regex: /\bpf\b|\bepf\b|\bppf\b|\bnps\b|provident\s+fund|pension\s+fund|pf\s+contribution|pf\s+balance|uan\s*\d|passbook.*(?:pf|epf)|employer.+contribution|\bgratuity\b/i,
+  },
+  // Orders / E-Commerce / Delivery tracking
+  {
+    name: 'ORDER',
+    regex: /\border\b.*(?:placed|confirmed|shipped|dispatched|delivered|cancelled|returned)|order\s*(?:id|no\.?|number)|tracking\s*(?:id|no\.?|number|link|update)|your\s+(?:package|parcel|shipment)|\bawb\b|consignment|estimated\s+delivery|add(?:ed)?\s+to\s+(?:cart|bag|wishlist)|\binvoice\b/i,
+  },
+  // Points / Rewards / Loyalty (not real currency)
+  {
+    name: 'POINTS',
+    regex: /(?:points?|coins?|stars?)\s+(?:credited|earned|added|received|redeemed|expir)|(?:credited|earned|added|received)\s+(?:\d+\s+)?(?:points?|coins?|stars?)|reward\s*points?|loyalty\s*points?|bonus\s*points?|cashback\s*(?:points?|coins?)|miles?\s+(?:credited|earned)|(?:super|edge|program|club)\s*(?:points?|coins?)/i,
+  },
+  // Bills / Invoices / Utility
+  {
+    name: 'BILL',
+    regex: /\bbill\b\s*(?:generated|raised|of\s+rs|for\s+rs|amount|is\s+rs|ready)|(?:electricity|water|gas|broadband|internet|dth|telephone|postpaid)\s*(?:bill|recharge)|bill\s*(?:no|number|date|period)|total\s+(?:due|payable|amount\s+due)|pay\s+(?:your|the)\s+bill|view\s+(?:your\s+)?bill|\bbiller\b|billing\s+cycle|statement\s+(?:date|period|summary)|statement\s+is\s+ready|bill\s+generated/i,
+  },
+  // Insurance / SIP / Mutual Fund / Investment
+  {
+    name: 'INVESTMENT',
+    regex: /\bsip\b|mutual\s*fund|\bnav\b|units?\s+allot|(?:policy|premium)\s+(?:no|number|due|renewal|amount)|insurance\s+(?:premium|policy|plan|renewal)|\bfolio\b|portfolio|maturity\s+(?:date|amount|proceeds)|fixed\s+deposit\s+(?:maturing|matured|booked)|\bfd\b\s+(?:maturing|booked)|(?:term|endowment|ulip|money.back)\s+(?:plan|policy)/i,
+  },
+  // Subscription / Plan renewals
+  {
+    name: 'SUBSCRIPTION',
+    regex: /subscription\s+(?:renewed|activated|started|cancelled)|auto[\s-]?(?:renewal|renew)|plan\s+(?:activated|renewed|upgraded)|membership\s+(?:renewed|activated|expir)|trial\s+(?:started|ending|expired)/i,
+  },
+];
+
+// Currency context pattern (for credit verb tightening)
+const CURRENCY_CONTEXT_RE = /rs\.?|\binr\b|₹|rupees?|\bamt\b|\bamount\b|a\/c|acc|account|card/i;
+
+// ────────────────────────────────────────────────────────────────────────
 // JavaScript SMS Parser (used for Paste SMS and as fallback)
 // ────────────────────────────────────────────────────────────────────────
 function parseTransactionFromText(smsText: string, sender: string = 'Manual'): SmsTransaction | null {
   if (!smsText || !smsText.trim()) return null;
-  const cleaned = smsText.replace(/\n/g, ' ');
+  const cleaned = smsText.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
 
-  // Amount extraction — multiple patterns for Indian banking SMS
+  // ── Hard reject patterns ───────────────────────────────────────────
+  for (const { name, regex } of REJECT_PATTERNS) {
+    if (regex.test(cleaned)) {
+      console.log(`[SmsParser] REJECT [${name}]: ${cleaned.substring(0, 80)}`);
+      return null;
+    }
+  }
+
+  // ── Amount extraction ──────────────────────────────────────────────
   const amountPatterns = [
     /(?:rs\.?|inr|₹|amt|amount)\s*[:.\-\s]?\s*([0-9,]+(?:\.[0-9]{1,2})?)/i,
     /(?:debited|credited|spent|paid|transferred|deposited|sent|received|deducted)\s*(?:by|for|of|with|with\s+(?:inr|rs\.?|₹))?\s*[:.\-\s]?\s*([0-9,]+(?:\.[0-9]{1,2})?)/i,
@@ -81,15 +151,31 @@ function parseTransactionFromText(smsText: string, sender: string = 'Manual'): S
   }
   if (amount <= 0) return null;
 
-  // Debit vs Credit detection (Debit takes precedence)
-  const isDebit = /(debited|spent|paid|vpa|purchase|sent\s+to|deducted|withdrawn|debit|payment|\bdr\b|spent\s+on)/i.test(cleaned);
-  const isCredit = /(credited\s+to\s+your|credited\s+with|received|deposited|added|refunded|salary|\bcr\b|cashback)/i.test(cleaned);
+  // ── Debit vs Credit detection ──────────────────────────────────────
+  const debitMatch = /(debited|spent|paid|vpa|purchase|sent\s+to|deducted|withdrawn|debit|payment|\bdr\b|spent\s+on)/i.exec(cleaned);
+  const creditMatch = /(credited|credit|received|deposited|added|refunded|salary|\bcr\b|cashback|money received)/i.exec(cleaned);
+
+  const isDebit = !!debitMatch;
+  const isCredit = !!creditMatch;
 
   if (!isDebit && !isCredit) return null;
 
+  // ── Credit verb tightening: require currency context nearby ────────
+  if (!isDebit && isCredit && creditMatch) {
+    const creditPos = creditMatch.index;
+    const windowStart = Math.max(0, creditPos - 80);
+    const windowEnd = Math.min(cleaned.length, creditPos + 80);
+    const window = cleaned.substring(windowStart, windowEnd);
+    if (!CURRENCY_CONTEXT_RE.test(window)) {
+      console.log(`[SmsParser] REJECT [CREDIT_NO_CURRENCY]: ${cleaned.substring(0, 80)}`);
+      return null;
+    }
+  }
+
+  // Debit takes precedence
   const type = isDebit ? 'expense' : 'inflow';
 
-  // Vendor extraction
+  // ── Vendor extraction ──────────────────────────────────────────────
   const vendorMatch = cleaned.match(/(?:at|towards|info|via|vpa|merchant|to\s+vpa|paid\s+to|sent\s+to)\s+([A-Za-z0-9\s._\-@]{2,35})/i);
   let vendor = vendorMatch ? vendorMatch[1].trim() : 'Transaction';
   const falseVendors = ['your account', 'upi ref', 'avl bal', 'your a/c', 'a/c', 'ref no', 'sms block'];
@@ -97,11 +183,11 @@ function parseTransactionFromText(smsText: string, sender: string = 'Manual'): S
     vendor = 'Transaction';
   }
 
-  // Account last 4 digits
+  // ── Account last 4 digits ─────────────────────────────────────────
   const accMatch = cleaned.match(/(?:a\/c|acc|card|account)\s*(?:no\.?)?\s*[xX*]*([0-9]{3,4})/i);
   const accountLast4 = accMatch ? accMatch[1] : '';
 
-  // Date extraction from SMS text or use current date
+  // ── Date extraction ────────────────────────────────────────────────
   const dateMatch = cleaned.match(/(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})/);
   let dateStr: string;
   if (dateMatch) {
@@ -347,9 +433,15 @@ class SmsService {
       const isDup = boxes.some(box => {
         if (!box.rows || !Array.isArray(box.rows)) return false;
         return box.rows.some((row: any) => {
-          const rowAmt = Math.abs(row.total || 0);
+          const rowTotal = row.total || 0;
+          const rowAmt = Math.abs(rowTotal);
           const amtMatch = Math.abs(rowAmt - tx.amount) < 0.01;
           if (!amtMatch) return false;
+
+          // Type must match: negative row.total = expense, positive = inflow
+          const rowIsExpense = rowTotal < 0;
+          const txIsExpense = tx.type === 'expense';
+          if (rowIsExpense !== txIsExpense) return false;
 
           if (row.date && row.date !== '—') {
             return row.date === tx.date;

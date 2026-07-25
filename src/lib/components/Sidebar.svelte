@@ -656,7 +656,21 @@
     </div>
   </div>
 
-  <!-- Num Calculator Section -->
+  <!-- Inbox Section -->
+  <div class="section-container flex-col" class:active={appState.activeTab === 'sms'}>
+    <div class="section-header flex-row" style="justify-content: space-between; width: 100%;">
+      <button
+        class="flex-row"
+        style="flex-grow: 1; cursor: pointer; background: none; border: none; color: inherit; padding: 0; align-items: center; gap: var(--spacing-xs);"
+        onclick={() => { appState.activeTab = 'sms'; }}
+      >
+        <MessageSquare size={18} class="sec-icon" />
+        <span class="section-title">Inbox</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Num Calculator Section (CalBox - LAST) -->
   <div class="section-container flex-col" class:active={appState.activeTab === 'num'}>
     <div class="section-header flex-row" style="justify-content: space-between; width: 100%;">
       <button
@@ -666,20 +680,6 @@
       >
         <Calculator size={18} class="sec-icon" />
         <span class="section-title">CalBox</span>
-      </button>
-    </div>
-  </div>
-
-  <!-- SMS Auto-Detect Section -->
-  <div class="section-container flex-col" class:active={appState.activeTab === 'sms'}>
-    <div class="section-header flex-row" style="justify-content: space-between; width: 100%;">
-      <button
-        class="flex-row"
-        style="flex-grow: 1; cursor: pointer; background: none; border: none; color: inherit; padding: 0; align-items: center; gap: var(--spacing-xs);"
-        onclick={() => { appState.activeTab = 'sms'; }}
-      >
-        <MessageSquare size={18} class="sec-icon" />
-        <span class="section-title">SMS Inbox</span>
       </button>
     </div>
   </div>

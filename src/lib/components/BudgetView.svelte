@@ -15,9 +15,9 @@
   // Pinned tags state
   let pinnedTags = $state<string[]>(JSON.parse(localStorage.getItem('mynotes_budget_pinned_tags') || '[]'));
 
-  // Category sorting state
+  // Category sorting state (default: alphabetical)
   let categorySortBy = $state<'spent' | 'alphabetical' | 'remaining' | 'budget'>(
-    (localStorage.getItem('mynotes_budget_category_sort_by') as any) || 'spent'
+    (localStorage.getItem('mynotes_budget_category_sort_by') as any) || 'alphabetical'
   );
 
   // Local state for editing budgets inline
@@ -48,6 +48,10 @@
   const _storedDir = localStorage.getItem('mynotes_budget_tx_sort_dir');
   let txSortBy = $state<'default' | 'date' | 'amount'>(_storedSort === 'amount' ? 'amount' : 'date');
   let txSortDir = $state<'asc' | 'desc'>(_storedDir === 'asc' ? 'asc' : 'desc');
+
+  let sortedCalcTags = $derived(
+    [...appState.calcTags].sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' }))
+  );
 
   const CALC_TAG_COLOR_PALETTE = [
     '#ef4444', '#f97316', '#eab308', '#22c55e',
@@ -1053,12 +1057,12 @@
         <button 
           type="button" 
           class="header-action-btn flex-row"
-          style="background: rgba(99, 102, 241, 0.12); color: #6366f1; border-color: rgba(99, 102, 241, 0.3);"
+          style="background: rgba(99, 102, 241, 0.12); color: #6366f1; border-color: rgba(99, 102, 241, 0.3); white-space: nowrap; flex-shrink: 0;"
           onclick={() => appState.activeTab = 'sms'}
-          title="Auto-detect transactions from SMS"
+          title="Inbox transactions"
         >
           <MessageSquare size={15} />
-          <span>SMS Auto ({smsService.pendingTransactions.length})</span>
+          <span>Inbox ({smsService.pendingTransactions.length})</span>
         </button>
 
         <button 
@@ -1383,9 +1387,9 @@
           bind:value={searchQuery}
         />
 
-        {#if appState.calcTags.length > 0}
+        {#if sortedCalcTags.length > 0}
           <div class="blocks-filter-chips flex-row">
-            {#each appState.calcTags as tag}
+            {#each sortedCalcTags as tag}
               <button
                 type="button"
                 class="filter-chip"
@@ -1735,6 +1739,10 @@
           class="form-input" 
           placeholder="e.g. Groceries, Freelance work" 
           bind:value={transactionDesc}
+          onfocus={(e) => {
+            const target = e.target as HTMLInputElement;
+            setTimeout(() => { if (document.activeElement === target) target.select(); }, 0);
+          }}
         />
       </div>
 
@@ -1768,7 +1776,7 @@
       <div class="form-group flex-col">
         <span class="form-label">Select Categories</span>
         <div class="category-pills-container flex-row" style="flex-wrap: wrap; gap: 8px; padding: 4px 0; align-items: center;">
-          {#each appState.calcTags as tag}
+          {#each sortedCalcTags as tag}
             {@const isSelected = selectedTagIds.includes(tag.id)}
             <button 
               type="button" 
@@ -2766,6 +2774,8 @@
     display: inline-flex;
     gap: var(--spacing-xs);
     align-items: center;
+    white-space: nowrap;
+    flex-shrink: 0;
     transition: all var(--motion-duration-fast) ease;
   }
   .header-action-btn:hover {
