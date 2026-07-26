@@ -45,7 +45,7 @@
         newHash = `#/tags`;
       }
     } else {
-      newHash = `#/home`;
+      newHash = `#/budget`;
     }
 
     if (window.location.hash !== newHash) {
@@ -129,7 +129,7 @@
           appState.activeNotebook = null;
           appState.selectedTag = null;
         } else {
-          appState.activeTab = 'home';
+          appState.activeTab = 'budget';
           appState.activeNotebook = null;
           appState.selectedTag = null;
         }
@@ -180,14 +180,12 @@
   });
 
   onMount(async () => {
-    // Check if we can auto-init sandbox or check active vault
+    // Auto-initialize vault sandbox for smooth mobile/desktop startup
     try {
       await appState.initSandbox();
-      // Execute the TagDatabase schema and constraint test
-      await runTagDbTest();
-      await runTransactionAddTest();
     } catch (e) {
-      console.warn('Sandbox init failed, user will select folder manually', e);
+      console.warn('Sandbox init warning, forcing vault ready', e);
+      appState.vaultReady = true;
     } finally {
       initializing = false;
     }

@@ -2,7 +2,8 @@
   import { appState, parseHtmlMetadata, generateHtmlNote } from '../stores/appState.svelte';
   import { BudgetAggregator, type CalcBoxRow } from '../services/BudgetAggregator';
   import { getRowNumbers, exportMultipleMetricsToXlsx, extractRowDate } from '../utils/exportMetricsXlsx';
-  import { Wallet, Landmark, TrendingUp, TrendingDown, ArrowUpRight, FileText, ChevronRight, ChevronDown, Plus, X, Check, Pin, ArrowUpDown, Download, RefreshCw, Edit3, Trash2, Settings } from 'lucide-svelte';
+  import { Wallet, Landmark, TrendingUp, TrendingDown, ArrowUpRight, FileText, ChevronRight, ChevronDown, Plus, X, Check, Pin, ArrowUpDown, Download, RefreshCw, Edit3, Trash2, Settings, MessageSquare, Copy } from 'lucide-svelte';
+  import { smsService } from '../services/smsService.svelte';
 
   // Local state for the active selected calculation box
   let activeBoxId = $state<string>(localStorage.getItem('mynotes_active_budget_box_id') || '');
@@ -14,9 +15,9 @@
   // Pinned tags state
   let pinnedTags = $state<string[]>(JSON.parse(localStorage.getItem('mynotes_budget_pinned_tags') || '[]'));
 
-  // Category sorting state
+  // Category sorting state (default: alphabetical)
   let categorySortBy = $state<'spent' | 'alphabetical' | 'remaining' | 'budget'>(
-    (localStorage.getItem('mynotes_budget_category_sort_by') as any) || 'spent'
+    (localStorage.getItem('mynotes_budget_category_sort_by') as any) || 'alphabetical'
   );
 
   // Local state for editing budgets inline
@@ -34,6 +35,7 @@
   let transactionAmount = $state('');
   let transactionType = $state<'expense' | 'inflow'>('expense');
   let transactionDate = $state(new Date().toISOString().split('T')[0]);
+  let transactionTime = $state(new Date().toTimeString().slice(0, 5));
   let selectedTagIds = $state<string[]>([]);
   let showTagDropdown = $state(false);
   let showBoxDropdown = $state(false);
@@ -47,6 +49,10 @@
   const _storedDir = localStorage.getItem('mynotes_budget_tx_sort_dir');
   let txSortBy = $state<'default' | 'date' | 'amount'>(_storedSort === 'amount' ? 'amount' : 'date');
   let txSortDir = $state<'asc' | 'desc'>(_storedDir === 'asc' ? 'asc' : 'desc');
+
+  let sortedCalcTags = $derived(
+    [...appState.calcTags].sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' }))
+  );
 
   const CALC_TAG_COLOR_PALETTE = [
     '#ef4444', '#f97316', '#eab308', '#22c55e',
@@ -301,6 +307,78 @@
     editBudgetValue = currentBudget > 0 ? String(currentBudget) : '';
   }
 
+  async function copyActiveBoxCode() {
+    if (!activeBoxId || !selectedBox) {
+      appState.showToast('No active calculation box selected.', 'error');
+      return;
+    }
+
+    let codeToCopy = '';
+
+    // 1. Try to locate the exact HTML snippet in the original note content
+    const note = appState.notes.find(n => n.path === selectedBox.noteId);
+    if (note && note.content) {
+      try {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(note.content, 'text/html');
+        const metricsDivs = doc.querySelectorAll('div[data-type="metrics"]');
+        for (const div of Array.from(metricsDivs)) {
+          const divId = div.getAttribute('data-id');
+          const divTitle = div.getAttribute('data-title');
+          if (divId === selectedBox.id || (divTitle && divTitle === selectedBox.boxTitle)) {
+            const clone = div.cloneNode(true) as HTMLElement;
+            const newId = 'metrics_' + Math.random().toString(36).substring(2, 9);
+            clone.setAttribute('data-id', newId);
+            codeToCopy = clone.outerHTML;
+            break;
+          }
+        }
+      } catch (e) {
+        console.warn('DOMParser failed to extract exact div, falling back to generator', e);
+      }
+    }
+
+    // 2. Fallback: Generate valid metrics div code if exact element wasn't extracted
+    if (!codeToCopy) {
+      const cleanRows = selectedBox.rows.map(r => ({
+        id: r.id,
+        label: r.label,
+        total: r.total,
+        tagIds: r.tagIds || [],
+        checked: r.checked || false,
+        ...(r.date ? { date: r.date } : {})
+      }));
+      const newId = 'metrics_' + Math.random().toString(36).substring(2, 9);
+      const title = selectedBox.boxTitle || 'Calculation Block';
+      const income = selectedBox.income || 0;
+      const incomeLabel = selectedBox.incomeLabel || 'Income';
+      const currencyCode = selectedBox.currencyCode || appState.defaultCurrency || '₹';
+      const excludeChecked = selectedBox.excludeChecked ? 'true' : 'false';
+      const jsonStr = JSON.stringify(cleanRows).replace(/'/g, "&apos;");
+
+      codeToCopy = `<div data-type="metrics" data-id="${newId}" data-title="${title}" data-income="${income}" data-income-label="${incomeLabel}" data-currency-code="${currencyCode}" data-exclude-checked="${excludeChecked}" data-metrics='${jsonStr}'></div>`;
+    }
+
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(codeToCopy);
+      } else {
+        const textarea = document.createElement('textarea');
+        textarea.value = codeToCopy;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+      }
+      appState.showToast(`Copied code for "${selectedBox.boxTitle}"! Paste in any note to duplicate or replace.`, 'success', 3000);
+    } catch (err) {
+      console.error('Copy failed:', err);
+      appState.showToast('Failed to copy code to clipboard.', 'error');
+    }
+  }
+
   async function saveBudget(tagId: string) {
     if (!selectedBox) return;
 
@@ -414,10 +492,14 @@
     const extractedDate = extractRowDate(label);
     const dateVal = extractedDate !== '—' ? extractedDate : new Date().toISOString().split('T')[0];
 
+    const timeMatch = label.match(/\b(\d{1,2}):(\d{2})\b/);
+    const timeVal = timeMatch ? `${timeMatch[1].padStart(2, '0')}:${timeMatch[2]}` : new Date().toTimeString().slice(0, 5);
+
     let desc = label;
-    // Remove date matches
+    // Remove date and time matches
     desc = desc.replace(/\b\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4}\b/g, '');
     desc = desc.replace(/\b\d{4}[-/.]\d{1,2}[-/.]\d{1,2}\b/g, '');
+    desc = desc.replace(/\b\d{1,2}:\d{2}\b/g, '');
 
     const absTotal = Math.abs(total);
     const escapedTotalStr = String(absTotal).replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
@@ -436,6 +518,7 @@
     return {
       description: desc || 'Transaction',
       date: dateVal,
+      time: timeVal,
       amount: String(absTotal),
       type: total < 0 ? 'expense' : 'inflow' as 'expense' | 'inflow'
     };
@@ -448,6 +531,7 @@
     const parsed = parseRowLabel(row.label, row.total);
     transactionDesc = parsed.description;
     transactionDate = parsed.date;
+    transactionTime = parsed.time;
     transactionAmount = parsed.amount;
     transactionType = parsed.type;
     selectedTagIds = [...row.tagIds];
@@ -472,6 +556,7 @@
     transactionAmount = '';
     selectedTagIds = [];
     transactionDate = new Date().toISOString().split('T')[0];
+    transactionTime = new Date().toTimeString().slice(0, 5);
   }
 
   // Open block settings modal with current values
@@ -610,13 +695,10 @@
 
     const finalAmount = transactionType === 'expense' ? -amt : amt;
 
-    // Convert YYYY-MM-DD from the input value to DD-MM-YYYY
+    // Convert YYYY-MM-DD from the input value to YYYY-MM-DD HH:MM
     let datePart = '';
     if (transactionDate) {
-      const parts = transactionDate.split('-');
-      if (parts.length === 3) {
-        datePart = `${parts[2]}-${parts[1]}-${parts[0]} `;
-      }
+      datePart = `${transactionDate} ${transactionTime || '00:00'} `;
     }
 
     // Format description and amount
@@ -947,10 +1029,9 @@
     <div class="budget-header-left">
       <h1 class="budget-title flex-row">
         <Wallet size={24} />
-        <span>Budget Dashboard</span>
+        <span>Dashboard</span>
       </h1>
       <div class="box-selector-wrapper flex-row" style="gap: var(--spacing-xs); align-items: center; margin-top: var(--spacing-2xs); position: relative;">
-        <span style="font-size: 12px; color: var(--text-secondary); font-weight: 500;">Active Block:</span>
         {#if dashboardData.boxes.length > 0}
           {@const currentBox = dashboardData.boxes.find(b => b.id === activeBoxId) || dashboardData.boxes[0]}
           <button 
@@ -962,7 +1043,7 @@
               showSortDropdown = false;
             }}
           >
-            <span class="dropdown-selected-text" style="max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+            <span class="dropdown-selected-text" style="max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
               {currentBox.boxTitle} ({currentBox.noteName})
             </span>
             <ChevronDown size={14} style="color: var(--text-secondary);" />
@@ -1006,7 +1087,7 @@
     </div>
 
     <!-- Actions -->
-    <div class="budget-header-actions">
+    <div class="budget-header-actions flex-row">
       {#if appState.googleConnected && appState.syncEnabled}
         <span class="bv-sync-status flex-row" class:syncing={appState.syncStatus === 'syncing'} class:error={appState.syncStatus === 'error'} class:synced={appState.syncStatus === 'idle'}>
           {#if appState.syncStatus === 'syncing'}
@@ -1016,7 +1097,7 @@
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
               <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
             </svg>
-            <span class="bv-sync-label">Sync Error</span>
+            <span class="bv-sync-label">Error</span>
           {:else}
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
@@ -1029,13 +1110,10 @@
       <button
         type="button"
         class="header-action-btn icon-only-btn flex-row"
-        onclick={async () => {
-          appState.showToast('Refreshing vault data...', 'info', 1500);
-          await appState.refreshNotes();
-        }}
-        title="Refresh data"
+        onclick={copyActiveBoxCode}
+        title="Copy calculation box HTML code"
       >
-        <RefreshCw size={15} />
+        <Copy size={15} />
       </button>
 
       {#if dashboardData.boxes.length > 0}
@@ -1046,7 +1124,22 @@
           title="Export report to Excel"
         >
           <Download size={15} />
-          <span class="btn-label-desktop">Export Excel</span>
+          <span class="btn-label-desktop">Export</span>
+        </button>
+
+        <button 
+          type="button" 
+          class="header-action-btn inbox-badge-btn flex-row"
+          onclick={() => appState.activeTab = 'sms'}
+          title="Inbox transactions"
+        >
+          <MessageSquare size={15} />
+          <span class="btn-label-desktop">Inbox</span>
+          {#if smsService.pendingTransactions.length > 0}
+            <span class="inbox-count-badge">{smsService.pendingTransactions.length}</span>
+          {:else}
+            <span class="inbox-count-badge muted">0</span>
+          {/if}
         </button>
 
         <button 
@@ -1055,7 +1148,7 @@
           onclick={() => showQuickAddModal = true}
         >
           <Plus size={16} />
-          <span>Add Transaction</span>
+          <span class="btn-label-desktop">Add</span>
         </button>
       {/if}
     </div>
@@ -1371,9 +1464,9 @@
           bind:value={searchQuery}
         />
 
-        {#if appState.calcTags.length > 0}
+        {#if sortedCalcTags.length > 0}
           <div class="blocks-filter-chips flex-row">
-            {#each appState.calcTags as tag}
+            {#each sortedCalcTags as tag}
               <button
                 type="button"
                 class="filter-chip"
@@ -1723,18 +1816,33 @@
           class="form-input" 
           placeholder="e.g. Groceries, Freelance work" 
           bind:value={transactionDesc}
+          onfocus={(e) => {
+            const target = e.target as HTMLInputElement;
+            setTimeout(() => { if (document.activeElement === target) target.select(); }, 0);
+          }}
         />
       </div>
 
-      <!-- Date Input -->
-      <div class="form-group flex-col">
-        <label for="trans-date" class="form-label">Date</label>
-        <input 
-          type="date" 
-          id="trans-date"
-          class="form-input" 
-          bind:value={transactionDate}
-        />
+      <!-- Date & Time Input -->
+      <div class="form-group flex-row" style="gap: 12px; width: 100%;">
+        <div class="flex-col" style="flex: 1;">
+          <label for="trans-date" class="form-label">Date</label>
+          <input 
+            type="date" 
+            id="trans-date"
+            class="form-input" 
+            bind:value={transactionDate}
+          />
+        </div>
+        <div class="flex-col" style="width: 125px;">
+          <label for="trans-time" class="form-label">Time</label>
+          <input 
+            type="time" 
+            id="trans-time"
+            class="form-input" 
+            bind:value={transactionTime}
+          />
+        </div>
       </div>
 
       <!-- Amount Input -->
@@ -1756,7 +1864,7 @@
       <div class="form-group flex-col">
         <span class="form-label">Select Categories</span>
         <div class="category-pills-container flex-row" style="flex-wrap: wrap; gap: 8px; padding: 4px 0; align-items: center;">
-          {#each appState.calcTags as tag}
+          {#each sortedCalcTags as tag}
             {@const isSelected = selectedTagIds.includes(tag.id)}
             <button 
               type="button" 
@@ -1885,16 +1993,56 @@
     align-items: center;
     width: 100%;
   }
+
   .budget-header-left {
     display: flex;
     flex-direction: column;
     gap: var(--spacing-2xs);
+    min-width: 0;
   }
+
   .budget-header-actions {
     display: flex;
     flex-direction: row;
-    gap: var(--spacing-xs);
+    gap: 6px;
     align-items: center;
+    flex-shrink: 0;
+  }
+
+  .inbox-badge-btn {
+    background: rgba(99, 102, 241, 0.12) !important;
+    color: #818cf8 !important;
+    border-color: rgba(99, 102, 241, 0.3) !important;
+  }
+
+  .inbox-badge-btn:hover {
+    background: rgba(99, 102, 241, 0.22) !important;
+    border-color: rgba(99, 102, 241, 0.5) !important;
+    color: #a5b4fc !important;
+  }
+
+  .inbox-count-badge {
+    background: #6366f1;
+    color: #ffffff;
+    font-size: 10px;
+    font-weight: 800;
+    padding: 1px 5px;
+    border-radius: 9999px;
+    line-height: 1;
+  }
+
+  .inbox-count-badge.muted {
+    background: rgba(99, 102, 241, 0.25);
+    color: #a5b4fc;
+  }
+
+  .active-block-selector-bar {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: var(--spacing-xs);
+    position: relative;
+    width: 100%;
   }
 
   .bv-sync-status {
@@ -2754,6 +2902,8 @@
     display: inline-flex;
     gap: var(--spacing-xs);
     align-items: center;
+    white-space: nowrap;
+    flex-shrink: 0;
     transition: all var(--motion-duration-fast) ease;
   }
   .header-action-btn:hover {
@@ -2989,8 +3139,12 @@
     }
     .budget-view-container {
       overflow-y: visible;
+      overflow-x: hidden !important;
       height: auto;
       padding: var(--spacing-sm);
+      width: 100%;
+      max-width: 100%;
+      box-sizing: border-box;
     }
   }
 

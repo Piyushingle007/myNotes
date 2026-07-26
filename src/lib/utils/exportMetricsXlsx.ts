@@ -25,7 +25,7 @@ export function getRowNumbers(text: string): number[] {
 		
 		if (start > 0) {
 			const prevChar = cleaned[start - 1];
-			if (/[a-zA-Z0-9]/.test(prevChar)) {
+			if (/[a-zA-Z0-9#_@:]/.test(prevChar)) {
 				isTouching = true;
 			}
 			if (/[-+/]/.test(prevChar)) {
@@ -33,7 +33,7 @@ export function getRowNumbers(text: string): number[] {
 				while (idx > 0 && /\s/.test(cleaned[idx - 1])) {
 					idx--;
 				}
-				if (idx > 0 && /[a-zA-Z0-9]/.test(cleaned[idx - 1])) {
+				if (idx > 0 && /[a-zA-Z0-9#_@:]/.test(cleaned[idx - 1])) {
 					isTouching = true;
 				}
 			}
@@ -41,7 +41,7 @@ export function getRowNumbers(text: string): number[] {
 		
 		if (end < cleaned.length) {
 			const nextChar = cleaned[end];
-			if (/[a-zA-Z0-9]/.test(nextChar)) {
+			if (/[a-zA-Z0-9#_@:]/.test(nextChar)) {
 				isTouching = true;
 			}
 			if (/[-+/]/.test(nextChar)) {

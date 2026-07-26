@@ -29,6 +29,7 @@
   import BudgetView from './BudgetView.svelte';
   import NumbatView from './NumbatView.svelte';
   import TldrawView from './TldrawView.svelte';
+  import SmsTransactionsView from './SmsTransactionsView.svelte';
   import { mobileNav } from '../stores/mobileNav.svelte';
   import { LONG_PRESS_MS, TOUCH_MOVE_TOLERANCE, edgeSwipeBack } from '../actions/touch';
 
@@ -2063,6 +2064,12 @@
             <BudgetView />
           </div>
 
+        <!-- 8. SMS TAB -->
+        {:else if appState.activeTab === 'sms'}
+          <div class="mobile-tab-view flex-col">
+            <SmsTransactionsView />
+          </div>
+
         {/if}
       </div>
 
@@ -2485,6 +2492,11 @@
         <div class="editor-panel flex-row" style="min-width: 0;">
           <BudgetView />
         </div>
+      {:else if appState.activeTab === 'sms'}
+        <!-- SMS Inbox View takes over the main area on desktop -->
+        <div class="editor-panel flex-row" style="min-width: 0;">
+          <SmsTransactionsView />
+        </div>
       {:else if appState.activeTab === 'num'}
         <!-- Num View takes over the main area on desktop -->
         <div class="editor-panel flex-row" style="min-width: 0;">
@@ -2517,6 +2529,48 @@
     </div>
   </div>
 {/if}
+
+<!-- Google Drive Reconnect Prompt Modal Overlay -->
+<Modal
+  show={appState.showReconnectModal}
+  title="Google Drive Disconnected"
+  onClose={() => appState.showReconnectModal = false}
+  bodyStyle="padding: var(--spacing-lg); gap: var(--spacing-md);"
+>
+  {#snippet titleIcon()}
+    <Cloud size={20} style="color: var(--accent);" />
+  {/snippet}
+
+  <div class="flex-col" style="gap: var(--spacing-md);">
+    <p style="margin: 0; font-size: var(--font-size-sm); line-height: 1.6; color: var(--text-primary);">
+      Your Google Drive sync connection was ended. Would you like to reconnect now to keep your notes and budget synced?
+    </p>
+
+    <div class="flex-row" style="gap: var(--spacing-sm); justify-content: flex-end; margin-top: var(--spacing-xs);">
+      <button
+        class="custom-confirm-cancel-btn"
+        onclick={() => appState.showReconnectModal = false}
+      >
+        Later
+      </button>
+      <button
+        class="btn-pill btn-pill-primary flex-row"
+        style="gap: var(--spacing-2xs); padding: 0 var(--spacing-md); height: 38px; justify-content: center;"
+        onclick={() => {
+          appState.showReconnectModal = false;
+          if (appState.isMobile || appState.isNativePlatform) {
+            appState.startMobileGoogleAuth();
+          } else {
+            appState.connectGoogleDrive().catch((e: any) => appState.showToast(e?.message || 'Reconnect failed', 'error'));
+          }
+        }}
+      >
+        <RefreshCw size={16} />
+        <span>Connect Now</span>
+      </button>
+    </div>
+  </div>
+</Modal>
 
 <!-- Move / Copy Note Modal Overlay -->
 <Modal
@@ -2770,21 +2824,38 @@
     height: 100%;
     background-color: var(--bg-base);
     overflow: hidden;
+    overflow-x: hidden !important;
     position: relative;
+    max-width: 100vw;
   }
 
   .mobile-content {
     flex-grow: 1;
     overflow-y: auto;
+    overflow-x: hidden !important;
     padding-bottom: 90px; /* space for bottom nav and FAB */
     min-height: 0;
+    width: 100%;
+    max-width: 100vw;
+    box-sizing: border-box;
     -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .mobile-content::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
   }
 
   .mobile-tab-view {
     padding: var(--spacing-lg) var(--spacing-md);
     gap: var(--spacing-lg);
     min-height: 100%;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    overflow-x: hidden !important;
   }
 
   .mobile-header {

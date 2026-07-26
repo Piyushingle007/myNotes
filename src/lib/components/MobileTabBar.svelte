@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Home, Tag as TagIcon, Library, Calculator, Target, Wallet, PenTool } from 'lucide-svelte';
+  import { Home, Tag as TagIcon, Library, Calculator, Target, Wallet, MessageSquare } from 'lucide-svelte';
   import { appState } from '../stores/appState.svelte';
   import { mobileNav } from '../stores/mobileNav.svelte';
 
@@ -12,12 +12,10 @@
 
   const tabs = [
     { id: 'home', label: 'Home', icon: Home },
-    { id: 'tags', label: 'Tags', icon: TagIcon },
+    { id: 'budget', label: 'Dashboard', icon: Wallet },
+    { id: 'sms', label: 'Inbox', icon: MessageSquare },
     { id: 'library', label: 'Library', icon: Library },
-    { id: 'num', label: 'Num', icon: Calculator },
-    // { id: 'draw', label: 'Draw', icon: PenTool }, // Disabled temporarily
-    { id: 'budget', label: 'Budget', icon: Wallet },
-    { id: 'focus', label: 'Focus', icon: Target },
+    { id: 'num', label: 'CalBox', icon: Calculator },
   ] as const;
 
   function select(id: (typeof tabs)[number]['id']) {
@@ -57,7 +55,7 @@
   }
 
   .android-bottom-nav {
-    position: absolute;
+    position: fixed;
     bottom: calc(16px + env(safe-area-inset-bottom, 0px));
     left: calc(16px + env(safe-area-inset-left, 0px));
     right: calc(16px + env(safe-area-inset-right, 0px));
@@ -68,7 +66,7 @@
     box-shadow: 0 8px 32px 0 color-mix(in srgb, var(--bg-base) 40%, transparent);
     justify-content: space-around;
     align-items: stretch;
-    z-index: 10;
+    z-index: 100;
     padding: 0 var(--spacing-xs);
   }
 

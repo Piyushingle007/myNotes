@@ -3,7 +3,13 @@ import { TagDatabase, type Tag } from '../storage/TagSchema';
 import { CalcTagDatabase, type CalcTag } from '../storage/CalcTagSchema';
 import { FocusCardStore, type FocusCard, type CardStatus, createBlankCard } from '../storage/FocusCardStore';
 import { GoogleDriveSync } from '../sync/GoogleDriveSync';
+import { registerPlugin } from '@capacitor/core';
 import MiniSearch from 'minisearch';
+
+interface BrowserChooserPluginApi {
+  openUrlWithChooser(opts: { url: string }): Promise<void>;
+}
+const BrowserChooserPlugin = registerPlugin<BrowserChooserPluginApi>('BrowserChooser');
 import { createMarkdownConverter } from '../utils/markdownConverter';
 
 declare const google: any;
@@ -193,7 +199,7 @@ class AppState {
   activeNoteContent = $state<string>('');
   activeNoteTitle = $state<string>('');
   activeNotebook = $state<string | null>(null);
-  activeTab = $state<'home' | 'search' | 'library' | 'num' | 'tags' | 'focus' | 'budget'>('home');
+  activeTab = $state<'home' | 'search' | 'library' | 'num' | 'tags' | 'focus' | 'budget' | 'sms'>('budget');
   favorites = $state<string[]>(JSON.parse(localStorage.getItem('mynotes_favorites') || '[]'));
   searchQuery = $state<string>('');
   showSettings = $state<boolean>(false);
@@ -373,8 +379,10 @@ class AppState {
   // Google Drive Sync Reactive States
   googleClientId = $state<string>(localStorage.getItem('mynotes_google_client_id') || '');
   googleRedirectUri = $state<string>(localStorage.getItem('mynotes_google_redirect_uri') || 'http://localhost');
+  preferredBrowser = $state<string>(localStorage.getItem('mynotes_preferred_browser') || 'auto');
   googleConnected = $state<boolean>(false);
   googleUserEmail = $state<string | null>(null);
+  showReconnectModal = $state<boolean>(false);
   syncStatus = $state<'idle' | 'syncing' | 'error'>('idle');
   syncErrorMessage = $state<string | null>(null);
   saveError = $state<string | null>(null);
@@ -782,6 +790,11 @@ class AppState {
     localStorage.setItem('mynotes_google_redirect_uri', this.googleRedirectUri);
   }
 
+  setPreferredBrowser(pkg: string) {
+    this.preferredBrowser = pkg.trim();
+    localStorage.setItem('mynotes_preferred_browser', this.preferredBrowser);
+  }
+
   setSyncEnabled(enabled: boolean) {
     this.syncEnabled = enabled;
     localStorage.setItem('mynotes_sync_enabled', String(enabled));
@@ -945,15 +958,19 @@ class AppState {
     this.mobileAuthError = null;
     this.mobileAuthStep = 'awaiting';
 
-    // Attempt automatic capture of the redirect via Capacitor deep links.
+    // Attempt automatic capture of the redirect via Capacitor deep links & custom tabs.
     await this.registerMobileAuthRedirectListener();
 
-    // Hand off to the secure system browser (required by Google policy).
+    // Hand off to BrowserChooserPlugin to open in preferred browser or system Custom Tab
     const url = this.buildGoogleAuthUrl();
     try {
-      window.open(url, '_system');
+      if (this.isNativePlatform) {
+        await BrowserChooserPlugin.openUrlWithChooser({ url, package: this.preferredBrowser });
+      } else {
+        window.open(url, '_system');
+      }
     } catch {
-      window.location.href = url;
+      window.open(url, '_system');
     }
   }
 
@@ -962,12 +979,39 @@ class AppState {
     if (!this.isNativePlatform) return;
     try {
       const { App } = await import('@capacitor/app');
+      const { Browser } = await import('@capacitor/browser');
+
+      const processCapturedUrl = (url: string) => {
+        if (!url) return;
+        if (
+          url.includes('access_token') ||
+          url.includes('code=') ||
+          url.includes('mynotes://') ||
+          url.includes('localhost') ||
+          url.includes('iss=')
+        ) {
+          void Browser.close().catch(() => {/* ignore if already closed */});
+          void this.completeMobileGoogleAuth(url).catch(() => {/* surfaced via state */});
+        }
+      };
+
+      // 1. Check launch URL in case app was launched cold from deep link
+      const launchUrlObj = await App.getLaunchUrl();
+      if (launchUrlObj?.url) {
+        processCapturedUrl(launchUrlObj.url);
+      }
+
+      // 2. Listen to appUrlOpen for warm app redirects
       const handle = await App.addListener('appUrlOpen', (event: { url: string }) => {
-        if (event?.url && event.url.includes('access_token')) {
-          void this.completeMobileGoogleAuth(event.url).catch(() => {/* surfaced via state */});
+        if (event?.url) {
+          processCapturedUrl(event.url);
         }
       });
-      this.mobileAuthListenerCleanup = () => { void handle.remove(); };
+
+      this.mobileAuthListenerCleanup = () => {
+        void handle.remove();
+        void Browser.close().catch(() => {/* ignore */});
+      };
     } catch (e) {
       console.warn('[Auth] appUrlOpen deep-link listener unavailable:', e);
     }
@@ -1006,7 +1050,7 @@ class AppState {
     this.clearMobileAuthRedirectListener();
   }
 
-  async disconnectGoogleDrive() {
+  async disconnectGoogleDrive(showModal: boolean = true) {
     this.syncService.clearToken();
     localStorage.removeItem('mynotes_google_access_token');
     localStorage.removeItem('mynotes_google_token_expiry');
@@ -1015,6 +1059,9 @@ class AppState {
     this.setSyncEnabled(false);
     this.syncStatus = 'idle';
     this.cancelMobileGoogleAuth();
+    if (showModal) {
+      this.showReconnectModal = true;
+    }
   }
 
   async autoConnectGoogleDrive() {
@@ -1575,7 +1622,7 @@ class AppState {
       this.activeNotePath = null;
     } catch (err) {
       console.error('[MyNotes] initSandbox error caught:', err);
-      throw err;
+      this.vaultReady = true;
     }
   }
 
@@ -3046,7 +3093,8 @@ class AppState {
   async refreshCalcTags() {
     if (!this.calcTagDb) return;
     try {
-      this.calcTags = await this.calcTagDb.listCalcTags();
+      const tags = await this.calcTagDb.listCalcTags();
+      this.calcTags = tags.sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' }));
     } catch (e) {
       console.error('[MyNotes] refreshCalcTags error:', e);
     }
