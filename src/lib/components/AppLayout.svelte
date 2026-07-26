@@ -2530,6 +2530,48 @@
   </div>
 {/if}
 
+<!-- Google Drive Reconnect Prompt Modal Overlay -->
+<Modal
+  show={appState.showReconnectModal}
+  title="Google Drive Disconnected"
+  onClose={() => appState.showReconnectModal = false}
+  bodyStyle="padding: var(--spacing-lg); gap: var(--spacing-md);"
+>
+  {#snippet titleIcon()}
+    <Cloud size={20} style="color: var(--accent);" />
+  {/snippet}
+
+  <div class="flex-col" style="gap: var(--spacing-md);">
+    <p style="margin: 0; font-size: var(--font-size-sm); line-height: 1.6; color: var(--text-primary);">
+      Your Google Drive sync connection was ended. Would you like to reconnect now to keep your notes and budget synced?
+    </p>
+
+    <div class="flex-row" style="gap: var(--spacing-sm); justify-content: flex-end; margin-top: var(--spacing-xs);">
+      <button
+        class="custom-confirm-cancel-btn"
+        onclick={() => appState.showReconnectModal = false}
+      >
+        Later
+      </button>
+      <button
+        class="btn-pill btn-pill-primary flex-row"
+        style="gap: var(--spacing-2xs); padding: 0 var(--spacing-md); height: 38px; justify-content: center;"
+        onclick={() => {
+          appState.showReconnectModal = false;
+          if (appState.isMobile || appState.isNativePlatform) {
+            appState.startMobileGoogleAuth();
+          } else {
+            appState.connectGoogleDrive().catch((e: any) => appState.showToast(e?.message || 'Reconnect failed', 'error'));
+          }
+        }}
+      >
+        <RefreshCw size={16} />
+        <span>Connect Now</span>
+      </button>
+    </div>
+  </div>
+</Modal>
+
 <!-- Move / Copy Note Modal Overlay -->
 <Modal
   show={appState.showMoveCopyModal && !!appState.moveCopyNotePath}

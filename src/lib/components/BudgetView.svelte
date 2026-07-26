@@ -35,6 +35,7 @@
   let transactionAmount = $state('');
   let transactionType = $state<'expense' | 'inflow'>('expense');
   let transactionDate = $state(new Date().toISOString().split('T')[0]);
+  let transactionTime = $state(new Date().toTimeString().slice(0, 5));
   let selectedTagIds = $state<string[]>([]);
   let showTagDropdown = $state(false);
   let showBoxDropdown = $state(false);
@@ -491,10 +492,14 @@
     const extractedDate = extractRowDate(label);
     const dateVal = extractedDate !== '—' ? extractedDate : new Date().toISOString().split('T')[0];
 
+    const timeMatch = label.match(/\b(\d{1,2}):(\d{2})\b/);
+    const timeVal = timeMatch ? `${timeMatch[1].padStart(2, '0')}:${timeMatch[2]}` : new Date().toTimeString().slice(0, 5);
+
     let desc = label;
-    // Remove date matches
+    // Remove date and time matches
     desc = desc.replace(/\b\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4}\b/g, '');
     desc = desc.replace(/\b\d{4}[-/.]\d{1,2}[-/.]\d{1,2}\b/g, '');
+    desc = desc.replace(/\b\d{1,2}:\d{2}\b/g, '');
 
     const absTotal = Math.abs(total);
     const escapedTotalStr = String(absTotal).replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
@@ -513,6 +518,7 @@
     return {
       description: desc || 'Transaction',
       date: dateVal,
+      time: timeVal,
       amount: String(absTotal),
       type: total < 0 ? 'expense' : 'inflow' as 'expense' | 'inflow'
     };
@@ -525,6 +531,7 @@
     const parsed = parseRowLabel(row.label, row.total);
     transactionDesc = parsed.description;
     transactionDate = parsed.date;
+    transactionTime = parsed.time;
     transactionAmount = parsed.amount;
     transactionType = parsed.type;
     selectedTagIds = [...row.tagIds];
@@ -549,6 +556,7 @@
     transactionAmount = '';
     selectedTagIds = [];
     transactionDate = new Date().toISOString().split('T')[0];
+    transactionTime = new Date().toTimeString().slice(0, 5);
   }
 
   // Open block settings modal with current values
@@ -687,13 +695,10 @@
 
     const finalAmount = transactionType === 'expense' ? -amt : amt;
 
-    // Convert YYYY-MM-DD from the input value to DD-MM-YYYY
+    // Convert YYYY-MM-DD from the input value to YYYY-MM-DD HH:MM
     let datePart = '';
     if (transactionDate) {
-      const parts = transactionDate.split('-');
-      if (parts.length === 3) {
-        datePart = `${parts[2]}-${parts[1]}-${parts[0]} `;
-      }
+      datePart = `${transactionDate} ${transactionTime || '00:00'} `;
     }
 
     // Format description and amount
@@ -1818,15 +1823,26 @@
         />
       </div>
 
-      <!-- Date Input -->
-      <div class="form-group flex-col">
-        <label for="trans-date" class="form-label">Date</label>
-        <input 
-          type="date" 
-          id="trans-date"
-          class="form-input" 
-          bind:value={transactionDate}
-        />
+      <!-- Date & Time Input -->
+      <div class="form-group flex-row" style="gap: 12px; width: 100%;">
+        <div class="flex-col" style="flex: 1;">
+          <label for="trans-date" class="form-label">Date</label>
+          <input 
+            type="date" 
+            id="trans-date"
+            class="form-input" 
+            bind:value={transactionDate}
+          />
+        </div>
+        <div class="flex-col" style="width: 125px;">
+          <label for="trans-time" class="form-label">Time</label>
+          <input 
+            type="time" 
+            id="trans-time"
+            class="form-input" 
+            bind:value={transactionTime}
+          />
+        </div>
       </div>
 
       <!-- Amount Input -->

@@ -89,9 +89,9 @@ Google requires you to set up a basic consent screen before creating credentials
    - **Application type**: Click the dropdown and select **Web application**.
    - **Name**: Leave as `Web client 1` (or change it if you like).
 4. Scroll down to the section named **Authorized redirect URIs**.
-5. Click **+ ADD URI**.
-6. In the text box that appears, type exactly:
+5. Click **+ ADD URI** and add both of the following redirect URIs:
    ```text
+   mynotes://oauth
    http://localhost
    ```
 7. Click the blue **CREATE** button at the bottom.

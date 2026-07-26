@@ -11,6 +11,7 @@ export interface SmsTransaction {
   vendor: string;
   accountLast4?: string;
   date: string;
+  time: string;
   timestamp: number;
   rawBody: string;
   sender: string;
@@ -38,7 +39,7 @@ interface SmsTransactionPluginApi {
   addListener(event: string, cb: (data: any) => void): Promise<any>;
 }
 
-const SmsTransactionPlugin = registerPlugin<SmsTransactionPluginApi>('SmsTransaction');
+export const SmsTransactionPlugin = registerPlugin<SmsTransactionPluginApi>('SmsTransaction');
 
 // ────────────────────────────────────────────────────────────────────────
 // Constants
@@ -201,6 +202,23 @@ function parseTransactionFromText(smsText: string, sender: string = 'Manual'): S
     dateStr = new Date().toISOString().split('T')[0];
   }
 
+  // ── Time extraction ─────────────────────────────────────────────────
+  // Remove reference prefixes like UPI:12345, ref:12345, txn:12345 to prevent false time matches
+  const bodyNoRefs = cleaned.replace(/(?:upi|ref|refno|txn|tx|id|acct|acc|card|http|https):[0-9A-Za-z]+/gi, ' ');
+  const timeMatch = bodyNoRefs.match(/\b([01]?\d|2[0-3]):([0-5]\d)(?::[0-5]\d)?\s*(am|pm|hrs|hr)?\b/i);
+  let timeStr: string;
+  if (timeMatch) {
+    let hours = parseInt(timeMatch[1], 10);
+    const minutes = timeMatch[2];
+    const ampmIndicator = (timeMatch[3] || '').toLowerCase();
+    if (ampmIndicator === 'pm' && hours < 12) hours += 12;
+    if (ampmIndicator === 'am' && hours === 12) hours = 0;
+    timeStr = `${String(hours).padStart(2, '0')}:${minutes}`;
+  } else {
+    const now = new Date();
+    timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  }
+
   return {
     id: `sms_${Date.now()}_${Math.floor(Math.random() * 10000)}`,
     amount,
@@ -208,6 +226,7 @@ function parseTransactionFromText(smsText: string, sender: string = 'Manual'): S
     vendor,
     accountLast4,
     date: dateStr,
+    time: timeStr,
     timestamp: Date.now(),
     rawBody: smsText.trim(),
     sender,
@@ -243,7 +262,23 @@ class SmsService {
   private loadStoredTransactions(): SmsTransaction[] {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
-      return stored ? JSON.parse(stored) : [];
+      if (!stored) return [];
+      const parsed: SmsTransaction[] = JSON.parse(stored);
+      return parsed.map(t => {
+        let time = t.time;
+        if (!time || time === '00:00') {
+          if (t.timestamp && t.timestamp > 0) {
+            const d = new Date(t.timestamp);
+            const hh = String(d.getHours()).padStart(2, '0');
+            const mm = String(d.getMinutes()).padStart(2, '0');
+            time = `${hh}:${mm}`;
+          } else {
+            const now = new Date();
+            time = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+          }
+        }
+        return { ...t, time };
+      });
     } catch {
       return [];
     }
@@ -306,6 +341,7 @@ class SmsService {
             vendor: data.vendor || 'Transaction',
             accountLast4: data.accountLast4 || '',
             date: data.date || new Date().toISOString().split('T')[0],
+            time: data.time || (() => { const n = new Date(); return `${String(n.getHours()).padStart(2,'0')}:${String(n.getMinutes()).padStart(2,'0')}`; })(),
             timestamp: data.timestamp || Date.now(),
             rawBody: data.rawBody || '',
             sender: data.sender || 'Bank',
@@ -429,6 +465,7 @@ class SmsService {
             vendor: item.vendor || 'Transaction',
             accountLast4: item.accountLast4 || '',
             date: item.date || new Date().toISOString().split('T')[0],
+            time: item.time || (() => { const n = new Date(item.timestamp || Date.now()); return `${String(n.getHours()).padStart(2,'0')}:${String(n.getMinutes()).padStart(2,'0')}`; })(),
             timestamp: item.timestamp || Date.now(),
             rawBody: item.rawBody || '',
             sender: item.sender || 'Bank',
@@ -518,7 +555,20 @@ class SmsService {
     );
     if (exists) return false;
 
-    this.transactions = [tx, ...this.transactions];
+    let time = tx.time;
+    if (!time || time === '00:00') {
+      if (tx.timestamp && tx.timestamp > 0) {
+        const d = new Date(tx.timestamp);
+        const hh = String(d.getHours()).padStart(2, '0');
+        const mm = String(d.getMinutes()).padStart(2, '0');
+        time = `${hh}:${mm}`;
+      } else {
+        const now = new Date();
+        time = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+      }
+    }
+
+    this.transactions = [{ ...tx, time }, ...this.transactions];
     this.saveTransactions();
     return true;
   }
@@ -560,6 +610,7 @@ class SmsService {
         vendor: 'Swiggy',
         accountLast4: '4321',
         date: today,
+        time: '14:30',
         timestamp: Date.now() - 3600000,
         rawBody: 'Rs. 450.00 debited from A/c XX4321 at SWIGGY via UPI on ' + today,
         sender: 'HDFCBK',
@@ -572,6 +623,7 @@ class SmsService {
         vendor: 'Amazon',
         accountLast4: '8812',
         date: today,
+        time: '12:15',
         timestamp: Date.now() - 7200000,
         rawBody: 'INR 1,250.00 spent on your HDFC Bank Card XX8812 at AMAZON INDIA',
         sender: 'HDFCBK',
@@ -584,6 +636,7 @@ class SmsService {
         vendor: 'Salary Credit',
         accountLast4: '4321',
         date: today,
+        time: '09:00',
         timestamp: Date.now() - 86400000,
         rawBody: 'Your A/c XX4321 is credited with INR 25,000.00 by Salary Direct Deposit',
         sender: 'ICICIB',

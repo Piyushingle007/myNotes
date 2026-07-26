@@ -185,15 +185,32 @@
           {#if isCapacitor}
             <div class="ms-field flex-col">
               <span class="ms-field-label">OAuth Redirect URI</span>
-              <span class="ms-field-desc">For mobile authentication</span>
+              <span class="ms-field-desc">Use <code>mynotes://oauth</code> or <code>http://localhost</code></span>
               <input
                 type="text"
-                placeholder="e.g. http://localhost"
+                placeholder="e.g. mynotes://oauth or http://localhost"
                 value={appState.googleRedirectUri}
                 oninput={(e) => appState.setRedirectUri(e.currentTarget.value)}
                 disabled={appState.googleConnected}
                 class="ms-input"
               />
+            </div>
+
+            <div class="ms-field flex-col">
+              <span class="ms-field-label">Preferred Sign-In Browser</span>
+              <span class="ms-field-desc">Select your preferred browser or use System Default</span>
+              <select
+                class="ms-input"
+                value={appState.preferredBrowser}
+                onchange={(e) => appState.setPreferredBrowser(e.currentTarget.value)}
+                disabled={appState.googleConnected}
+              >
+                <option value="auto">System Default (Supports Android 'Always' button)</option>
+                <option value="com.brave.browser">Brave Browser</option>
+                <option value="org.mozilla.firefox">Mozilla Firefox</option>
+                <option value="com.android.chrome">Google Chrome</option>
+                <option value="com.sec.android.app.sbrowser">Samsung Internet</option>
+              </select>
             </div>
           {/if}
         </div>

@@ -462,11 +462,12 @@ public class SmsParser {
         }
 
         // ── Build result JSON ────────────────────────────────────────────
-        String dateStr = new SimpleDateFormat("yyyy-MM-dd", Locale.US)
-            .format(new Date(timestamp > 0 ? timestamp : System.currentTimeMillis()));
+        long ts = timestamp > 0 ? timestamp : System.currentTimeMillis();
+        Date msgDate = new Date(ts);
+        String dateStr = new SimpleDateFormat("yyyy-MM-dd", Locale.US).format(msgDate);
+        String timeStr = new SimpleDateFormat("HH:mm", Locale.US).format(msgDate);
         try {
             JSONObject result = new JSONObject();
-            long ts = timestamp > 0 ? timestamp : System.currentTimeMillis();
             String id = "sms_" + ts + "_" + (int)(Math.random() * 10000);
             result.put("id", id);
             result.put("amount", amount);
@@ -474,6 +475,7 @@ public class SmsParser {
             result.put("vendor", vendor);
             result.put("accountLast4", accountLast4);
             result.put("date", dateStr);
+            result.put("time", timeStr);
             result.put("timestamp", ts);
             result.put("rawBody", body);
             result.put("sender", sender != null ? sender : "Bank");

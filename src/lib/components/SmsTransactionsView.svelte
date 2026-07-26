@@ -60,19 +60,14 @@
     return smsService.allTransactions;
   });
 
-  // Sort transactions (Default: Latest First by date/timestamp)
+  // Sort transactions (Default: Latest First by date + time)
   let filteredTransactions = $derived.by(() => {
     const list = [...tabFilteredTransactions];
     return list.sort((a, b) => {
-      const timeA = a.timestamp || (a.date ? new Date(a.date).getTime() : 0);
-      const timeB = b.timestamp || (b.date ? new Date(b.date).getTime() : 0);
-
-      if (sortOrder === 'latest') {
-        if (timeB !== timeA) return timeB - timeA;
-        return (b.date || '').localeCompare(a.date || '');
-      } else if (sortOrder === 'oldest') {
-        if (timeA !== timeB) return timeA - timeB;
-        return (a.date || '').localeCompare(b.date || '');
+      if (sortOrder === 'latest' || sortOrder === 'oldest') {
+        const dtA = `${a.date || '0000-00-00'}T${a.time || '00:00'}`;
+        const dtB = `${b.date || '0000-00-00'}T${b.time || '00:00'}`;
+        return sortOrder === 'latest' ? dtB.localeCompare(dtA) : dtA.localeCompare(dtB);
       } else if (sortOrder === 'amount-high') {
         return b.amount - a.amount;
       } else if (sortOrder === 'amount-low') {
@@ -111,28 +106,54 @@
     };
   }
 
-  // Clean description label for Calculation Box insertion (eliminates phone numbers / contact numbers)
-  function buildCleanCalBoxLabel(vendor: string, rawBody: string): string {
-    let text = (vendor || '').trim();
+  // Clean description label for Calculation Box insertion
+  function buildCleanCalBoxLabel(vendor: string, rawBody: string, amount?: number): string {
+    const body = (rawBody || '').trim();
+    const vendorText = (vendor || '').trim();
 
-    // If vendor is a phone number (5+ digits or digits/symbols), clean it up
-    const isPhoneNumberOrCode = /\d{5,}/.test(text) || /^[0-9.+\-\s()]+$/.test(text) || text === 'Transaction';
-
-    if (isPhoneNumberOrCode || !text) {
-      text = (rawBody || '')
-        .replace(/(?:call|contact|sms block|help|dispute|t&c|http|https|upi:\d+|block\s+\d+)\b.*/gi, '')
-        .replace(/(?:debited|credited|spent|paid|transferred|deposited|sent|received|for|of|with|rs\.?|inr|₹|\d+(?:\.\d+)?)/gi, ' ')
-        .replace(/\b(?:account|acct|a\/c|acc|card|upi|vpa|ref|no|val|bal|avl|avail)\b/gi, ' ')
-        .replace(/[^\w\s]/g, ' ')
-        .replace(/\d+/g, '')
-        .replace(/\s+/g, ' ')
-        .trim();
-    } else {
-      text = text.replace(/\d{4,}/g, '').replace(/\s+/g, ' ').trim();
+    // ── Priority 1: If rawBody looks like a user-edited clean description ──
+    // When the user manually types a custom label into the description textarea
+    // (short text, no banking SMS keywords), use it EXACTLY as written.
+    const bankingPattern = /(?:debited|credited|a\/c|account|acct|upi|vpa|card|bal|avl|ref\s*no|block\s+\d|https?:\/\/|rs\.?\s*\d|inr\s*\d|₹\s*\d)/i;
+    if (body && body.length < 80 && !bankingPattern.test(body)) {
+      return body;
     }
 
-    text = text.replace(/[^\w\s\-&']/g, '').trim();
-    return text.length >= 2 ? text : 'Transaction';
+    // ── Priority 2: Use vendor field with cleaning (original SMS, user didn't edit description) ──
+    let text = vendorText;
+    const isPurePhoneNumber = /^\+?\d{5,}$/.test(text) || /^[0-9.+\-\s()]+$/.test(text);
+
+    if (isPurePhoneNumber || !text || text === 'Transaction') {
+      // Fallback: build a clean label from rawBody if vendor is empty or placeholder
+      if (body) {
+        text = body
+          .replace(/(?:call|contact|sms block|help|dispute|t&c|http|https|upi:\d+|block\s+\d+)\b.*/gi, '')
+          .replace(/\b(?:account|acct|a\/c|acc|card|upi|vpa|ref|no|val|bal|avl|avail)\b/gi, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+      }
+    }
+
+    // Remove explicit currency/payment prefixes & keywords
+    text = text
+      .replace(/(?:rs\.?|inr|₹)\s*\d+(?:\.\d+)?/gi, '')
+      .replace(/(?:debited|credited|spent|paid|transferred|deposited|sent|received)\s+(?:rs\.?|inr|₹)?\s*\d+(?:\.\d+)?/gi, '')
+      .replace(/(?:debited|credited|spent|paid|transferred|deposited|sent|received)\b/gi, '');
+
+    // Remove exact transaction amount so it doesn't get double-counted
+    if (amount !== undefined && amount > 0) {
+      const amountStr = String(amount);
+      const amountRegex = new RegExp(`\\b${amountStr}(?:\\.0+)?\\b`, 'g');
+      text = text.replace(amountRegex, '');
+    }
+
+    // Remove standalone numbers (4+ digits) so reference numbers don't get sum-parsed
+    text = text.replace(/\b\d{4,}\b/g, '');
+
+    // Clean up whitespace and edge symbols
+    text = text.replace(/\s+/g, ' ').trim().replace(/^[-–—,.\s]+|[-–—,.\s]+$/g, '');
+
+    return text.length >= 1 ? text : 'Transaction';
   }
 
   async function handleScan() {
@@ -216,6 +237,10 @@
     smsService.updateTransaction(tx.id, { rawBody: newRawBody });
   }
 
+  function handleTimeChange(tx: SmsTransaction, newTime: string) {
+    smsService.updateTransaction(tx.id, { time: newTime });
+  }
+
   // Insert transaction into target Calculation Box matching standard CalBox label syntax
   async function handleInsertToBox(tx: SmsTransaction) {
     if (availableBoxes.length === 0) {
@@ -272,7 +297,7 @@
         rows = [];
       }
 
-      const cleanDesc = buildCleanCalBoxLabel(tx.vendor, tx.rawBody);
+      const cleanDesc = buildCleanCalBoxLabel(tx.vendor, tx.rawBody, tx.amount);
       const amountSign = tx.type === 'expense' ? ` -${tx.amount}` : ` ${tx.amount}`;
       const rowLabel = `${tx.date} ${cleanDesc}${amountSign}`;
 
@@ -520,25 +545,25 @@
         {#each filteredTransactions as tx (tx.id)}
           <div class="tx-card" class:expense={tx.type === 'expense'} class:inflow={tx.type === 'inflow'} class:dimmed={tx.status !== 'pending'}>
             
-            <!-- Card Header: Type Icon, Editable Vendor Title, Date, Amount -->
+            <!-- Card Header: Title + Amount Top Row, Sub-Bar for Date/Time, Sender, Badges -->
             <div class="tx-card-header">
-              <div class="vendor-group">
-                <!-- Interactive Type Toggle Button (Expense vs Inflow) -->
-                <button 
-                  type="button"
-                  class="tx-type-icon-btn" 
-                  class:expense={tx.type === 'expense'} 
-                  class:inflow={tx.type === 'inflow'}
-                  onclick={() => handleToggleType(tx)}
-                  title="Click to toggle Expense (-) or Inflow (+)"
-                >
-                  {#if tx.type === 'expense'}
-                    <ArrowUpRight size={18} />
-                  {:else}
-                    <ArrowDownRight size={18} />
-                  {/if}
-                </button>
-                <div class="vendor-meta">
+              <div class="tx-header-top-row">
+                <div class="vendor-title-group">
+                  <!-- Interactive Type Toggle Button (Expense vs Inflow) -->
+                  <button 
+                    type="button"
+                    class="tx-type-icon-btn" 
+                    class:expense={tx.type === 'expense'} 
+                    class:inflow={tx.type === 'inflow'}
+                    onclick={() => handleToggleType(tx)}
+                    title="Click to toggle Expense (-) or Inflow (+)"
+                  >
+                    {#if tx.type === 'expense'}
+                      <ArrowUpRight size={18} />
+                    {:else}
+                      <ArrowDownRight size={18} />
+                    {/if}
+                  </button>
                   <div class="editable-vendor-wrapper">
                     <input 
                       type="text" 
@@ -551,32 +576,58 @@
                     />
                     <Edit3 size={13} class="vendor-edit-icon" />
                   </div>
-                  <span class="tx-date">{tx.date} • {tx.sender} {#if tx.accountLast4}(A/c XX{tx.accountLast4}){/if}</span>
+                </div>
+
+                <div class="amount-group">
+                  <span class="tx-amount" class:expense={tx.type === 'expense'} class:inflow={tx.type === 'inflow'}>
+                    {tx.type === 'expense' ? '-' : '+'}{currencySymbol}{tx.amount.toLocaleString()}
+                  </span>
                 </div>
               </div>
 
-              <div class="amount-group">
-                <span class="tx-amount" class:expense={tx.type === 'expense'} class:inflow={tx.type === 'inflow'}>
-                  {tx.type === 'expense' ? '-' : '+'}{currencySymbol}{tx.amount.toLocaleString()}
-                </span>
-                
-                <!-- Interactive Expense / Inflow Type Toggle Pill -->
-                <button 
-                  type="button"
-                  class="type-pill" 
-                  class:expense={tx.type === 'expense'} 
-                  class:inflow={tx.type === 'inflow'}
-                  onclick={() => handleToggleType(tx)}
-                  title="Click to toggle Expense (-) vs Inflow (+)"
-                >
-                  {tx.type === 'expense' ? '- Expense' : '+ Inflow'}
-                </button>
+              <!-- Row 2: Date & Time Pickers -->
+              <div class="tx-header-subbar">
+                <div class="date-time-picker-bar">
+                  <input
+                    type="date"
+                    value={tx.date}
+                    oninput={(e) => smsService.updateTransaction(tx.id, { date: (e.target as HTMLInputElement).value })}
+                    class="date-inline-input"
+                    title="Edit transaction date"
+                  />
+                  <input
+                    type="time"
+                    value={tx.time || '00:00'}
+                    oninput={(e) => handleTimeChange(tx, (e.target as HTMLInputElement).value)}
+                    class="time-inline-input"
+                    title="Edit transaction time"
+                  />
+                </div>
+              </div>
 
-                {#if tx.autoMatched}
-                  <span class="status-badge auto-matched">Pre-added (Matched)</span>
-                {:else}
-                  <span class="status-badge {tx.status}">{tx.status}</span>
-                {/if}
+              <!-- Row 3: Bank Sender Info (Left) + Expense Pill & Status Badges (Right - In Same Line!) -->
+              <div class="sender-info-row">
+                <span class="sender-info-chip">• {tx.sender} {#if tx.accountLast4}(A/c XX{tx.accountLast4}){/if}</span>
+
+                <div class="badges-row">
+                  <!-- Interactive Expense / Inflow Type Toggle Pill -->
+                  <button 
+                    type="button"
+                    class="type-pill" 
+                    class:expense={tx.type === 'expense'} 
+                    class:inflow={tx.type === 'inflow'}
+                    onclick={() => handleToggleType(tx)}
+                    title="Click to toggle Expense (-) vs Inflow (+)"
+                  >
+                    {tx.type === 'expense' ? '- Expense' : '+ Inflow'}
+                  </button>
+
+                  {#if tx.autoMatched}
+                    <span class="status-badge auto-matched">Pre-added</span>
+                  {:else}
+                    <span class="status-badge {tx.status}">{tx.status}</span>
+                  {/if}
+                </div>
               </div>
             </div>
 
@@ -1052,21 +1103,23 @@
 
   .tx-card-header {
     display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: 0.75rem;
-    margin-bottom: 0.5rem;
+    flex-direction: column;
+    gap: 0.35rem;
+    margin-bottom: 0.6rem;
   }
 
-  .vendor-group {
+  .tx-header-top-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.75rem;
+    width: 100%;
+  }
+
+  .vendor-title-group {
     display: flex;
     align-items: center;
-    gap: 0.65rem;
-    min-width: 0;
-    flex: 1;
-  }
-
-  .vendor-meta {
+    gap: 0.5rem;
     min-width: 0;
     flex: 1;
   }
@@ -1078,6 +1131,8 @@
     gap: 0.35rem;
     position: relative;
     max-width: 100%;
+    flex: 1;
+    min-width: 0;
   }
 
   .vendor-input {
@@ -1106,8 +1161,8 @@
   }
 
   .tx-type-icon-btn {
-    width: 34px;
-    height: 34px;
+    width: 32px;
+    height: 32px;
     border-radius: 10px;
     display: flex;
     align-items: center;
@@ -1129,22 +1184,103 @@
     color: #4ade80;
   }
 
-  .tx-date {
-    font-size: 0.75rem;
-    color: var(--text-secondary, #94a3b8);
-    display: block;
-    margin-top: 0.1rem;
+  .amount-group {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+  }
+
+  .tx-header-subbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    padding-top: 0.25rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+  }
+
+  .date-time-picker-bar {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    flex-shrink: 0;
+  }
+
+  .date-inline-input,
+  .time-inline-input {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    color: var(--text-secondary, #cbd5e1);
+    font-size: 0.72rem;
+    font-family: inherit;
+    padding: 0 4px;
+    height: 24px;
+    box-sizing: border-box;
+    border-radius: 5px;
+    outline: none;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .date-inline-input:hover,
+  .time-inline-input:hover {
+    border-color: rgba(255, 255, 255, 0.25);
+    background: rgba(255, 255, 255, 0.08);
+  }
+
+  .date-inline-input:focus,
+  .time-inline-input:focus {
+    border-color: #3b82f6;
+    background: rgba(59, 130, 246, 0.1);
+    color: #ffffff;
+  }
+
+  .date-inline-input {
+    width: 108px;
+    padding: 0 4px;
+  }
+
+  .time-inline-input {
+    width: 98px;
+    padding: 0 2px 0 6px;
+  }
+
+  .date-inline-input::-webkit-calendar-picker-indicator,
+  .time-inline-input::-webkit-calendar-picker-indicator {
+    filter: invert(0.6);
+    cursor: pointer;
+    margin: 0 2px 0 0;
+    padding: 0;
+    width: 12px;
+    height: 12px;
+    opacity: 0.75;
+  }
+
+  .sender-info-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    width: 100%;
+    margin-top: 0.15rem;
+  }
+
+  .sender-info-chip {
+    font-size: 0.72rem;
+    color: var(--text-tertiary, #94a3b8);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    min-width: 0;
+    flex: 1;
   }
 
-  .amount-group {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
+  .badges-row {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
     flex-shrink: 0;
-    gap: 0.15rem;
   }
 
   .tx-amount {

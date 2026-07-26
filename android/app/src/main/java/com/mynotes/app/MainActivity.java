@@ -8,6 +8,7 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(SmsTransactionPlugin.class);
         registerPlugin(FileSaverPlugin.class);
+        registerPlugin(BrowserChooserPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }
