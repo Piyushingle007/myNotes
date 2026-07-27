@@ -647,22 +647,32 @@ class AppState {
     }
 
     const token = localStorage.getItem('mynotes_google_access_token');
+    const refreshToken = localStorage.getItem('mynotes_google_refresh_token');
     const expiry = Number(localStorage.getItem('mynotes_google_token_expiry') || '0');
     
-    if (token && Date.now() < expiry) {
-      console.log('Restoring Google Drive token from localStorage...');
-      this.syncService.setAccessToken(token);
+    if (token || refreshToken) {
+      console.log('Restoring Google Drive token / refresh_token from localStorage...');
+      if (token) this.syncService.setAccessToken(token);
+      if (refreshToken) this.syncService.setRefreshToken(refreshToken);
+      if (expiry) this.syncService.setTokenExpiry(expiry);
       this.googleConnected = true;
-      // Wait for Google SDK to load before validating the token and fetching user email
-      this.waitForGoogleSDK(5000).then(() => {
-        this.syncService.getUserEmail().then(email => {
+
+      // Wait for Google SDK to load before validating token or running background refresh
+      this.waitForGoogleSDK(5000).then(async () => {
+        try {
+          if ((!token || Date.now() >= expiry) && (refreshToken || typeof google !== 'undefined')) {
+            console.log('[appState] Access token expired or missing on startup. Attempting background token refresh...');
+            await this.syncService.refreshAccessToken();
+          }
+          const email = await this.syncService.getUserEmail();
           this.googleUserEmail = email;
-        }).catch(e => {
-          console.warn('Failed to refresh user email using restored token:', e);
+          this.googleConnected = true;
+        } catch (e: any) {
+          console.warn('Failed to validate or refresh token on startup:', e);
           if (e.message === 'UNAUTHORIZED' || (e.message && e.message.includes('401'))) {
             this.disconnectGoogleDrive();
           }
-        });
+        }
       }).catch(err => {
         console.warn('Google SDK load failed during token restore:', err);
       });
@@ -1053,6 +1063,7 @@ class AppState {
   async disconnectGoogleDrive(showModal: boolean = true) {
     this.syncService.clearToken();
     localStorage.removeItem('mynotes_google_access_token');
+    localStorage.removeItem('mynotes_google_refresh_token');
     localStorage.removeItem('mynotes_google_token_expiry');
     this.googleConnected = false;
     this.googleUserEmail = null;
