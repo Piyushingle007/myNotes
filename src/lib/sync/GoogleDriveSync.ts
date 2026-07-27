@@ -10,6 +10,8 @@ export interface DriveFileMeta {
 export class GoogleDriveSync {
   private clientId: string;
   private accessToken: string | null = null;
+  private refreshToken: string | null = null;
+  private tokenExpiry: number = 0;
   private folderId: string | null = null;
 
   constructor(clientId: string) {
@@ -22,6 +24,98 @@ export class GoogleDriveSync {
 
   clearToken() {
     this.accessToken = null;
+    this.refreshToken = null;
+    this.tokenExpiry = 0;
+  }
+
+  setRefreshToken(token: string | null) {
+    this.refreshToken = token;
+  }
+
+  getRefreshToken(): string | null {
+    return this.refreshToken;
+  }
+
+  setTokenExpiry(expiry: number) {
+    this.tokenExpiry = expiry;
+  }
+
+  isTokenExpired(): boolean {
+    if (!this.tokenExpiry) return false;
+    return Date.now() >= (this.tokenExpiry - 120 * 1000); // 2 min buffer
+  }
+
+  // Attempt background refresh using refresh_token or silent web prompt
+  async refreshAccessToken(): Promise<string> {
+    console.log('[GoogleDriveSync] Attempting background access token refresh...');
+
+    // 1. Try refresh_token via Google OAuth endpoint if available
+    if (this.refreshToken) {
+      try {
+        const body = new URLSearchParams({
+          client_id: this.clientId,
+          grant_type: 'refresh_token',
+          refresh_token: this.refreshToken,
+        });
+
+        const res = await fetch('https://oauth2.googleapis.com/token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: body.toString(),
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          if (data.access_token) {
+            this.accessToken = data.access_token;
+            this.tokenExpiry = Date.now() + (data.expires_in || 3600) * 1000;
+            if (data.refresh_token) {
+              this.refreshToken = data.refresh_token;
+              localStorage.setItem('mynotes_google_refresh_token', data.refresh_token);
+            }
+            localStorage.setItem('mynotes_google_access_token', data.access_token);
+            localStorage.setItem('mynotes_google_token_expiry', String(this.tokenExpiry));
+            console.log('[GoogleDriveSync] Access Token refreshed successfully via refresh_token.');
+            return data.access_token;
+          }
+        } else {
+          const errBody = await res.text().catch(() => '');
+          console.warn(`[GoogleDriveSync] Refresh token endpoint returned ${res.status}: ${errBody}`);
+        }
+      } catch (e) {
+        console.warn('[GoogleDriveSync] Failed to refresh token via OAuth endpoint:', e);
+      }
+    }
+
+    // 2. Fallback for Web Browser: Silent Token Request via Google Identity Services (prompt: 'none')
+    return new Promise((resolve, reject) => {
+      if (typeof google === 'undefined' || !google.accounts || !google.accounts.oauth2) {
+        return reject(new Error('Google Identity Services SDK not loaded'));
+      }
+
+      try {
+        const client = google.accounts.oauth2.initTokenClient({
+          client_id: this.clientId,
+          scope: 'https://www.googleapis.com/auth/drive.file',
+          callback: (response: any) => {
+            if (response.access_token) {
+              this.accessToken = response.access_token;
+              this.tokenExpiry = Date.now() + 3500 * 1000;
+              localStorage.setItem('mynotes_google_access_token', response.access_token);
+              localStorage.setItem('mynotes_google_token_expiry', String(this.tokenExpiry));
+              console.log('[GoogleDriveSync] Access Token acquired via silent prompt: none.');
+              resolve(response.access_token);
+            } else {
+              reject(new Error(response.error || 'Silent token refresh failed'));
+            }
+          },
+          error_callback: (err: any) => reject(err),
+        });
+        client.requestAccessToken({ prompt: 'none' });
+      } catch (err) {
+        reject(err);
+      }
+    });
   }
 
   // Initialize GIS and request token
@@ -40,6 +134,7 @@ export class GoogleDriveSync {
             onFailure(response);
           } else if (response.access_token) {
             this.accessToken = response.access_token;
+            this.tokenExpiry = Date.now() + 3500 * 1000;
             console.log('Access Token acquired successfully.');
             onSuccess(response.access_token);
           }
@@ -62,9 +157,18 @@ export class GoogleDriveSync {
     return !!this.accessToken;
   }
 
-  // Utility to make authenticated requests
+  // Utility to make authenticated requests with automatic token refresh
   private async apiCall(url: string, options: RequestInit = {}): Promise<Response> {
     console.log('Making Drive API Call to:', url.split('?')[0]);
+
+    if (!this.accessToken || this.isTokenExpired()) {
+      try {
+        await this.refreshAccessToken();
+      } catch (e) {
+        console.warn('[GoogleDriveSync] Pre-call token refresh attempt failed:', e);
+      }
+    }
+
     if (!this.accessToken) {
       console.error('No access token available before API call.');
       throw new Error('No access token available. Login first.');
@@ -73,11 +177,19 @@ export class GoogleDriveSync {
     const headers = new Headers(options.headers || {});
     headers.set('Authorization', `Bearer ${this.accessToken}`);
     
-    const res = await fetch(url, { ...options, headers });
+    let res = await fetch(url, { ...options, headers });
     if (res.status === 401) {
-      console.warn('Google API returned 401 Unauthorized.');
-      throw new Error('UNAUTHORIZED'); // Signals app state to refresh token
+      console.warn('Google API returned 401 Unauthorized. Attempting automatic token refresh...');
+      try {
+        const newToken = await this.refreshAccessToken();
+        headers.set('Authorization', `Bearer ${newToken}`);
+        res = await fetch(url, { ...options, headers });
+      } catch (e) {
+        console.error('[GoogleDriveSync] Token refresh after 401 failed:', e);
+        throw new Error('UNAUTHORIZED'); // Signals app state to refresh token
+      }
     }
+
     if (!res.ok) {
       const body = await res.text().catch(() => '');
       throw new Error(`Google API Error (${res.status}): ${body || res.statusText}`);
