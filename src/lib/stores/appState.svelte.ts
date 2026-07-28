@@ -657,25 +657,42 @@ class AppState {
       if (expiry) this.syncService.setTokenExpiry(expiry);
       this.googleConnected = true;
 
-      // Wait for Google SDK to load before validating token or running background refresh
-      this.waitForGoogleSDK(5000).then(async () => {
-        try {
-          if ((!token || Date.now() >= expiry) && (refreshToken || typeof google !== 'undefined')) {
-            console.log('[appState] Access token expired or missing on startup. Attempting background token refresh...');
-            await this.syncService.refreshAccessToken();
+      void this.restoreGoogleSession(token, refreshToken, expiry);
+    }
+  }
+
+  /**
+   * On startup, silently re-establish the Google session. On native (Android/iOS)
+   * the GIS SDK is unavailable, so we refresh purely via the stored refresh_token.
+   * On web we wait for the GIS SDK and use refresh_token or a silent prompt.
+   */
+  private async restoreGoogleSession(token: string | null, refreshToken: string | null, expiry: number): Promise<void> {
+    const needsRefresh = !token || Date.now() >= expiry;
+    try {
+      if (this.isNativePlatform) {
+        if (needsRefresh) {
+          if (!refreshToken) {
+            console.warn('[appState] Access token expired and no refresh token available on native. Re-login required.');
+            return;
           }
-          const email = await this.syncService.getUserEmail();
-          this.googleUserEmail = email;
-          this.googleConnected = true;
-        } catch (e: any) {
-          console.warn('Failed to validate or refresh token on startup:', e);
-          if (e.message === 'UNAUTHORIZED' || (e.message && e.message.includes('401'))) {
-            this.disconnectGoogleDrive();
-          }
+          console.log('[appState] Refreshing access token on native via refresh_token...');
+          await this.syncService.refreshAccessToken();
         }
-      }).catch(err => {
-        console.warn('Google SDK load failed during token restore:', err);
-      });
+      } else {
+        await this.waitForGoogleSDK(5000);
+        if (needsRefresh && (refreshToken || typeof google !== 'undefined')) {
+          console.log('[appState] Access token expired or missing on startup. Attempting background token refresh...');
+          await this.syncService.refreshAccessToken();
+        }
+      }
+      const email = await this.syncService.getUserEmail();
+      this.googleUserEmail = email;
+      this.googleConnected = true;
+    } catch (e: any) {
+      console.warn('Failed to validate or refresh token on startup:', e);
+      if (e?.message === 'UNAUTHORIZED' || (e?.message && e.message.includes('401'))) {
+        this.disconnectGoogleDrive();
+      }
     }
   }
 
@@ -896,31 +913,44 @@ class AppState {
   }
 
   async connectGoogleDriveMobile(tokenOrUrl: string): Promise<void> {
-    let token = tokenOrUrl.trim();
-    if (token.includes('access_token=')) {
-      const match = token.match(/access_token=([^&]+)/);
-      if (match) {
-        token = match[1];
-      }
+    const input = tokenOrUrl.trim();
+    if (!input) {
+      throw new Error('Could not find an authorization code in the pasted text.');
     }
-    
-    if (!token) {
-      throw new Error('Could not find access token in the pasted text.');
-    }
-    
+
     this.syncStatus = 'syncing';
     try {
-      this.syncService.setAccessToken(token);
+      const codeMatch = input.match(/[?&#]code=([^&]+)/);
+      if (codeMatch) {
+        // Authorization Code + PKCE flow → exchange for access + refresh tokens.
+        const code = decodeURIComponent(codeMatch[1]);
+        const verifier = localStorage.getItem('mynotes_pkce_verifier') || '';
+        if (!verifier) {
+          throw new Error('Your sign-in session expired. Please tap "Connect with Google" and try again.');
+        }
+        await this.syncService.exchangeCodeForTokens(code, verifier, this.googleRedirectUri);
+        localStorage.removeItem('mynotes_pkce_verifier');
+      } else {
+        // Legacy implicit-grant fallback: raw access token or access_token= URL.
+        let token = input;
+        if (token.includes('access_token=')) {
+          const match = token.match(/access_token=([^&]+)/);
+          if (match) token = match[1];
+        }
+        if (!token || token.includes('http')) {
+          throw new Error('Could not find an authorization code in the pasted text.');
+        }
+        this.syncService.setAccessToken(token);
+        localStorage.setItem('mynotes_google_access_token', token);
+        localStorage.setItem('mynotes_google_token_expiry', String(Date.now() + 3500 * 1000));
+      }
+
       const email = await this.syncService.getUserEmail();
-      
-      localStorage.setItem('mynotes_google_access_token', token);
-      localStorage.setItem('mynotes_google_token_expiry', String(Date.now() + 3500 * 1000));
-      
       this.googleUserEmail = email;
       this.setSyncEnabled(true);
       this.googleConnected = true;
       this.syncStatus = 'idle';
-      
+
       await this.syncNotes();
     } catch (e) {
       this.googleConnected = false;
@@ -938,12 +968,23 @@ class AppState {
     return typeof window !== 'undefined' && !!(window as any).Capacitor?.isNativePlatform?.();
   }
 
-  /** Build the Google implicit-grant OAuth URL for the mobile/browser flow. */
-  buildGoogleAuthUrl(): string {
+  /**
+   * Build the Google Authorization Code + PKCE OAuth URL for the mobile/browser
+   * flow. This returns a `refresh_token` (via access_type=offline + prompt=consent)
+   * so the user only has to sign in once. The PKCE verifier is persisted so the
+   * code can be exchanged after the browser round-trip.
+   */
+  async buildGoogleAuthUrl(): Promise<string> {
+    const { verifier, challenge } = await GoogleDriveSync.generatePkce();
+    localStorage.setItem('mynotes_pkce_verifier', verifier);
     return 'https://accounts.google.com/o/oauth2/v2/auth?client_id=' +
       encodeURIComponent(this.googleClientId) +
       '&redirect_uri=' + encodeURIComponent(this.googleRedirectUri) +
-      '&response_type=token&scope=' + encodeURIComponent('https://www.googleapis.com/auth/drive.file') +
+      '&response_type=code' +
+      '&scope=' + encodeURIComponent('https://www.googleapis.com/auth/drive.file') +
+      '&code_challenge=' + encodeURIComponent(challenge) +
+      '&code_challenge_method=S256' +
+      '&access_type=offline' +
       '&prompt=consent';
   }
 
@@ -972,7 +1013,7 @@ class AppState {
     await this.registerMobileAuthRedirectListener();
 
     // Hand off to BrowserChooserPlugin to open in preferred browser or system Custom Tab
-    const url = this.buildGoogleAuthUrl();
+    const url = await this.buildGoogleAuthUrl();
     try {
       if (this.isNativePlatform) {
         await BrowserChooserPlugin.openUrlWithChooser({ url, package: this.preferredBrowser });
@@ -1065,6 +1106,7 @@ class AppState {
     localStorage.removeItem('mynotes_google_access_token');
     localStorage.removeItem('mynotes_google_refresh_token');
     localStorage.removeItem('mynotes_google_token_expiry');
+    localStorage.removeItem('mynotes_pkce_verifier');
     this.googleConnected = false;
     this.googleUserEmail = null;
     this.setSyncEnabled(false);

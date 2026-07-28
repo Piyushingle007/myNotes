@@ -315,7 +315,7 @@
                 {#if isCapacitor}
                   <li>Go to <a href="https://console.cloud.google.com/" target="_blank" rel="noopener noreferrer" class="ms-link">Google Cloud Console</a> and create a project.</li>
                   <li>Enable <b>Google Drive API</b> and configure OAuth consent screen (External, add your email under Test Users).</li>
-                  <li>Create <b>OAuth Client ID</b> (Web Application, set Authorized Redirect URI to <code>http://localhost</code>).</li>
+                  <li>Create <b>OAuth Client ID</b> (Application Type: <b>Desktop app</b> — this lets myNotes stay logged in; no redirect URI setup needed).</li>
                   <li>Paste your Client ID above and tap <b>Connect with Google</b>.</li>
                   <li>After browser sign in, copy the full URL from the browser address bar (even if it says "site can't be reached"), paste it into "Sign-in didn't return automatically?", and tap <b>Verify &amp; Connect</b>!</li>
                 {:else}

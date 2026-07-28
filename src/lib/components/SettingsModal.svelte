@@ -299,7 +299,7 @@
               <ol class="helper-steps">
                 <li>Go to the <a href="https://console.cloud.google.com/" target="_blank" rel="noopener noreferrer" class="link-accent">Google Cloud Console</a>.</li>
                 {#if typeof window !== 'undefined' && (window as any).Capacitor}
-                  <li>Inside your OAuth Client ID, add the Redirect URI (currently <code>{appState.googleRedirectUri || 'http://localhost'}</code>) under <b>Authorized Redirect URIs</b>.</li>
+                  <li>Create an <b>OAuth Client ID</b> with <b>Application Type: Desktop app</b> (this lets myNotes stay logged in — no redirect URI setup is needed).</li>
                   <li>Enter your Client ID in the field above.</li>
                   <li>Click <b>Sign In via Browser</b>, sign in, copy the URL, paste it above, and click <b>Verify</b>.</li>
                 {:else}

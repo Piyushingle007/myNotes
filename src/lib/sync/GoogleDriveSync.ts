@@ -22,6 +22,67 @@ export class GoogleDriveSync {
     this.clientId = clientId;
   }
 
+  // ─────────────────────────── PKCE helpers ───────────────────────────
+  private static base64UrlEncode(bytes: Uint8Array): string {
+    let str = '';
+    for (let i = 0; i < bytes.length; i++) {
+      str += String.fromCharCode(bytes[i]);
+    }
+    return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+
+  // Generate a PKCE code_verifier and its S256 code_challenge.
+  static async generatePkce(): Promise<{ verifier: string; challenge: string }> {
+    const randomBytes = new Uint8Array(32);
+    crypto.getRandomValues(randomBytes);
+    const verifier = GoogleDriveSync.base64UrlEncode(randomBytes);
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier));
+    const challenge = GoogleDriveSync.base64UrlEncode(new Uint8Array(digest));
+    return { verifier, challenge };
+  }
+
+  // Exchange an authorization code (from the PKCE flow) for access + refresh tokens.
+  async exchangeCodeForTokens(code: string, codeVerifier: string, redirectUri: string): Promise<string> {
+    const body = new URLSearchParams({
+      client_id: this.clientId,
+      grant_type: 'authorization_code',
+      code,
+      code_verifier: codeVerifier,
+      redirect_uri: redirectUri,
+    });
+
+    const res = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: body.toString(),
+    });
+
+    if (!res.ok) {
+      const errBody = await res.text().catch(() => '');
+      throw new Error(`Token exchange failed (${res.status}): ${errBody || res.statusText}`);
+    }
+
+    const data = await res.json();
+    if (!data.access_token) {
+      throw new Error('Token exchange did not return an access token.');
+    }
+
+    this.accessToken = data.access_token;
+    this.tokenExpiry = Date.now() + (data.expires_in || 3600) * 1000;
+    localStorage.setItem('mynotes_google_access_token', data.access_token);
+    localStorage.setItem('mynotes_google_token_expiry', String(this.tokenExpiry));
+
+    if (data.refresh_token) {
+      this.refreshToken = data.refresh_token;
+      localStorage.setItem('mynotes_google_refresh_token', data.refresh_token);
+      console.log('[GoogleDriveSync] Refresh token acquired and stored.');
+    } else {
+      console.warn('[GoogleDriveSync] No refresh_token returned. Ensure access_type=offline and prompt=consent were used, and that the OAuth client is a public (Desktop app) client.');
+    }
+
+    return data.access_token;
+  }
+
   clearToken() {
     this.accessToken = null;
     this.refreshToken = null;
