@@ -283,12 +283,39 @@ export class GoogleDriveSync {
 
     const query = encodeURIComponent("mimeType = 'application/vnd.google-apps.folder' and name = 'MyNotes' and trashed = false");
     const searchUrl = `https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name)`;
-    
+
     const res = await this.apiCall(searchUrl);
     const data = await res.json();
-    
-    if (data.files && data.files.length > 0) {
-      this.folderId = data.files[0].id;
+    const candidates: Array<{ id: string; name: string }> = data.files || [];
+
+    if (candidates.length === 1) {
+      this.folderId = candidates[0].id;
+      return this.folderId!;
+    }
+
+    if (candidates.length > 1) {
+      // Multiple 'MyNotes' folders can exist (e.g. created by different OAuth
+      // client IDs). Pick the one that actually contains the most items so we
+      // don't sync into an empty duplicate and appear to "lose" the old data.
+      let best = candidates[0];
+      let bestCount = -1;
+      for (const folder of candidates) {
+        const childQuery = encodeURIComponent(`'${folder.id}' in parents and trashed = false`);
+        const childUrl = `https://www.googleapis.com/drive/v3/files?q=${childQuery}&fields=files(id)&pageSize=1000`;
+        try {
+          const childRes = await this.apiCall(childUrl);
+          const childData = await childRes.json();
+          const count = (childData.files || []).length;
+          if (count > bestCount) {
+            bestCount = count;
+            best = folder;
+          }
+        } catch {
+          // Ignore a failed count and keep scanning the remaining candidates.
+        }
+      }
+      console.log(`[GoogleDriveSync] Found ${candidates.length} 'MyNotes' folders; selected the one with the most items (${bestCount}).`);
+      this.folderId = best.id;
       return this.folderId!;
     }
 
