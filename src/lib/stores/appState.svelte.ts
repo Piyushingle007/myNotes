@@ -673,13 +673,13 @@ class AppState {
   private async restoreGoogleSession(token: string | null, refreshToken: string | null, expiry: number): Promise<void> {
     const needsRefresh = !token || Date.now() >= expiry;
     try {
-      if (this.isNativePlatform) {
+      if (this.isNativeOrDesktop) {
         if (needsRefresh) {
           if (!refreshToken) {
-            console.warn('[appState] Access token expired and no refresh token available on native. Re-login required.');
+            console.warn('[appState] Access token expired and no refresh token available on native/desktop. Re-login required.');
             return;
           }
-          console.log('[appState] Refreshing access token on native via refresh_token...');
+          console.log('[appState] Refreshing access token on native/desktop via refresh_token...');
           await this.syncService.refreshAccessToken();
         }
       } else {
@@ -979,6 +979,26 @@ class AppState {
   }
 
   /**
+   * True when running inside the Electron (Capacitor Community Electron) desktop
+   * shell. Detected via the preload-exposed OAuth bridge or the Capacitor
+   * platform id, both of which are only present in the Electron build.
+   */
+  get isElectronPlatform(): boolean {
+    if (typeof window === 'undefined') return false;
+    const w = window as any;
+    return !!w.electronGoogleOAuth || w.Capacitor?.getPlatform?.() === 'electron';
+  }
+
+  /**
+   * True on any packaged shell (Android/iOS native OR Electron desktop). These
+   * platforms cannot use the browser-only Google Identity Services SDK and rely
+   * on the Authorization Code + PKCE refresh-token flow instead.
+   */
+  private get isNativeOrDesktop(): boolean {
+    return this.isNativePlatform || this.isElectronPlatform;
+  }
+
+  /**
    * Build the Google Authorization Code + PKCE OAuth URL for the mobile/browser
    * flow. This returns a `refresh_token` (via access_type=offline + prompt=consent)
    * so the user only has to sign in once. The PKCE verifier is persisted so the
@@ -1111,6 +1131,68 @@ class AppState {
     this.clearMobileAuthRedirectListener();
   }
 
+  // ───────────────────── Desktop OAuth (Electron) ─────────────────────
+
+  /**
+   * Begin the Electron desktop Google sign-in flow. The main process runs a
+   * one-shot loopback server, opens the system browser to Google's consent
+   * screen (access_type=offline & prompt=consent) and returns the auth code.
+   * We then exchange it for access + refresh tokens — yielding the same
+   * long-lived refresh token as the Android flow so the user stays signed in.
+   */
+  async startDesktopGoogleAuth(): Promise<void> {
+    const bridge = (window as any).electronGoogleOAuth;
+    if (!bridge?.authorize) {
+      this.mobileAuthStep = 'error';
+      this.mobileAuthError = 'Desktop sign-in bridge is unavailable.';
+      return;
+    }
+    if (!this.googleClientId.trim()) {
+      this.mobileAuthStep = 'error';
+      this.mobileAuthError = 'Please enter your Google OAuth Client ID first.';
+      return;
+    }
+
+    this.mobileAuthError = null;
+    this.mobileAuthStep = 'awaiting';
+    this.syncStatus = 'syncing';
+
+    try {
+      const { verifier, challenge } = await GoogleDriveSync.generatePkce();
+      const result = await bridge.authorize({
+        clientId: this.googleClientId.trim(),
+        scope: 'https://www.googleapis.com/auth/drive',
+        codeChallenge: challenge,
+      });
+
+      if (!result || result.error || !result.code || !result.redirectUri) {
+        throw new Error(result?.error || 'Sign-in was cancelled or did not complete.');
+      }
+
+      this.mobileAuthStep = 'verifying';
+      // A Google "Desktop app" client requires the (non-confidential) secret at
+      // token exchange. Ensure the service has the latest values entered by the user.
+      this.syncService.setClientId(this.googleClientId.trim());
+      this.syncService.setClientSecret(this.googleClientSecret || null);
+
+      await this.syncService.exchangeCodeForTokens(result.code, verifier, result.redirectUri);
+
+      this.googleUserEmail = await this.syncService.getUserEmail();
+      this.setSyncEnabled(true);
+      this.googleConnected = true;
+      this.mobileAuthStep = 'idle';
+      this.syncStatus = 'idle';
+      this.showToast('Connected to Google Drive', 'success');
+
+      await this.syncNotes();
+    } catch (e: any) {
+      this.googleConnected = false;
+      this.mobileAuthStep = 'error';
+      this.mobileAuthError = e?.message || 'Failed to connect to Google Drive.';
+      this.syncStatus = 'error';
+    }
+  }
+
   async disconnectGoogleDrive(showModal: boolean = true) {
     this.syncService.clearToken();
     localStorage.removeItem('mynotes_google_access_token');
@@ -1129,6 +1211,11 @@ class AppState {
 
   async autoConnectGoogleDrive() {
     if (!this.googleClientId || !this.syncEnabled) return;
+
+    // Native (Android/iOS) and Electron desktop restore the session from the
+    // stored refresh_token (see restoreGoogleSession); the browser-only silent
+    // GIS prompt is unavailable there, so skip it.
+    if (this.isNativeOrDesktop) return;
     
     console.log('Attempting silent Google Drive reconnection...');
     this.syncStatus = 'syncing';

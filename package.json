@@ -11,9 +11,14 @@
     "cap:sync": "npx cap sync",
     "cap:open": "npx cap open android",
     "build:android": "npm run build && npx cap sync",
-    "build:apk": "npm run build && npx cap sync && cd android && ./gradlew assembleDebug && cp app/build/outputs/apk/debug/app-debug.apk ../mynotes.apk"
+    "build:apk": "npm run build && npx cap sync && cd android && ./gradlew assembleDebug && cp app/build/outputs/apk/debug/app-debug.apk ../mynotes.apk",
+    "build:electron": "npm run build && npx cap copy @capacitor-community/electron",
+    "mac:run": "npm run build:electron && cd electron && npm run electron:start",
+    "mac:pack": "npm run build:electron && cd electron && npm run electron:pack",
+    "mac:make": "npm run build:electron && cd electron && npm run electron:make"
   },
   "devDependencies": {
+    "@capacitor-community/electron": "^5.0.1",
     "@sveltejs/vite-plugin-svelte": "^7.1.2",
     "@tsconfig/svelte": "^5.0.8",
     "@types/jszip": "^3.4.0",
