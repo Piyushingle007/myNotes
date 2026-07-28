@@ -991,7 +991,7 @@ class AppState {
       encodeURIComponent(this.googleClientId) +
       '&redirect_uri=' + encodeURIComponent(this.googleRedirectUri) +
       '&response_type=code' +
-      '&scope=' + encodeURIComponent('https://www.googleapis.com/auth/drive.file') +
+      '&scope=' + encodeURIComponent('https://www.googleapis.com/auth/drive') +
       '&code_challenge=' + encodeURIComponent(challenge) +
       '&code_challenge_method=S256' +
       '&access_type=offline' +

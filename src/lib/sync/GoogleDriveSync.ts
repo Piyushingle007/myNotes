@@ -172,7 +172,7 @@ export class GoogleDriveSync {
       try {
         const client = google.accounts.oauth2.initTokenClient({
           client_id: this.clientId,
-          scope: 'https://www.googleapis.com/auth/drive.file',
+          scope: 'https://www.googleapis.com/auth/drive',
           callback: (response: any) => {
             if (response.access_token) {
               this.accessToken = response.access_token;
@@ -203,7 +203,7 @@ export class GoogleDriveSync {
     try {
       const client = google.accounts.oauth2.initTokenClient({
         client_id: this.clientId,
-        scope: 'https://www.googleapis.com/auth/drive.file',
+        scope: 'https://www.googleapis.com/auth/drive',
         callback: (response: any) => {
           console.log('Google OAuth Response:', response);
           if (response.error) {
@@ -494,7 +494,7 @@ export class GoogleDriveSync {
     });
   }
 
-  // Get user profile email using Drive about endpoint (already authorized by drive.file scope)
+  // Get user profile email using Drive about endpoint (already authorized by the drive scope)
   async getUserEmail(): Promise<string> {
     const url = 'https://www.googleapis.com/drive/v3/about?fields=user';
     const res = await this.apiCall(url);
