@@ -9,17 +9,26 @@ export interface DriveFileMeta {
 
 export class GoogleDriveSync {
   private clientId: string;
+  private clientSecret: string | null = null;
   private accessToken: string | null = null;
   private refreshToken: string | null = null;
   private tokenExpiry: number = 0;
   private folderId: string | null = null;
 
-  constructor(clientId: string) {
+  constructor(clientId: string, clientSecret: string | null = null) {
     this.clientId = clientId;
+    this.clientSecret = clientSecret;
   }
 
   setClientId(clientId: string) {
     this.clientId = clientId;
+  }
+
+  // For Google "Desktop app" (installed) OAuth clients, Google requires the
+  // client_secret in the token exchange even though it is explicitly documented
+  // as non-confidential for installed apps.
+  setClientSecret(clientSecret: string | null) {
+    this.clientSecret = clientSecret ? clientSecret.trim() : null;
   }
 
   // ─────────────────────────── PKCE helpers ───────────────────────────
@@ -50,6 +59,9 @@ export class GoogleDriveSync {
       code_verifier: codeVerifier,
       redirect_uri: redirectUri,
     });
+    if (this.clientSecret) {
+      body.set('client_secret', this.clientSecret);
+    }
 
     const res = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
@@ -118,6 +130,9 @@ export class GoogleDriveSync {
           grant_type: 'refresh_token',
           refresh_token: this.refreshToken,
         });
+        if (this.clientSecret) {
+          body.set('client_secret', this.clientSecret);
+        }
 
         const res = await fetch('https://oauth2.googleapis.com/token', {
           method: 'POST',

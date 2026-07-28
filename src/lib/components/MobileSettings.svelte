@@ -184,6 +184,21 @@
 
           {#if isCapacitor}
             <div class="ms-field flex-col">
+              <span class="ms-field-label">Google OAuth Client Secret</span>
+              <span class="ms-field-desc">From your <b>Desktop app</b> client. Required to stay permanently logged in.</span>
+              <input
+                type="text"
+                placeholder="Paste Client Secret (GOCSPX-...)"
+                value={appState.googleClientSecret}
+                oninput={(e) => appState.setClientSecret(e.currentTarget.value)}
+                disabled={appState.googleConnected}
+                class="ms-input"
+              />
+            </div>
+          {/if}
+
+          {#if isCapacitor}
+            <div class="ms-field flex-col">
               <span class="ms-field-label">OAuth Redirect URI</span>
               <span class="ms-field-desc">Use <code>mynotes://oauth</code> or <code>http://localhost</code></span>
               <input

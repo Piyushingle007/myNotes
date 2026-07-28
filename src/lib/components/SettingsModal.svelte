@@ -210,6 +210,22 @@
           {#if typeof window !== 'undefined' && (window as any).Capacitor}
             <div class="setting-row" style="flex-direction: column; align-items: stretch;">
               <div class="setting-info">
+                <span class="setting-label">Google OAuth Client Secret</span>
+                <span class="setting-desc">From your Desktop app client. Required to stay permanently logged in.</span>
+              </div>
+              <input
+                type="text"
+                placeholder="Paste Client Secret (GOCSPX-...)"
+                value={appState.googleClientSecret}
+                oninput={(e) => appState.setClientSecret(e.currentTarget.value)}
+                disabled={appState.googleConnected}
+                class="setting-input"
+                style="margin-top: var(--spacing-xs);"
+              />
+            </div>
+
+            <div class="setting-row" style="flex-direction: column; align-items: stretch;">
+              <div class="setting-info">
                 <span class="setting-label">OAuth Redirect URI</span>
                 <span class="setting-desc">For mobile authentication</span>
               </div>

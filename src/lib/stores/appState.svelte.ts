@@ -378,6 +378,7 @@ class AppState {
 
   // Google Drive Sync Reactive States
   googleClientId = $state<string>(localStorage.getItem('mynotes_google_client_id') || '');
+  googleClientSecret = $state<string>(localStorage.getItem('mynotes_google_client_secret') || '');
   googleRedirectUri = $state<string>(localStorage.getItem('mynotes_google_redirect_uri') || 'http://localhost');
   preferredBrowser = $state<string>(localStorage.getItem('mynotes_preferred_browser') || 'auto');
   googleConnected = $state<boolean>(false);
@@ -509,7 +510,10 @@ class AppState {
   }
 
   // Google Drive Sync Service (non-reactive class instance, token stored privately inside)
-  syncService = new GoogleDriveSync(localStorage.getItem('mynotes_google_client_id') || '');
+  syncService = new GoogleDriveSync(
+    localStorage.getItem('mynotes_google_client_id') || '',
+    localStorage.getItem('mynotes_google_client_secret') || null
+  );
 
   // Non-reactive helper variables
   private syncDebounceTimer: number | null = null;
@@ -810,6 +814,12 @@ class AppState {
     this.googleClientId = clientId.trim();
     localStorage.setItem('mynotes_google_client_id', this.googleClientId);
     this.syncService.setClientId(this.googleClientId);
+  }
+
+  setClientSecret(clientSecret: string) {
+    this.googleClientSecret = clientSecret.trim();
+    localStorage.setItem('mynotes_google_client_secret', this.googleClientSecret);
+    this.syncService.setClientSecret(this.googleClientSecret || null);
   }
 
   setRedirectUri(redirectUri: string) {

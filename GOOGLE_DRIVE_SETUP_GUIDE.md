@@ -91,8 +91,11 @@ Google requires you to set up a basic consent screen before creating credentials
    - **Name**: Leave as `Desktop client 1` (or change it if you like).
 4. Click the blue **CREATE** button at the bottom.
    - A Desktop app client automatically allows the `http://localhost` redirect used by myNotes — you do **not** need to add any redirect URIs manually.
-5. A pop-up titled **OAuth client created** will appear showing your **Client ID**.
+5. A pop-up titled **OAuth client created** will appear showing your **Client ID** and **Client secret**.
 6. Click the **Copy** icon next to your **Client ID** (it looks like `xxxxxxxxxxxx-xxxxxxxxxxxxxxxx.apps.googleusercontent.com`).
+7. Also copy your **Client secret** (it looks like `GOCSPX-xxxxxxxxxxxxxxxx`). You'll paste this into myNotes too.
+   > [!NOTE]
+   > For a **Desktop app** client, Google requires this secret during sign-in, but it is officially **not treated as confidential** for installed/desktop apps — so it's safe to store it in the app on your own device.
 
 ---
 
@@ -101,8 +104,9 @@ Google requires you to set up a basic consent screen before creating credentials
 1. Open the **myNotes** app on your phone.
 2. Go to **Settings** (gear icon) ➔ **Cloud Sync**.
 3. In the **Google OAuth Client ID** field, paste your copied Client ID.
-4. Make sure **OAuth Redirect URI** shows `http://localhost`.
-5. Tap the **Connect with Google** button.
+4. In the **Google OAuth Client Secret** field, paste your copied Client secret (`GOCSPX-...`).
+5. Make sure **OAuth Redirect URI** shows `http://localhost`.
+6. Tap the **Connect with Google** button.
 
 ### Finishing the Browser Sign-In:
 1. Your web browser will open showing the Google Sign-In page.
