@@ -238,13 +238,7 @@
 
                 <button
                   class="action-btn primary"
-                  onclick={() => {
-                    const url = "https://accounts.google.com/o/oauth2/v2/auth?client_id=" +
-                      encodeURIComponent(appState.googleClientId) +
-                      "&redirect_uri=" + encodeURIComponent(appState.googleRedirectUri) +
-                      "&response_type=token&scope=" + encodeURIComponent("https://www.googleapis.com/auth/drive.file");
-                    window.open(url, '_system');
-                  }}
+                  onclick={() => appState.startMobileGoogleAuth()}
                   disabled={!appState.googleClientId || !appState.googleRedirectUri}
                 >
                   1. Sign In via Browser
