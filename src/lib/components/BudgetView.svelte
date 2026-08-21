@@ -2,7 +2,7 @@
   import { appState, parseHtmlMetadata, generateHtmlNote } from '../stores/appState.svelte';
   import { BudgetAggregator, type CalcBoxRow } from '../services/BudgetAggregator';
   import { getRowNumbers, exportMultipleMetricsToXlsx, extractRowDate } from '../utils/exportMetricsXlsx';
-  import { Wallet, Landmark, TrendingUp, TrendingDown, ArrowUpRight, FileText, ChevronRight, ChevronDown, Plus, X, Check, Pin, ArrowUpDown, Download, RefreshCw, Edit3, Trash2, Settings, MessageSquare, Copy } from 'lucide-svelte';
+  import { Wallet, Landmark, TrendingUp, TrendingDown, ArrowUpRight, FileText, ChevronRight, ChevronDown, Plus, X, Check, Pin, ArrowUpDown, Download, RefreshCw, Edit3, Trash2, Settings, MessageSquare, Copy, Eye, EyeOff } from 'lucide-svelte';
   import { smsService } from '../services/smsService.svelte';
 
   // Local state for the active selected calculation box
@@ -37,6 +37,7 @@
   let transactionDate = $state(new Date().toISOString().split('T')[0]);
   let transactionTime = $state(new Date().toTimeString().slice(0, 5));
   let selectedTagIds = $state<string[]>([]);
+  let transactionExcluded = $state(false);
   let showTagDropdown = $state(false);
   let showBoxDropdown = $state(false);
   let showSortDropdown = $state(false);
@@ -53,6 +54,9 @@
   let sortedCalcTags = $derived(
     [...appState.calcTags].sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' }))
   );
+
+  // Hide summary cards - derived from selected box's data attribute (syncs via note content)
+  let hideSummaryCards = $derived(selectedBox?.hideSummary ?? false);
 
   const CALC_TAG_COLOR_PALETTE = [
     '#ef4444', '#f97316', '#eab308', '#22c55e',
@@ -269,17 +273,33 @@
     }
     // Apply sorting
     if (txSortBy !== 'default') {
-      rows = [...rows].sort((a, b) => {
+      // Track original indices so we can use insertion order as final tiebreaker
+      const indexed = rows.map((r, i) => ({ row: r, idx: i }));
+      indexed.sort((a, b) => {
         let cmp = 0;
         if (txSortBy === 'date') {
-          const da = a.date || '9999-99-99';
-          const db = b.date || '9999-99-99';
+          const da = a.row.date || '9999-99-99';
+          const db = b.row.date || '9999-99-99';
           cmp = da.localeCompare(db);
+          // Secondary sort by time when dates are equal
+          if (cmp === 0) {
+            const ta = a.row.time || '';
+            const tb = b.row.time || '';
+            // Only compare if at least one has time
+            if (ta || tb) {
+              cmp = (ta || '00:00').localeCompare(tb || '00:00');
+            }
+          }
+          // Final tiebreaker: original array position (later = more recent)
+          if (cmp === 0) {
+            cmp = a.idx - b.idx;
+          }
         } else if (txSortBy === 'amount') {
-          cmp = Math.abs(a.total) - Math.abs(b.total);
+          cmp = Math.abs(a.row.total) - Math.abs(b.row.total);
         }
         return txSortDir === 'asc' ? cmp : -cmp;
       });
+      rows = indexed.map(x => x.row);
     }
     return rows;
   });
@@ -493,7 +513,7 @@
     const dateVal = extractedDate !== '—' ? extractedDate : new Date().toISOString().split('T')[0];
 
     const timeMatch = label.match(/\b(\d{1,2}):(\d{2})\b/);
-    const timeVal = timeMatch ? `${timeMatch[1].padStart(2, '0')}:${timeMatch[2]}` : new Date().toTimeString().slice(0, 5);
+    const timeVal = timeMatch ? `${timeMatch[1].padStart(2, '0')}:${timeMatch[2]}` : '';
 
     let desc = label;
     // Remove date and time matches
@@ -535,6 +555,7 @@
     transactionAmount = parsed.amount;
     transactionType = parsed.type;
     selectedTagIds = [...row.tagIds];
+    transactionExcluded = row.checked;
 
     editingRowId = row.id;
     originalNotePath = selectedBox.noteId;
@@ -557,6 +578,7 @@
     selectedTagIds = [];
     transactionDate = new Date().toISOString().split('T')[0];
     transactionTime = new Date().toTimeString().slice(0, 5);
+    transactionExcluded = false;
   }
 
   // Open block settings modal with current values
@@ -570,6 +592,37 @@
     editBlockCurrency = selectedBox.currencyCode;
     editBlockExcludeChecked = selectedBox.excludeChecked;
     showBlockSettingsModal = true;
+  }
+  // Toggle hide summary on the selected box and save to note HTML (syncs via Drive)
+  async function toggleHideSummary() {
+    if (!selectedBox) return;
+    const newVal = !hideSummaryCards;
+    try {
+      const note = appState.notes.find(n => n.path === selectedBox.noteId);
+      if (!note) return;
+
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(note.content, 'text/html');
+      const block = doc.querySelector(`div[data-type="metrics"][data-id="${selectedBox.id}"], div[data-type="metrics"]#${selectedBox.id}`);
+      if (!block) return;
+
+      block.setAttribute('data-hide-summary', String(newVal));
+
+      const parsedNote = parseHtmlMetadata(note.content);
+      parsedNote.meta.modified = new Date().toISOString();
+      const updatedContent = generateHtmlNote(parsedNote.meta, doc.body.innerHTML);
+
+      note.content = updatedContent;
+      note.modified = Date.now();
+      await appState.storage.writeNote(selectedBox.noteId, updatedContent);
+      if (appState.activeNotePath === selectedBox.noteId) {
+        appState.activeNoteContent = updatedContent;
+      }
+      await appState.refreshNotes();
+      appState.triggerDebouncedSync();
+    } catch (e) {
+      console.error('Failed to toggle hide summary:', e);
+    }
   }
 
   // Save changes back to calculation box block inside note
@@ -698,7 +751,7 @@
     // Convert YYYY-MM-DD from the input value to YYYY-MM-DD HH:MM
     let datePart = '';
     if (transactionDate) {
-      datePart = `${transactionDate} ${transactionTime || '00:00'} `;
+      datePart = `${transactionDate} ${transactionTime || new Date().toTimeString().slice(0, 5)} `;
     }
 
     // Format description and amount
@@ -760,7 +813,7 @@
           const updatedRow = {
             id: editingRowId,
             label: fullLabel,
-            checked: false,
+            checked: transactionExcluded,
             tagIds: [...selectedTagIds]
           };
           targetRows.push(updatedRow);
@@ -799,6 +852,7 @@
             rows[idx] = {
               ...rows[idx],
               label: fullLabel,
+              checked: transactionExcluded,
               tagIds: [...selectedTagIds]
             };
           } else {
@@ -1155,6 +1209,23 @@
   </header>
 
   <!-- Summary Cards Grid -->
+  <div class="flex-row" style="justify-content: space-between; align-items: center; margin-bottom: var(--spacing-xs);">
+    <span style="font-size: 12px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px;">Summary</span>
+    <button 
+      type="button" 
+      class="panel-toggle-btn flex-row" 
+      style="background: none; border: none; cursor: pointer; color: var(--text-tertiary); padding: 4px;"
+      title={hideSummaryCards ? 'Show summary' : 'Hide summary'}
+      onclick={toggleHideSummary}
+    >
+      {#if hideSummaryCards}
+        <EyeOff size={14} />
+      {:else}
+        <Eye size={14} />
+      {/if}
+    </button>
+  </div>
+  {#if !hideSummaryCards}
   <section class="summary-cards-grid grid-layout">
     <!-- Total Inflow Card -->
     <div class="summary-card inflow-card flex-col">
@@ -1200,6 +1271,7 @@
       </div>
     </div>
   </section>
+  {/if}
 
   <!-- Double Column Layout -->
   <div class="budget-columns-layout flex-row">
@@ -1569,7 +1641,7 @@
                 </div>
                 <div class="flex-row" style="align-items: center; gap: 8px; font-size: 11px; color: var(--text-secondary); flex-wrap: wrap;">
                   {#if row.date && row.date !== '—'}
-                    <span class="row-date-badge" style="background: var(--bg-mid-dark); padding: 1px 6px; border-radius: 4px; font-size: 10px; border: 1px solid var(--border-color);">{row.date}</span>
+                    <span class="row-date-badge" style="background: var(--bg-mid-dark); padding: 1px 6px; border-radius: 4px; font-size: 10px; border: 1px solid var(--border-color);">{row.date}{#if row.time}&nbsp;{row.time}{/if}</span>
                   {/if}
                   {#if row.tagIds && row.tagIds.length > 0}
                     <div class="flex-row" style="gap: 4px; flex-wrap: wrap;">
@@ -1926,6 +1998,22 @@
         </div>
       </div>
     </div>
+
+    <!-- Exclude Transaction Toggle (only in edit mode) -->
+    {#if editingRowId}
+      <div class="form-group flex-row" style="align-items: center; gap: var(--spacing-sm); padding: 8px 12px; background: var(--bg-mid-dark); border-radius: var(--radius-standard); border: 1px solid var(--border-color);">
+        <input 
+          type="checkbox" 
+          id="trans-exclude"
+          checked={transactionExcluded}
+          onchange={(e) => { transactionExcluded = (e.target as HTMLInputElement).checked; }}
+          style="width: 16px; height: 16px; accent-color: var(--semantic-error); cursor: pointer;"
+        />
+        <label for="trans-exclude" style="font-size: 13px; color: var(--text-secondary); cursor: pointer; user-select: none;">
+          Exclude from totals
+        </label>
+      </div>
+    {/if}
 
     <!-- Modal Footer Actions -->
     <div class="modal-footer flex-row" style="justify-content: space-between; align-items: center; width: 100%;">

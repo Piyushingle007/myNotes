@@ -47,6 +47,7 @@
 	import NumbatBlock from './NumbatBlock.svelte';
 	import TldrawBlock from './TldrawBlock.svelte';
 	import Modal from './Modal.svelte';
+	import BottomSheet from './BottomSheet.svelte';
 	import { exportMultipleMetricsToXlsx, getRowNumbers, getCleanDescription, extractRowDate } from '../utils/exportMetricsXlsx';
 	import { renderDiagramSVG, decodeDiagram } from '../utils/diagram';
 	import ErrorBanner from './ErrorBanner.svelte';
@@ -1412,7 +1413,7 @@
 
 	// Bubble Menu
 	let bubbleMenuCoords = $state<{ x: number; y: number } | null>(null);
-	let showBubbleMenu = $derived(!!bubbleMenuCoords && !$readOnly && !$sourceMode);
+	let showBubbleMenu = $derived(!!bubbleMenuCoords && !$readOnly && !$sourceMode && !showMobileContextSheet && !showMobileFontSizeSheet && !showMobileFontSheet);
 
 	function updateBubbleMenu() {
 		if (!editor || editor.state.selection.empty || !(editor.state.selection instanceof TextSelection) || $readOnly || $sourceMode) {
@@ -1776,13 +1777,7 @@
 				description: 'Insert an inline calculation sheet',
 				aliases: ['cal', 'calc', 'metric', 'metrics', 'calculate', 'spreadsheet', 'cal block'],
 				icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2" ry="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="16" y1="14" x2="16" y2="18"/><path d="M16 10h.01"/><path d="M12 10h.01"/><path d="M8 10h.01"/><path d="M12 14h.01"/><path d="M8 14h.01"/><path d="M12 18h.01"/><path d="M8 18h.01"/></svg>',
-				action: () => editor?.chain().focus().insertContent({ type: 'metrics', attrs: { id: 'metrics_' + Math.random().toString(36).substring(2, 9), title: 'Cal Block', data: '[]', excludeChecked: false } }).command(({ tr }) => {
-					const { selection } = tr;
-					if (selection instanceof NodeSelection) {
-						tr.setSelection(TextSelection.near(tr.doc.resolve(selection.to)));
-					}
-					return true;
-				}).run(),
+				action: () => insertCalBox(),
 				category: 'insert',
 				badge: 'New'
 			},
@@ -2072,6 +2067,9 @@
 		return linkSuggestTitles.filter(e => e.title.toLowerCase().includes(q)).slice(0, 8);
 	});
 	let textContextMenu = $state<{ x: number; y: number } | null>(null);
+	let showMobileContextSheet = $state(false);
+	let showMobileFontSizeSheet = $state(false);
+	let showMobileFontSheet = $state(false);
 	let tableContextMenu = $state<{ x: number; y: number } | null>(null);
 	let tablePickerHover = $state({ rows: 0, cols: 0 });
 	let imageToolbar = $state<{ pos: number; x: number; y: number; size: string; src: string } | null>(null);
@@ -7308,17 +7306,10 @@
 
 	function handleEditorLongPress(e: CustomEvent<{ x: number; y: number }>) {
 		if (!isMobile) return;
-		const clientX = e.detail.x;
-		const clientY = e.detail.y;
-		const target = document.elementFromPoint(clientX, clientY) || editorElement;
-		const fakeEvent = {
-			preventDefault: () => {},
-			stopPropagation: () => {},
-			clientX,
-			clientY,
-			target
-		} as unknown as MouseEvent;
-		handleEditorContextMenu(fakeEvent);
+
+		// On mobile, use bottom sheet instead of dropdown context menu
+		bubbleMenuCoords = null;
+		showMobileContextSheet = true;
 	}
 
 	function handleEditorContextMenu(event: MouseEvent) {
@@ -7373,6 +7364,9 @@
 
 	function closeTextContextMenu() {
 		textContextMenu = null;
+		showMobileContextSheet = false;
+		showMobileFontSizeSheet = false;
+		showMobileFontSheet = false;
 		ctxHeadingSubmenu = false;
 	}
 
@@ -7479,6 +7473,30 @@
 		closeTextContextMenu();
 	}
 
+	function insertCalBox() {
+		if (!editor) return;
+		editor.chain().focus().insertContent({
+			type: 'metrics',
+			attrs: {
+				id: 'metrics_' + Math.random().toString(36).substring(2, 9),
+				title: 'Cal Block',
+				data: '[]',
+				excludeChecked: false
+			}
+		}).command(({ tr }) => {
+			const { selection } = tr;
+			if (selection instanceof NodeSelection) {
+				tr.setSelection(TextSelection.near(tr.doc.resolve(selection.to)));
+			}
+			return true;
+		}).run();
+	}
+
+	function ctxCalBox() {
+		insertCalBox();
+		closeTextContextMenu();
+	}
+
 	function ctxCode() {
 		editor?.chain().focus().toggleCode().run();
 		closeTextContextMenu();
@@ -7524,6 +7542,11 @@
 
 	function ctxDetails() {
 		insertDetails();
+		closeTextContextMenu();
+	}
+
+	function ctxHorizontalRule() {
+		editor?.chain().focus().setHorizontalRule().run();
 		closeTextContextMenu();
 	}
 
@@ -9382,13 +9405,7 @@
 								<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18"/><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/></svg>
 								Table
 							</button>
-							<button onclick={() => { insertDropdown = false; editor?.chain().focus().insertContent({ type: 'metrics', attrs: { id: 'metrics_' + Math.random().toString(36).substring(2, 9), title: 'Cal Block', data: '[]', excludeChecked: false } }).command(({ tr }) => {
-								const { selection } = tr;
-								if (selection instanceof NodeSelection) {
-									tr.setSelection(TextSelection.near(tr.doc.resolve(selection.to)));
-								}
-								return true;
-							}).run(); }}>
+							<button onclick={() => { insertDropdown = false; insertCalBox(); }}>
 								<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2" ry="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="16" y1="14" x2="16" y2="18"/><path d="M16 10h.01"/><path d="M12 10h.01"/><path d="M8 10h.01"/><path d="M12 14h.01"/><path d="M8 14h.01"/><path d="M12 18h.01"/><path d="M8 18h.01"/></svg>
 								Calculation Box
 							</button>
@@ -9486,7 +9503,7 @@
 
 				<!-- Font Family dropdown -->
 				<div class="fmt-dropdown-wrap">
-					<button class="fmt-btn font-select-btn" onclick={(e) => { e.stopPropagation(); fontDropdown = !fontDropdown; fontSizeDropdown = false; headingDropdown = false; colorDropdown = false; highlightDropdown = false; tablePickerOpen = false; alignDropdown = false; insertDropdown = false; }} title="Font Family">
+					<button class="fmt-btn font-select-btn" onclick={(e) => { e.stopPropagation(); if (isMobile) { showMobileFontSheet = true; fontDropdown = false; fontSizeDropdown = false; } else { fontDropdown = !fontDropdown; fontSizeDropdown = false; headingDropdown = false; colorDropdown = false; highlightDropdown = false; tablePickerOpen = false; alignDropdown = false; insertDropdown = false; } }} title="Font Family">
 						<svg class="font-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 							<polyline points="4 7 4 4 20 4 20 7"/>
 							<line x1="9" y1="20" x2="15" y2="20"/>
@@ -9495,7 +9512,7 @@
 						<span class="font-label">{activeFontLabel}</span>
 						<svg class="dropdown-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
 					</button>
-					{#if fontDropdown}
+					{#if fontDropdown && !isMobile}
 						<!-- svelte-ignore a11y_no_static_element_interactions -->
 						<div class="fmt-dropdown font-dropdown-list" onclick={(e) => e.stopPropagation()}>
 							<div class="font-options-container">
@@ -9531,7 +9548,7 @@
 
 				<!-- Font Size dropdown -->
 				<div class="fmt-dropdown-wrap">
-					<button class="fmt-btn font-select-btn" onclick={(e) => { e.stopPropagation(); fontSizeDropdown = !fontSizeDropdown; fontDropdown = false; headingDropdown = false; colorDropdown = false; highlightDropdown = false; tablePickerOpen = false; alignDropdown = false; insertDropdown = false; }} title="Font Size">
+					<button class="fmt-btn font-select-btn" onclick={(e) => { e.stopPropagation(); if (isMobile) { showMobileFontSizeSheet = true; fontSizeDropdown = false; fontDropdown = false; } else { fontSizeDropdown = !fontSizeDropdown; fontDropdown = false; headingDropdown = false; colorDropdown = false; highlightDropdown = false; tablePickerOpen = false; alignDropdown = false; insertDropdown = false; } }} title="Font Size">
 						<svg class="font-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 							<path d="M3 17L7 5L11 17" />
 							<path d="M5 13H9" />
@@ -9541,7 +9558,7 @@
 						<span class="font-label">{activeSizeLabel}</span>
 						<svg class="dropdown-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
 					</button>
-					{#if fontSizeDropdown}
+					{#if fontSizeDropdown && !isMobile}
 						<!-- svelte-ignore a11y_no_static_element_interactions -->
 						<div class="fmt-dropdown font-dropdown-list" onclick={(e) => e.stopPropagation()}>
 							<div class="font-options-container">
@@ -9725,13 +9742,7 @@
 				</div>
 
 				<!-- Calculation Box -->
-				<button class="fmt-btn" class:active={(editorState >= 0 && editor?.isActive('metrics'))} onclick={() => editor?.chain().focus().insertContent({ type: 'metrics', attrs: { id: 'metrics_' + Math.random().toString(36).substring(2, 9), title: 'Cal Block', data: '[]', excludeChecked: false } }).command(({ tr }) => {
-					const { selection } = tr;
-					if (selection instanceof NodeSelection) {
-						tr.setSelection(TextSelection.near(tr.doc.resolve(selection.to)));
-					}
-					return true;
-				}).run()} title="Calculation Box">
+				<button class="fmt-btn" class:active={(editorState >= 0 && editor?.isActive('metrics'))} onclick={() => insertCalBox()} title="Calculation Box">
 					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2" ry="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="16" y1="14" x2="16" y2="18"/><path d="M16 10h.01"/><path d="M12 10h.01"/><path d="M8 10h.01"/><path d="M12 14h.01"/><path d="M8 14h.01"/><path d="M12 18h.01"/><path d="M8 18h.01"/></svg>
 				</button>
 
@@ -10058,6 +10069,10 @@
 				<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 7.5V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h6"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="16" y1="2" x2="16" y2="6"/><circle cx="18" cy="17" r="4"/><path d="M18 15.5v1.5l1 1"/></svg>
 				Date &amp; Time
 			</button>
+			<button onclick={ctxHorizontalRule}>
+				<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14"/></svg>
+				Horizontal Rule
+			</button>
 			<div class="text-ctx-sep"></div>
 			<button onclick={ctxBulletList}>
 				<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><circle cx="3.5" cy="6" r="1.5" fill="currentColor"/><circle cx="3.5" cy="12" r="1.5" fill="currentColor"/><circle cx="3.5" cy="18" r="1.5" fill="currentColor"/></svg>
@@ -10081,6 +10096,218 @@
 		</div>
 	</div>
 {/if}
+
+<!-- Mobile Context Menu Bottom Sheet -->
+<BottomSheet show={showMobileContextSheet} onClose={() => { showMobileContextSheet = false; }} title="Edit Actions" maxHeight="70vh">
+	<div class="mobile-ctx-grid">
+		<div class="mobile-ctx-section">
+			<button class="mobile-ctx-btn" onclick={() => { ctxCut(); showMobileContextSheet = false; }}>
+				<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg>
+				<span>Cut</span>
+			</button>
+			<button class="mobile-ctx-btn" onclick={() => { ctxCopy(); showMobileContextSheet = false; }}>
+				<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+				<span>Copy</span>
+			</button>
+			<button class="mobile-ctx-btn" onclick={() => { ctxPaste(); showMobileContextSheet = false; }}>
+				<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>
+				<span>Paste</span>
+			</button>
+			<button class="mobile-ctx-btn" onclick={() => { ctxSelectAll(); showMobileContextSheet = false; }}>
+				<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 7h8M8 12h8M8 17h8"/></svg>
+				<span>Select All</span>
+			</button>
+		</div>
+		<div class="mobile-ctx-divider"></div>
+		<div class="mobile-ctx-section">
+			<button class="mobile-ctx-btn" onclick={() => { ctxBold(); showMobileContextSheet = false; }}>
+				<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><path d="M6 4h8a4 4 0 014 4 4 4 0 01-4 4H6zm0 8h9a4 4 0 014 4 4 4 0 01-4 4H6z"/></svg>
+				<span>Bold</span>
+			</button>
+			<button class="mobile-ctx-btn" onclick={() => { ctxItalic(); showMobileContextSheet = false; }}>
+				<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="4" x2="10" y2="4"/><line x1="14" y1="20" x2="5" y2="20"/><line x1="15" y1="4" x2="9" y2="20"/></svg>
+				<span>Italic</span>
+			</button>
+			<button class="mobile-ctx-btn" onclick={() => { ctxUnderline(); showMobileContextSheet = false; }}>
+				<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v7a6 6 0 006 6 6 6 0 006-6V3"/><line x1="4" y1="21" x2="20" y2="21"/></svg>
+				<span>Underline</span>
+			</button>
+			<button class="mobile-ctx-btn" onclick={() => { ctxStrike(); showMobileContextSheet = false; }}>
+				<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4H9a3 3 0 00-3 3 3 3 0 003 3h6"/><line x1="4" y1="12" x2="20" y2="12"/><path d="M8 20h7a3 3 0 003-3 3 3 0 00-3-3H8"/></svg>
+				<span>Strike</span>
+			</button>
+			<button class="mobile-ctx-btn" onclick={() => { ctxHighlight(); showMobileContextSheet = false; }}>
+				<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+				<span>Highlight</span>
+			</button>
+			<button class="mobile-ctx-btn" onclick={() => { showMobileContextSheet = false; showMobileFontSizeSheet = true; }}>
+				<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+					<path d="M3 17L7 5L11 17" />
+					<path d="M5 13H9" />
+					<path d="M12 17L15 9L18 17" />
+					<path d="M13.5 14.5H16.5" />
+				</svg>
+				<span>Font Size</span>
+			</button>
+			<button class="mobile-ctx-btn" onclick={() => { showMobileContextSheet = false; showMobileFontSheet = true; }}>
+				<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+					<polyline points="4 7 4 4 20 4 20 7"/>
+					<line x1="9" y1="20" x2="15" y2="20"/>
+					<line x1="12" y1="4" x2="12" y2="20"/>
+				</svg>
+				<span>Font Type</span>
+			</button>
+		</div>
+		<div class="mobile-ctx-divider"></div>
+		<div class="mobile-ctx-section">
+			<button class="mobile-ctx-btn" onclick={() => { ctxSetHeading(1); showMobileContextSheet = false; }}>
+				<span style="font-weight: 700; font-size: 16px;">H1</span>
+				<span>Heading 1</span>
+			</button>
+			<button class="mobile-ctx-btn" onclick={() => { ctxSetHeading(2); showMobileContextSheet = false; }}>
+				<span style="font-weight: 700; font-size: 14px;">H2</span>
+				<span>Heading 2</span>
+			</button>
+			<button class="mobile-ctx-btn" onclick={() => { ctxSetHeading(3); showMobileContextSheet = false; }}>
+				<span style="font-weight: 700; font-size: 13px;">H3</span>
+				<span>Heading 3</span>
+			</button>
+			<button class="mobile-ctx-btn" onclick={() => { ctxLink(); showMobileContextSheet = false; }}>
+				<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>
+				<span>Add Link</span>
+			</button>
+		</div>
+		<div class="mobile-ctx-divider"></div>
+		<div class="mobile-ctx-section">
+			<button class="mobile-ctx-btn" onclick={() => { ctxCalBox(); showMobileContextSheet = false; }}>
+				<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2" ry="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="16" y1="14" x2="16" y2="18"/><path d="M16 10h.01"/><path d="M12 10h.01"/><path d="M8 10h.01"/><path d="M12 14h.01"/><path d="M8 14h.01"/><path d="M12 18h.01"/><path d="M8 18h.01"/></svg>
+				<span>Cal Box</span>
+			</button>
+			<button class="mobile-ctx-btn" onclick={() => { ctxCodeBlock(); showMobileContextSheet = false; }}>
+				<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><polyline points="9 8 5 12 9 16"/><polyline points="15 8 19 12 15 16"/></svg>
+				<span>Code Block</span>
+			</button>
+			<button class="mobile-ctx-btn" onclick={() => { ctxBlockquote(); showMobileContextSheet = false; }}>
+				<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M3 6h4v4l-2 6H3l2-6H3V6zm10 0h4v4l-2 6h-2l2-6h-2V6z"/></svg>
+				<span>Quote</span>
+			</button>
+			<button class="mobile-ctx-btn" onclick={() => { ctxBulletList(); showMobileContextSheet = false; }}>
+				<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><circle cx="3.5" cy="6" r="1.5" fill="currentColor"/><circle cx="3.5" cy="12" r="1.5" fill="currentColor"/><circle cx="3.5" cy="18" r="1.5" fill="currentColor"/></svg>
+				<span>Bullet List</span>
+			</button>
+			<button class="mobile-ctx-btn" onclick={() => { ctxOrderedList(); showMobileContextSheet = false; }}>
+				<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="10" y1="6" x2="21" y2="6"/><line x1="10" y1="12" x2="21" y2="12"/><line x1="10" y1="18" x2="21" y2="18"/><text x="1" y="8" font-size="8" fill="currentColor" stroke="none" font-weight="600">1</text><text x="1" y="14" font-size="8" fill="currentColor" stroke="none" font-weight="600">2</text><text x="1" y="20" font-size="8" fill="currentColor" stroke="none" font-weight="600">3</text></svg>
+				<span>Numbered List</span>
+			</button>
+			<button class="mobile-ctx-btn" onclick={() => { ctxDetails(); showMobileContextSheet = false; }}>
+				<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><polyline points="10 8 14 12 10 16"/></svg>
+				<span>Collapsible</span>
+			</button>
+			<button class="mobile-ctx-btn" onclick={() => { ctxTimestamp(); showMobileContextSheet = false; }}>
+				<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 7.5V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h6"/><line x1="3" y1="10" x2="21" y2="10"/><circle cx="18" cy="17" r="4"/><path d="M18 15.5v1.5l1 1"/></svg>
+				<span>Date & Time</span>
+			</button>
+			<button class="mobile-ctx-btn" onclick={() => { ctxHorizontalRule(); showMobileContextSheet = false; }}>
+				<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14"/></svg>
+				<span>Divider</span>
+			</button>
+		</div>
+	</div>
+</BottomSheet>
+
+<!-- Mobile Font Size Bottom Sheet -->
+<BottomSheet show={showMobileFontSizeSheet} onClose={() => { showMobileFontSizeSheet = false; }} title="Font Size" maxHeight="70vh">
+	<div class="mobile-font-picker">
+		<div class="mobile-font-options">
+			<button 
+				class="mobile-font-opt" 
+				class:active={!editor?.getAttributes('textStyle').fontSize} 
+				onclick={() => { setFontSize(''); showMobileFontSizeSheet = false; }}
+			>
+				<span class="mobile-font-opt-label">Default Size (14px)</span>
+				{#if !editor?.getAttributes('textStyle').fontSize}
+					<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+				{/if}
+			</button>
+			{#each allSizes as size}
+				<div class="mobile-font-opt-row">
+					<button 
+						class="mobile-font-opt" 
+						class:active={editor?.getAttributes('textStyle').fontSize === size} 
+						onclick={() => { setFontSize(size); showMobileFontSizeSheet = false; }}
+					>
+						<span class="mobile-font-opt-label" style="font-size: {size};">{size}</span>
+						{#if editor?.getAttributes('textStyle').fontSize === size}
+							<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+						{/if}
+					</button>
+					{#if customSizes.includes(size)}
+						<button class="mobile-font-del-btn" onclick={() => removeCustomSize(size)} title="Remove custom size">
+							<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-tertiary)" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+						</button>
+					{/if}
+				</div>
+			{/each}
+		</div>
+		<div class="mobile-add-font-box">
+			<input 
+				type="text" 
+				class="mobile-font-input" 
+				placeholder="Add custom size (e.g. 15px)" 
+				bind:value={newSizeInput} 
+				onkeydown={(e) => { if (e.key === 'Enter') addCustomSize(); }} 
+			/>
+			<button class="mobile-font-add-btn" onclick={addCustomSize}>Add</button>
+		</div>
+	</div>
+</BottomSheet>
+
+<!-- Mobile Font Type Bottom Sheet -->
+<BottomSheet show={showMobileFontSheet} onClose={() => { showMobileFontSheet = false; }} title="Font Type" maxHeight="70vh">
+	<div class="mobile-font-picker">
+		<div class="mobile-font-options">
+			<button 
+				class="mobile-font-opt" 
+				class:active={!editor?.getAttributes('textStyle').fontFamily} 
+				onclick={() => { setFontFamily(''); showMobileFontSheet = false; }}
+			>
+				<span class="mobile-font-opt-label" style="font-family: inherit;">Default Font</span>
+				{#if !editor?.getAttributes('textStyle').fontFamily}
+					<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+				{/if}
+			</button>
+			{#each allFonts as font}
+				<div class="mobile-font-opt-row">
+					<button 
+						class="mobile-font-opt" 
+						class:active={editor?.getAttributes('textStyle').fontFamily === font.value} 
+						onclick={() => { setFontFamily(font.value); showMobileFontSheet = false; }}
+					>
+						<span class="mobile-font-opt-label" style="font-family: {font.value};">{font.name}</span>
+						{#if editor?.getAttributes('textStyle').fontFamily === font.value}
+							<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+						{/if}
+					</button>
+					{#if customFonts.some(f => f.name === font.name)}
+						<button class="mobile-font-del-btn" onclick={() => removeCustomFont(font.name)} title="Remove custom font">
+							<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-tertiary)" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+						</button>
+					{/if}
+				</div>
+			{/each}
+		</div>
+		<div class="mobile-add-font-box">
+			<input 
+				type="text" 
+				class="mobile-font-input" 
+				placeholder="Add custom font (e.g. Roboto)" 
+				bind:value={newFontInput} 
+				onkeydown={(e) => { if (e.key === 'Enter') addCustomFont(); }} 
+			/>
+			<button class="mobile-font-add-btn" onclick={addCustomFont}>Add</button>
+		</div>
+	</div>
+</BottomSheet>
 
 {#if tableContextMenu}
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -14479,6 +14706,153 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
+	}
+
+	/* Mobile context menu bottom sheet */
+	.mobile-ctx-grid {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+		padding: 4px 0;
+	}
+	.mobile-ctx-section {
+		display: grid;
+		grid-template-columns: repeat(4, 1fr);
+		gap: 4px;
+		padding: 0 4px;
+	}
+	.mobile-ctx-btn {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 4px;
+		padding: 10px 4px;
+		border: none;
+		background: var(--bg-mid-dark, #1a1a2e);
+		color: var(--text-primary);
+		border-radius: 10px;
+		cursor: pointer;
+		font-size: 11px;
+		min-height: 56px;
+		transition: background 0.15s;
+	}
+	.mobile-ctx-btn:active {
+		background: var(--accent-subtle, rgba(59, 130, 246, 0.15));
+	}
+	.mobile-ctx-btn span {
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		max-width: 100%;
+	}
+	.mobile-ctx-divider {
+		height: 1px;
+		background: var(--border-color);
+		margin: 4px 8px;
+	}
+
+	/* Mobile Font / Size Picker Bottom Sheets */
+	.mobile-font-picker {
+		display: flex;
+		flex-direction: column;
+		gap: 12px;
+		padding: 4px 0 12px;
+	}
+	.mobile-font-options {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+		max-height: 48vh;
+		overflow-y: auto;
+		-webkit-overflow-scrolling: touch;
+	}
+	.mobile-font-opt-row {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		width: 100%;
+	}
+	.mobile-font-opt {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 12px 14px;
+		min-height: 48px;
+		background: var(--bg-mid-dark, #1a1a2e);
+		border: 1px solid transparent;
+		border-radius: 10px;
+		color: var(--text-primary);
+		font-size: 14px;
+		cursor: pointer;
+		flex: 1;
+		transition: background 0.15s, border-color 0.15s;
+		text-align: left;
+	}
+	.mobile-font-opt:active {
+		background: var(--accent-subtle, rgba(59, 130, 246, 0.15));
+	}
+	.mobile-font-opt.active {
+		background: var(--accent-subtle, rgba(59, 130, 246, 0.15));
+		border-color: var(--accent, #3b82f6);
+		color: var(--accent, #3b82f6);
+		font-weight: 600;
+	}
+	.mobile-font-opt-label {
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.mobile-font-del-btn {
+		width: 44px;
+		height: 48px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		background: var(--bg-mid-dark, #1a1a2e);
+		border: none;
+		border-radius: 10px;
+		cursor: pointer;
+		flex-shrink: 0;
+	}
+	.mobile-font-del-btn:active {
+		background: rgba(239, 68, 68, 0.15);
+	}
+	.mobile-add-font-box {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding-top: 4px;
+		border-top: 1px solid var(--border-color);
+	}
+	.mobile-font-input {
+		flex: 1;
+		height: 42px;
+		padding: 0 12px;
+		background: var(--bg-primary);
+		border: 1px solid var(--border-color);
+		border-radius: 8px;
+		color: var(--text-primary);
+		font-size: 14px;
+		outline: none;
+	}
+	.mobile-font-input:focus {
+		border-color: var(--accent, #3b82f6);
+	}
+	.mobile-font-add-btn {
+		height: 42px;
+		padding: 0 16px;
+		background: var(--accent, #3b82f6);
+		color: white;
+		border: none;
+		border-radius: 8px;
+		font-size: 14px;
+		font-weight: 600;
+		cursor: pointer;
+		flex-shrink: 0;
+	}
+	.mobile-font-add-btn:active {
+		opacity: 0.85;
 	}
 
 	/* Text context menu */
