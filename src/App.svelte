@@ -5,8 +5,6 @@
   import AppLayout from './lib/components/AppLayout.svelte';
   import { FolderOpen, Play } from 'lucide-svelte';
   import GoogleLogo from './lib/components/GoogleLogo.svelte';
-  import { runTagDbTest } from './lib/storage/test_tag_db';
-  import { runTransactionAddTest } from './lib/storage/test_transaction_add';
   import TldrawView from './lib/components/TldrawView.svelte';
 
   let initializing = $state(true);
@@ -24,6 +22,8 @@
       } else if (__FEATURE_CANVAS__ && appState.editorMode === 'notebook') {
         newHash += '?mode=notebook';
       }
+    } else if (appState.activeTab === 'home') {
+      newHash = `#/home`;
     } else if (appState.activeTab === 'num') {
       newHash = `#/num`;
     } else if (appState.activeTab === 'draw') {
@@ -45,7 +45,8 @@
         newHash = `#/tags`;
       }
     } else {
-      newHash = `#/budget`;
+      const isApp = appState.isNativePlatform || appState.isElectronPlatform;
+      newHash = isApp ? `#/budget` : `#/home`;
     }
 
     if (window.location.hash !== newHash) {
@@ -128,8 +129,13 @@
           appState.activeTab = 'budget';
           appState.activeNotebook = null;
           appState.selectedTag = null;
+        } else if (hash === '#/home') {
+          appState.activeTab = 'home';
+          appState.activeNotebook = null;
+          appState.selectedTag = null;
         } else {
-          appState.activeTab = 'budget';
+          const isApp = appState.isNativePlatform || appState.isElectronPlatform;
+          appState.activeTab = isApp ? 'budget' : 'home';
           appState.activeNotebook = null;
           appState.selectedTag = null;
         }
