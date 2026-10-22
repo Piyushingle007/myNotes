@@ -1,14 +1,25 @@
 <script lang="ts">
   import Modal from './Modal.svelte';
-  import { appState, generateHtmlNote, parseHtmlMetadata } from '../stores/appState.svelte';
-  import { FileText, Clipboard, Plus, Upload, Code, Eye, EyeOff } from 'lucide-svelte';
+  import { appState, generateHtmlNote, parseHtmlMetadata, type ZipInspectionResult } from '../stores/appState.svelte';
+  import { FileText, Clipboard, Plus, Upload, Code, Eye, EyeOff, FolderArchive, Folder, AlertCircle, LoaderCircle } from 'lucide-svelte';
 
-  let activeTab = $state<'paste' | 'upload'>('paste');
+  let activeTab = $state<'paste' | 'upload' | 'zip'>('paste');
   let inputText = $state<string>('');
   let titleInput = $state<string>('Imported Document');
   let uploadedFileName = $state<string>('');
   let fileInputRef = $state<HTMLInputElement | null>(null);
   let isDragging = $state(false);
+
+  // ZIP Import State
+  let zipInputRef = $state<HTMLInputElement | null>(null);
+  let selectedZipFile = $state<File | null>(null);
+  let zipInspection = $state<ZipInspectionResult | null>(null);
+  let zipLoading = $state<boolean>(false);
+  let zipImporting = $state<boolean>(false);
+  let zipProgress = $state<{ current: number; total: number }>({ current: 0, total: 0 });
+  let selectedTargetFolder = $state<string>(appState.activeNotebook || '');
+  let isCreatingNewFolder = $state<boolean>(false);
+  let newFolderName = $state<string>('');
 
   // Preview & Format Badge States (Stories 3.1 & 3.2)
   let showPreview = $state(false);
@@ -51,7 +62,15 @@
   });
 
   $effect(() => {
-    if (!appState.showMarkdownImportModal) {
+    if (appState.showMarkdownImportModal) {
+      if (appState.markdownImportInitialTab) {
+        activeTab = appState.markdownImportInitialTab;
+        appState.markdownImportInitialTab = 'paste';
+      }
+      selectedTargetFolder = appState.activeNotebook || '';
+      isCreatingNewFolder = false;
+      newFolderName = '';
+    } else {
       // Reset state on close
       inputText = '';
       titleInput = 'Imported Document';
@@ -59,6 +78,11 @@
       activeTab = 'paste';
       showPreview = false;
       previewHtml = '';
+      selectedZipFile = null;
+      zipInspection = null;
+      zipLoading = false;
+      zipImporting = false;
+      zipProgress = { current: 0, total: 0 };
     }
   });
 
@@ -69,7 +93,22 @@
   function handleFileChange(e: Event) {
     const target = e.target as HTMLInputElement;
     const file = target?.files?.[0];
-    processFile(file);
+    if (file) {
+      if (file.name.toLowerCase().endsWith('.zip') || file.type.includes('zip')) {
+        activeTab = 'zip';
+        processZipFile(file);
+      } else {
+        processFile(file);
+      }
+    }
+  }
+
+  function handleZipFileChange(e: Event) {
+    const target = e.target as HTMLInputElement;
+    const file = target?.files?.[0];
+    if (file) {
+      processZipFile(file);
+    }
   }
 
   async function processFile(file: File | undefined) {
@@ -83,6 +122,27 @@
       inputText = text;
     } catch (err: any) {
       appState.showToast(`Failed to read file: ${err.message || err}`, 'error');
+    }
+  }
+
+  async function processZipFile(file: File | undefined) {
+    if (!file) return;
+    selectedZipFile = file;
+    zipLoading = true;
+    zipInspection = null;
+
+    try {
+      zipInspection = await appState.inspectMarkdownZip(file);
+      if (zipInspection.mdFiles.length === 0) {
+        appState.showToast('No .md or .markdown files found in this ZIP archive.', 'warning', 4000);
+      }
+    } catch (err: any) {
+      console.error('Failed to parse zip archive:', err);
+      appState.showToast(`Failed to parse ZIP archive: ${err.message || err}`, 'error', 4000);
+      zipInspection = null;
+      selectedZipFile = null;
+    } finally {
+      zipLoading = false;
     }
   }
 
@@ -101,10 +161,14 @@
     const file = e.dataTransfer?.files?.[0];
     if (file) {
       const nameLower = file.name.toLowerCase();
-      if (nameLower.endsWith('.md') || nameLower.endsWith('.html') || nameLower.endsWith('.htm') || nameLower.endsWith('.mf')) {
+      if (nameLower.endsWith('.zip') || file.type.includes('zip')) {
+        activeTab = 'zip';
+        processZipFile(file);
+      } else if (nameLower.endsWith('.md') || nameLower.endsWith('.html') || nameLower.endsWith('.htm') || nameLower.endsWith('.mf')) {
+        activeTab = 'upload';
         processFile(file);
       } else {
-        appState.showToast('Please upload a valid .md, .html, or .mf file.', 'warning');
+        appState.showToast('Please upload a valid .md, .html, .mf or .zip file.', 'warning');
       }
     }
   }
@@ -192,6 +256,51 @@
     }
   }
 
+  async function handleImportZip() {
+    if (!selectedZipFile || !zipInspection || zipInspection.mdFiles.length === 0) {
+      appState.showToast('No markdown files available to import.', 'warning');
+      return;
+    }
+
+    let targetFolder: string | null = null;
+    if (isCreatingNewFolder) {
+      const trimmed = newFolderName.trim();
+      if (!trimmed) {
+        appState.showToast('Please enter a name for the new folder.', 'warning');
+        return;
+      }
+      targetFolder = trimmed;
+    } else {
+      targetFolder = selectedTargetFolder.trim() || null;
+    }
+
+    zipImporting = true;
+    zipProgress = { current: 0, total: zipInspection.mdFiles.length };
+
+    try {
+      const result = await appState.importMarkdownZip(
+        selectedZipFile,
+        targetFolder,
+        (current, total) => {
+          zipProgress = { current, total };
+        }
+      );
+
+      const folderDisplay = result.targetFolder ? `folder "${result.targetFolder}"` : 'root workspace';
+      appState.showToast(
+        `Successfully imported ${result.importedCount} flat ${result.importedCount === 1 ? 'note' : 'notes'} into ${folderDisplay}!`,
+        'success',
+        4000
+      );
+      handleClose();
+    } catch (err: any) {
+      console.error('ZIP import error:', err);
+      appState.showToast(`Failed to import ZIP archive: ${err.message || err}`, 'error', 5000);
+    } finally {
+      zipImporting = false;
+    }
+  }
+
   function handleCopyHtml() {
     const content = inputText.trim();
     if (!content) {
@@ -241,7 +350,7 @@
           onclick={() => activeTab = 'paste'}
         >
           <Code size={14} />
-          <span>Paste Code (MD / HTML / MF)</span>
+          <span>Paste Code</span>
         </button>
         <button
           type="button"
@@ -249,117 +358,309 @@
           class:active={activeTab === 'upload'}
           onclick={() => activeTab = 'upload'}
         >
-          <Upload size={14} />
-          <span>Upload File (MD / HTML / MF)</span>
+          <FileText size={14} />
+          <span>Single File (.md, .html)</span>
+        </button>
+        <button
+          type="button"
+          class="tab-btn"
+          class:active={activeTab === 'zip'}
+          onclick={() => activeTab = 'zip'}
+        >
+          <FolderArchive size={14} />
+          <span>ZIP Archive (.zip)</span>
         </button>
       </div>
 
-      <!-- Main Input Section -->
-      <div class="md-input-section flex-col">
-        <!-- Title & Format Badge Row -->
-        <div class="input-header-row flex-row">
-          <div class="input-group flex-col" style="flex-grow: 1;">
-            <label for="md-title-input" class="input-label">Note Title</label>
-            <input
-              id="md-title-input"
-              type="text"
-              class="styled-text-input"
-              bind:value={titleInput}
-              placeholder="Enter note title..."
-            />
+      {#if activeTab === 'zip'}
+        <!-- ZIP Archive Tab View -->
+        <div class="zip-section flex-col">
+          {#if !zipInspection && !zipLoading}
+            <!-- ZIP Drop Zone -->
+            <!-- svelte-ignore a11y_no_static_element_interactions -->
+            <div
+              class="drop-zone flex-col zip-drop-zone"
+              class:dragging={isDragging}
+              onkeydown={(e) => { if (e.key === ' ' || e.key === 'Enter') zipInputRef?.click(); }}
+              onclick={() => zipInputRef?.click()}
+              ondragover={handleDragOver}
+              ondragleave={handleDragLeave}
+              ondrop={handleDrop}
+              role="button"
+              tabindex="0"
+              aria-label="Upload ZIP archive"
+            >
+              <input
+                type="file"
+                accept=".zip,application/zip,application/x-zip-compressed"
+                class="hidden-file-input"
+                bind:this={zipInputRef}
+                onchange={handleZipFileChange}
+              />
+              <div class="drop-zone-content flex-col">
+                <FolderArchive size={38} class="drop-icon zip-icon" />
+                <span class="drop-main">Click or Drag & Drop .zip Archive here</span>
+                <span class="drop-sub">Extracts all nested .md files directly into a targeted folder as flat notes</span>
+              </div>
+            </div>
+          {:else if zipLoading}
+            <div class="zip-loading-card flex-col">
+              <LoaderCircle size={28} class="spin-icon" style="color: var(--accent);" />
+              <span class="zip-loading-text">Analyzing ZIP archive...</span>
+              <span class="zip-loading-sub">Searching for all Markdown (.md) documents</span>
+            </div>
+          {:else if zipInspection}
+            <div class="zip-details-card flex-col">
+              <!-- Archive Header Bar -->
+              <div class="zip-header-bar flex-row">
+                <div class="flex-row" style="gap: var(--spacing-xs); flex-grow: 1; min-width: 0;">
+                  <FolderArchive size={20} style="color: var(--accent); flex-shrink: 0;" />
+                  <div class="flex-col" style="min-width: 0; align-items: flex-start;">
+                    <span class="zip-filename" title={zipInspection.zipName}>{zipInspection.zipName}</span>
+                    <span class="zip-stat-sub">
+                      {zipInspection.totalEntries} total {zipInspection.totalEntries === 1 ? 'entry' : 'entries'} in archive · <strong>{zipInspection.mdFiles.length} Markdown {zipInspection.mdFiles.length === 1 ? 'file' : 'files'} found</strong>
+                    </span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  class="btn-pill btn-pill-outline small flex-row"
+                  onclick={() => { selectedZipFile = null; zipInspection = null; }}
+                  disabled={zipImporting}
+                >
+                  Change ZIP
+                </button>
+              </div>
+
+              {#if zipInspection.mdFiles.length === 0}
+                <div class="empty-zip-warning flex-row">
+                  <AlertCircle size={18} style="color: var(--semantic-warning, #ffa42b); flex-shrink: 0;" />
+                  <span>No <code>.md</code> or <code>.markdown</code> files found in this archive. Please select a different zip file.</span>
+                </div>
+              {:else}
+                <!-- Target Folder Selector -->
+                <div class="target-folder-group flex-col">
+                  <div class="input-label flex-row" style="justify-content: space-between; width: 100%;">
+                    <span>Target Folder (Notebook)</span>
+                    <span class="target-badge">Flat Output Mode</span>
+                  </div>
+                  <div class="flex-row" style="gap: var(--spacing-xs); width: 100%;">
+                    <select
+                      id="zip-folder-select"
+                      class="styled-select"
+                      bind:value={selectedTargetFolder}
+                      onchange={() => { if (selectedTargetFolder !== '__new__') isCreatingNewFolder = false; else isCreatingNewFolder = true; }}
+                      disabled={zipImporting}
+                    >
+                      <option value="">📁 Root (Top-level / No Folder)</option>
+                      {#each appState.notebooks as nb}
+                        <option value={nb}>📁 {nb}</option>
+                      {/each}
+                      <option value="__new__">➕ Create New Folder...</option>
+                    </select>
+                  </div>
+
+                  {#if isCreatingNewFolder || selectedTargetFolder === '__new__'}
+                    <div class="new-folder-input-row flex-row" style="margin-top: var(--spacing-xs); width: 100%;">
+                      <input
+                        type="text"
+                        class="styled-text-input"
+                        placeholder="Enter new folder name (e.g. Imported Notes)..."
+                        bind:value={newFolderName}
+                        disabled={zipImporting}
+                      />
+                    </div>
+                  {/if}
+                </div>
+
+                <!-- Flattening Guarantee Notice -->
+                <div class="flat-guarantee-banner flex-row">
+                  <span class="guarantee-icon">⚡</span>
+                  <div class="flex-col" style="align-items: flex-start; gap: 2px;">
+                    <span class="guarantee-title">Flat Organization Guarantee</span>
+                    <span class="guarantee-desc">
+                      Even if files are nested in folders inside the zip, all {zipInspection.mdFiles.length} notes will be placed directly in 
+                      <strong>{isCreatingNewFolder ? (newFolderName.trim() || 'New Folder') : (selectedTargetFolder || 'Root Workspace')}</strong>. No subfolders will ever be created.
+                    </span>
+                  </div>
+                </div>
+
+                <!-- File List Preview -->
+                <div class="zip-files-preview flex-col">
+                  <div class="preview-files-header flex-row" style="justify-content: space-between;">
+                    <span>Markdown Files Found ({zipInspection.mdFiles.length})</span>
+                    <span style="font-size: 10px; color: var(--text-tertiary);">All will be saved flat</span>
+                  </div>
+                  <div class="zip-files-scroll">
+                    {#each zipInspection.mdFiles as file}
+                      <div class="zip-file-item flex-row">
+                        <FileText size={13} class="zip-item-icon" />
+                        <div class="flex-col" style="align-items: flex-start; min-width: 0; flex-grow: 1; gap: 1px;">
+                          <span class="zip-item-title">{file.title}.html</span>
+                          {#if file.originalPath !== file.filename}
+                            <span class="zip-item-path" title={file.originalPath}>zip path: {file.originalPath}</span>
+                          {/if}
+                        </div>
+                      </div>
+                    {/each}
+                  </div>
+                </div>
+
+                <!-- Progress Bar (while importing) -->
+                {#if zipImporting}
+                  <div class="import-progress-card flex-col">
+                    <div class="flex-row" style="justify-content: space-between; font-size: var(--font-size-xs); color: var(--text-secondary);">
+                      <span>Importing flat notes...</span>
+                      <span>{zipProgress.current} / {zipProgress.total}</span>
+                    </div>
+                    <div class="progress-bar-track">
+                      <div
+                        class="progress-bar-fill"
+                        style="width: {zipProgress.total > 0 ? (zipProgress.current / zipProgress.total) * 100 : 0}%;"
+                      ></div>
+                    </div>
+                  </div>
+                {/if}
+              {/if}
+            </div>
+          {/if}
+        </div>
+      {:else}
+        <!-- Main Input Section for Paste / Single File Upload -->
+        <div class="md-input-section flex-col">
+          <!-- Title & Format Badge Row -->
+          <div class="input-header-row flex-row">
+            <div class="input-group flex-col" style="flex-grow: 1;">
+              <label for="md-title-input" class="input-label">Note Title</label>
+              <input
+                id="md-title-input"
+                type="text"
+                class="styled-text-input"
+                bind:value={titleInput}
+                placeholder="Enter note title..."
+              />
+            </div>
+            {#if detectedFormat}
+              <div class="format-badge-container flex-col">
+                <span class="input-label">Format</span>
+                <span class="format-badge" class:badge-html={isHtml(inputText)}>
+                  {detectedFormat}
+                </span>
+              </div>
+            {/if}
           </div>
-          {#if detectedFormat}
-            <div class="format-badge-container flex-col">
-              <span class="input-label">Format</span>
-              <span class="format-badge" class:badge-html={isHtml(inputText)}>
-                {detectedFormat}
-              </span>
+
+          {#if activeTab === 'paste'}
+            <!-- Monospace Text Area -->
+            <div class="input-group flex-col">
+              <label for="md-textarea-input" class="input-label">Raw Code Content</label>
+              <textarea
+                id="md-textarea-input"
+                class="styled-textarea"
+                bind:value={inputText}
+                placeholder="# Markdown Heading&#10;Hello **world**!&#10;- Bullet items&#10;&#10;<!-- OR -->&#10;<h1>HTML Heading</h1>&#10;<p>Hello world</p>"
+              ></textarea>
+            </div>
+          {:else}
+            <!-- File Drop Zone -->
+            <!-- svelte-ignore a11y_no_static_element_interactions -->
+            <div
+              class="drop-zone flex-col"
+              class:dragging={isDragging}
+              onkeydown={(e) => { if (e.key === ' ' || e.key === 'Enter') triggerFileSelect(); }}
+              onclick={triggerFileSelect}
+              ondragover={handleDragOver}
+              ondragleave={handleDragLeave}
+              ondrop={handleDrop}
+              role="button"
+              tabindex="0"
+              aria-label="Upload document file"
+            >
+              <input
+                type="file"
+                accept=".md,.html,.htm,.mf,.zip,application/zip"
+                class="hidden-file-input"
+                bind:this={fileInputRef}
+                onchange={handleFileChange}
+              />
+              <div class="drop-zone-content flex-col">
+                <Upload size={32} class="drop-icon" />
+                {#if uploadedFileName}
+                  <span class="file-status-success">Selected: {uploadedFileName}</span>
+                  <span class="drop-sub">Click or drag another file to replace</span>
+                {:else}
+                  <span class="drop-main">Click or Drag & Drop File here</span>
+                  <span class="drop-sub">Accepts files ending with .md, .html, .htm, .mf, or .zip archive</span>
+                {/if}
+              </div>
             </div>
           {/if}
         </div>
 
-        {#if activeTab === 'paste'}
-          <!-- Monospace Text Area -->
-          <div class="input-group flex-col">
-            <label for="md-textarea-input" class="input-label">Raw Code Content</label>
-            <textarea
-              id="md-textarea-input"
-              class="styled-textarea"
-              bind:value={inputText}
-              placeholder="# Markdown Heading&#10;Hello **world**!&#10;- Bullet items&#10;&#10;<!-- OR -->&#10;<h1>HTML Heading</h1>&#10;<p>Hello world</p>"
-            ></textarea>
-          </div>
-        {:else}
-          <!-- File Drop Zone -->
-          <!-- svelte-ignore a11y_no_static_element_interactions -->
-          <div
-            class="drop-zone flex-col"
-            class:dragging={isDragging}
-            onkeydown={(e) => { if (e.key === ' ' || e.key === 'Enter') triggerFileSelect(); }}
-            onclick={triggerFileSelect}
-            ondragover={handleDragOver}
-            ondragleave={handleDragLeave}
-            ondrop={handleDrop}
-            role="button"
-            tabindex="0"
-            aria-label="Upload document file"
-          >
-            <input
-              type="file"
-              accept=".md,.html,.htm,.mf"
-              class="hidden-file-input"
-              bind:this={fileInputRef}
-              onchange={handleFileChange}
-            />
-            <div class="drop-zone-content flex-col">
-              <Upload size={32} class="drop-icon" />
-              {#if uploadedFileName}
-                <span class="file-status-success">Selected: {uploadedFileName}</span>
-                <span class="drop-sub">Click or drag another file to replace</span>
-              {:else}
-                <span class="drop-main">Click or Drag & Drop File here</span>
-                <span class="drop-sub">Accepts files ending with .md, .html, .htm, or .mf</span>
-              {/if}
-            </div>
-          </div>
-        {/if}
-      </div>
-
-      <!-- Live Preview Section (Story 3.1) -->
-      {#if inputText.trim()}
-        <div class="preview-section flex-col">
-          <!-- svelte-ignore a11y_no_static_element_interactions -->
-          <!-- svelte-ignore a11y_click_events_have_key_events -->
-          <div class="preview-header flex-row" onclick={() => showPreview = !showPreview}>
-            <div class="flex-row" style="gap: var(--spacing-xs);">
-              {#if showPreview}
-                <EyeOff size={14} class="preview-toggle-icon" />
-              {:else}
-                <Eye size={14} class="preview-toggle-icon" />
-              {/if}
-              <span class="preview-toggle-title">Live Preview</span>
-            </div>
-            <span class="preview-toggle-arrow" class:open={showPreview}>▸</span>
-          </div>
-
-          {#if showPreview}
-            <div class="preview-content-container flex-col">
-              <div class="preview-info-banner">
-                💡 Rendering preview using standard MyNotes editor styling.
+        <!-- Live Preview Section (Story 3.1) -->
+        {#if inputText.trim()}
+          <div class="preview-section flex-col">
+            <!-- svelte-ignore a11y_no_static_element_interactions -->
+            <!-- svelte-ignore a11y_click_events_have_key_events -->
+            <div class="preview-header flex-row" onclick={() => showPreview = !showPreview}>
+              <div class="flex-row" style="gap: var(--spacing-xs);">
+                {#if showPreview}
+                  <EyeOff size={14} class="preview-toggle-icon" />
+                {:else}
+                  <Eye size={14} class="preview-toggle-icon" />
+                {/if}
+                <span class="preview-toggle-title">Live Preview</span>
               </div>
-              <div class="preview-scroll-wrapper">
-                <div class="preview-body tiptap">
-                  {@html parseHtmlMetadata(previewHtml).content || previewHtml}
+              <span class="preview-toggle-arrow" class:open={showPreview}>▸</span>
+            </div>
+
+            {#if showPreview}
+              <div class="preview-content-container flex-col">
+                <div class="preview-info-banner">
+                  💡 Rendering preview using standard MyNotes editor styling.
+                </div>
+                <div class="preview-scroll-wrapper">
+                  <div class="preview-body tiptap">
+                    {@html parseHtmlMetadata(previewHtml).content || previewHtml}
+                  </div>
                 </div>
               </div>
-            </div>
-          {/if}
-        </div>
+            {/if}
+          </div>
+        {/if}
       {/if}
 
       <!-- Action Panel Buttons -->
       <div class="modal-action-row flex-row">
-        {#if inputText.trim()}
+        {#if activeTab === 'zip'}
+          <div style="flex-grow: 1;"></div>
+          <button
+            type="button"
+            class="btn-pill btn-pill-outline"
+            style="border-color: var(--border-color); color: var(--text-secondary);"
+            onclick={handleClose}
+            disabled={zipImporting}
+          >
+            Cancel
+          </button>
+          {#if zipInspection && zipInspection.mdFiles.length > 0}
+            <button
+              type="button"
+              class="btn-pill btn-pill-primary flex-row"
+              onclick={handleImportZip}
+              disabled={zipImporting || (isCreatingNewFolder && !newFolderName.trim())}
+              title="Import all extracted markdown notes"
+            >
+              {#if zipImporting}
+                <LoaderCircle size={14} class="spin-icon" />
+                <span>Importing ({zipProgress.current}/{zipProgress.total})...</span>
+              {:else}
+                <Plus size={14} />
+                <span>Import {zipInspection.mdFiles.length} {zipInspection.mdFiles.length === 1 ? 'Note' : 'Notes'}</span>
+              {/if}
+            </button>
+          {/if}
+        {:else if inputText.trim()}
           <button
             type="button"
             class="btn-pill btn-pill-outline flex-row"
@@ -520,6 +821,25 @@
     border-color: var(--accent);
   }
 
+  .styled-select {
+    width: 100%;
+    box-sizing: border-box;
+    background-color: var(--bg-mid-dark, #1f1f1f);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    padding: var(--spacing-xs) var(--spacing-sm);
+    font-family: inherit;
+    font-size: var(--font-size-sm);
+    border-radius: var(--radius-standard);
+    outline: none;
+    cursor: pointer;
+    transition: border-color 0.15s ease;
+  }
+
+  .styled-select:focus {
+    border-color: var(--accent);
+  }
+
   .styled-textarea {
     width: 100%;
     height: 180px;
@@ -597,6 +917,212 @@
     font-size: var(--font-size-sm);
   }
 
+  /* ZIP Section Styles */
+  .zip-section {
+    gap: var(--spacing-sm);
+    margin-top: 4px;
+  }
+
+  .zip-drop-zone {
+    padding: var(--spacing-2xl) var(--spacing-lg);
+  }
+
+  .zip-icon {
+    color: var(--accent);
+  }
+
+  .zip-loading-card {
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-standard);
+    background-color: var(--bg-mid-dark, #1f1f1f);
+    padding: var(--spacing-xl);
+    align-items: center;
+    gap: var(--spacing-xs);
+  }
+
+  .zip-loading-text {
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .zip-loading-sub {
+    font-size: var(--font-size-xs);
+    color: var(--text-tertiary);
+  }
+
+  .zip-details-card {
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-standard);
+    background-color: var(--bg-mid-dark, #1f1f1f);
+    padding: var(--spacing-md);
+    gap: var(--spacing-sm);
+  }
+
+  .zip-header-bar {
+    justify-content: space-between;
+    padding-bottom: var(--spacing-xs);
+    border-bottom: 1px solid var(--border-color);
+  }
+
+  .zip-filename {
+    font-weight: 700;
+    font-size: var(--font-size-sm);
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .zip-stat-sub {
+    font-size: var(--font-size-2xs);
+    color: var(--text-secondary);
+  }
+
+  .empty-zip-warning {
+    padding: var(--spacing-sm) var(--spacing-md);
+    background-color: color-mix(in srgb, var(--semantic-warning, #ffa42b) 10%, transparent);
+    border: 1px solid color-mix(in srgb, var(--semantic-warning, #ffa42b) 25%, transparent);
+    border-radius: var(--radius-standard);
+    gap: var(--spacing-xs);
+    font-size: var(--font-size-xs);
+    color: var(--text-primary);
+  }
+
+  .target-folder-group {
+    gap: 6px;
+    align-items: flex-start;
+  }
+
+  .target-badge {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    color: var(--accent);
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-weight: 700;
+  }
+
+  .flat-guarantee-banner {
+    background: color-mix(in srgb, var(--semantic-info, #539df5) 10%, transparent);
+    border: 1px solid color-mix(in srgb, var(--semantic-info, #539df5) 28%, transparent);
+    border-radius: var(--radius-standard);
+    padding: var(--spacing-xs) var(--spacing-sm);
+    gap: var(--spacing-sm);
+    align-items: flex-start;
+  }
+
+  .guarantee-icon {
+    font-size: 16px;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+
+  .guarantee-title {
+    font-size: var(--font-size-xs);
+    font-weight: 700;
+    color: var(--semantic-info, #539df5);
+  }
+
+  .guarantee-desc {
+    font-size: var(--font-size-2xs);
+    color: var(--text-secondary);
+    line-height: 1.4;
+  }
+
+  .zip-files-preview {
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-standard);
+    background-color: var(--bg-surface, #121212);
+    overflow: hidden;
+  }
+
+  .preview-files-header {
+    padding: 6px var(--spacing-sm);
+    background-color: rgba(255, 255, 255, 0.03);
+    font-size: var(--font-size-xs);
+    font-weight: 700;
+    color: var(--text-secondary);
+    border-bottom: 1px solid var(--border-color);
+  }
+
+  .zip-files-scroll {
+    max-height: 140px;
+    overflow-y: auto;
+    padding: var(--spacing-2xs) var(--spacing-xs);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .zip-file-item {
+    padding: 4px var(--spacing-2xs);
+    border-radius: var(--radius-subtle, 4px);
+    gap: var(--spacing-xs);
+    font-size: var(--font-size-xs);
+    align-items: flex-start;
+  }
+
+  .zip-file-item:hover {
+    background-color: rgba(255, 255, 255, 0.04);
+  }
+
+  .zip-item-icon {
+    color: var(--accent);
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+
+  .zip-item-title {
+    color: var(--text-primary);
+    font-weight: 600;
+    font-size: var(--font-size-xs);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .zip-item-path {
+    font-size: 10px;
+    color: var(--text-tertiary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .import-progress-card {
+    gap: 6px;
+    margin-top: 4px;
+    padding: var(--spacing-xs);
+    background-color: rgba(255, 255, 255, 0.02);
+    border-radius: var(--radius-standard);
+  }
+
+  .progress-bar-track {
+    width: 100%;
+    height: 6px;
+    background-color: var(--bg-mid-dark, #1f1f1f);
+    border-radius: 9999px;
+    overflow: hidden;
+  }
+
+  .progress-bar-fill {
+    height: 100%;
+    background-color: var(--accent);
+    transition: width 0.15s ease;
+  }
+
+  .spin-icon {
+    animation: spin 1s linear infinite;
+  }
+
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+
   /* Live Preview Styles */
   .preview-section {
     border: 1px solid var(--border-color);
@@ -662,7 +1188,6 @@
     font-size: 13.5px;
     line-height: 1.6;
     color: var(--text-primary);
-    /* TipTap styles overrides to look clean inside modal */
     word-break: break-word;
   }
 
@@ -690,15 +1215,26 @@
     box-sizing: border-box;
   }
 
+  .btn-pill.small {
+    padding: 4px 10px;
+    height: 28px;
+    font-size: var(--font-size-xs);
+  }
+
   .btn-pill-primary {
     background-color: var(--accent);
     border: none;
     color: #000000;
   }
 
-  .btn-pill-primary:hover {
+  .btn-pill-primary:hover:not(:disabled) {
     transform: scale(1.02);
     filter: brightness(1.05);
+  }
+
+  .btn-pill-primary:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
   }
 
   .btn-pill-outline {
@@ -707,8 +1243,13 @@
     color: var(--text-primary);
   }
 
-  .btn-pill-outline:hover {
+  .btn-pill-outline:hover:not(:disabled) {
     border-color: var(--text-primary);
     background-color: rgba(255, 255, 255, 0.05);
+  }
+
+  .btn-pill-outline:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
 </style>

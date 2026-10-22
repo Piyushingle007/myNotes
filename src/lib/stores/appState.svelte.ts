@@ -11,6 +11,20 @@ interface BrowserChooserPluginApi {
 }
 const BrowserChooserPlugin = registerPlugin<BrowserChooserPluginApi>('BrowserChooser');
 import { createMarkdownConverter } from '../utils/markdownConverter';
+import JSZip from 'jszip';
+
+export interface ZipMarkdownEntry {
+  originalPath: string;
+  filename: string;
+  title: string;
+  size: number;
+}
+
+export interface ZipInspectionResult {
+  zipName: string;
+  totalEntries: number;
+  mdFiles: ZipMarkdownEntry[];
+}
 
 declare const google: any;
 
@@ -231,6 +245,7 @@ class AppState {
   onForceSave = null as (() => Promise<void>) | null;
   lastRenamedPath = null as { oldPath: string; newPath: string } | null;
   showMarkdownImportModal = $state<boolean>(false);
+  markdownImportInitialTab = $state<'paste' | 'upload' | 'zip'>('paste');
 
   // ST-016: Confirmation Modal State
   showConfirmModal = $state<boolean>(false);
@@ -2791,6 +2806,147 @@ class AppState {
     }
 
     await this.createNoteFromHtml(parsedTitle, finalHtml, folder);
+  }
+
+  async inspectMarkdownZip(file: File | Blob, customName?: string): Promise<ZipInspectionResult> {
+    const zip = new JSZip();
+    const loadedZip = await zip.loadAsync(file);
+    const mdFiles: ZipMarkdownEntry[] = [];
+    let totalEntries = 0;
+
+    for (const [entryPath, entry] of Object.entries(loadedZip.files)) {
+      totalEntries++;
+      if (entry.dir) continue;
+      
+      // Filter out macOS resource forks, AppleDouble metadata, and hidden files
+      if (entryPath.startsWith('__MACOSX/') || entryPath.includes('/._') || entryPath.startsWith('._')) {
+        continue;
+      }
+      const rawFilename = entryPath.split('/').pop() || '';
+      if (!rawFilename || rawFilename.startsWith('.')) continue;
+
+      if (/\.(md|markdown)$/i.test(rawFilename)) {
+        const titleWithoutExt = rawFilename.replace(/\.(md|markdown)$/i, '').trim() || 'Untitled';
+        mdFiles.push({
+          originalPath: entryPath,
+          filename: rawFilename,
+          title: titleWithoutExt,
+          size: (entry as any)._data?.uncompressedSize || 0
+        });
+      }
+    }
+
+    mdFiles.sort((a, b) => a.title.localeCompare(b.title));
+
+    return {
+      zipName: (file as File).name || customName || 'archive.zip',
+      totalEntries,
+      mdFiles
+    };
+  }
+
+  async importMarkdownZip(
+    file: File | Blob,
+    targetFolder: string | null = null,
+    onProgress?: (processed: number, total: number) => void
+  ): Promise<{ importedCount: number; targetFolder: string | null; filenames: string[] }> {
+    const zip = new JSZip();
+    const loadedZip = await zip.loadAsync(file);
+
+    interface ValidEntry {
+      entryPath: string;
+      rawFilename: string;
+      title: string;
+      entry: any;
+    }
+
+    const validEntries: ValidEntry[] = [];
+    for (const [entryPath, entry] of Object.entries(loadedZip.files)) {
+      if (entry.dir) continue;
+      if (entryPath.startsWith('__MACOSX/') || entryPath.includes('/._') || entryPath.startsWith('._')) continue;
+      const rawFilename = entryPath.split('/').pop() || '';
+      if (!rawFilename || rawFilename.startsWith('.')) continue;
+
+      if (/\.(md|markdown)$/i.test(rawFilename)) {
+        const title = rawFilename.replace(/\.(md|markdown)$/i, '').trim() || 'Untitled';
+        validEntries.push({
+          entryPath,
+          rawFilename,
+          title,
+          entry
+        });
+      }
+    }
+
+    if (validEntries.length === 0) {
+      throw new Error('No .md or .markdown files found inside the ZIP archive.');
+    }
+
+    // Normalize target folder (null means root notes folder)
+    const folder = targetFolder?.trim() || null;
+    if (folder) {
+      try {
+        await this.storage.createDirectory(folder);
+      } catch (e) {
+        console.warn('Directory may already exist:', e);
+      }
+    }
+
+    // Ensure strictly FLAT destination paths in target folder (never nested subfolders)
+    const usedPaths = new Set(this.notes.map(n => n.path));
+    const importedFilenames: string[] = [];
+    let firstImportedPath: string | null = null;
+    let processed = 0;
+
+    for (const item of validEntries) {
+      const rawMarkdown = await item.entry.async('string');
+      const cleanTitle = item.title;
+
+      let version = 1;
+      let finalPath = folder ? `${folder}/${cleanTitle}.html` : `${cleanTitle}.html`;
+      while (usedPaths.has(finalPath)) {
+        finalPath = folder
+          ? `${folder}/${cleanTitle} (${version}).html`
+          : `${cleanTitle} (${version}).html`;
+        version++;
+      }
+      usedPaths.add(finalPath);
+
+      if (!firstImportedPath) {
+        firstImportedPath = finalPath;
+      }
+
+      // Convert markdown to note HTML with metadata
+      const htmlContent = this.convertMarkdownToHtml(cleanTitle, rawMarkdown);
+
+      // Write directly to storage
+      await this.storage.writeNote(finalPath, htmlContent);
+
+      importedFilenames.push(finalPath);
+      processed++;
+      if (onProgress) {
+        onProgress(processed, validEntries.length);
+      }
+    }
+
+    // Single unified refresh
+    await this.refreshNotes();
+    if (folder) {
+      this.activeNotebook = folder;
+    }
+    if (firstImportedPath) {
+      await this.selectNote(firstImportedPath);
+    }
+
+    if (this.syncEnabled && this.googleConnected) {
+      this.syncNotes();
+    }
+
+    return {
+      importedCount: validEntries.length,
+      targetFolder: folder,
+      filenames: importedFilenames
+    };
   }
 
   async createNotebookNote(title: string, folder: string | null = null) {

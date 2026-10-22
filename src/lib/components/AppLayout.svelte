@@ -13,7 +13,7 @@
     FileText, FolderPlus, Compass, ArrowRight, Settings,
     X, Cloud, RefreshCw, LogOut, Palette, ChevronRight, Menu, Folder,
     Trash2, FolderOpen, Edit3, BookOpen, FileDown, Download, FolderInput, Code,
-    Star, Calendar, FileSpreadsheet
+    Star, Calendar, FileSpreadsheet, FolderArchive
   } from 'lucide-svelte';
   import ResizeHandle from './ResizeHandle.svelte';
   import Modal from './Modal.svelte';
@@ -2127,11 +2127,19 @@
           </span>
         </button>
 
-        <button type="button" class="quick-create-row flex-row" onclick={() => { showQuickCreate = false; appState.showMarkdownImportModal = true; }}>
+        <button type="button" class="quick-create-row flex-row" onclick={() => { showQuickCreate = false; appState.markdownImportInitialTab = 'upload'; appState.showMarkdownImportModal = true; }}>
           <span class="quick-create-icon flex-row" style="background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent);"><FolderInput size={18} /></span>
           <span class="flex-col" style="align-items: flex-start; gap: 1px;">
             <span class="quick-create-label">Import Markdown</span>
-            <span class="quick-create-desc">Convert and import markdown content</span>
+            <span class="quick-create-desc">Convert and import markdown file/code</span>
+          </span>
+        </button>
+
+        <button type="button" class="quick-create-row flex-row" onclick={() => { showQuickCreate = false; appState.markdownImportInitialTab = 'zip'; appState.showMarkdownImportModal = true; }}>
+          <span class="quick-create-icon flex-row" style="background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent);"><FolderArchive size={18} /></span>
+          <span class="flex-col" style="align-items: flex-start; gap: 1px;">
+            <span class="quick-create-label">Import Markdown ZIP</span>
+            <span class="quick-create-desc">Batch extract all .md files flat into folder</span>
           </span>
         </button>
       </BottomSheet>
