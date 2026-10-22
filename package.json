@@ -1,7 +1,13 @@
 {
   "name": "mynotes",
-  "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
+  "description": "Privacy-first, local-first personal knowledge base, calculation notebook, and personal finance OS with Google Drive sync.",
+  "author": "Piyush Ingle",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Piyushingle007/myNotes.git"
+  },
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -15,7 +21,7 @@
     "build:electron": "npm run build && node -e \"fs.mkdirSync('electron/app', {recursive:true}); fs.cpSync('dist', 'electron/app', {recursive:true})\"",
     "mac:run": "npm run build:electron && cd electron && npm run electron:start",
     "mac:pack": "npm run build:electron && cd electron && npm run electron:pack",
-    "mac:make": "npm run build:electron && cd electron && npm run electron:make"
+    "mac:make": "npm run build:electron && cd electron && PYTHON_PATH=\"${PYTHON_PATH:-/usr/bin/python3}\" npm run electron:make"
   },
   "devDependencies": {
     "@capacitor-community/electron": "^5.0.1",

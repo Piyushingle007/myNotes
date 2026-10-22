@@ -1,4 +1,4 @@
-# Logs
+# Logs and debug artifacts
 logs
 *.log
 npm-debug.log*
@@ -7,18 +7,55 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Dependencies
 node_modules
 dist
 dist-ssr
+build
 *.local
 
-# Editor directories and files
+# Scratch and temporary testing files
+scratch/
+scratch_test*.js
+graphify-out/
+
+# Application binaries and packages
+*.apk
+*.aab
+*.dmg
+*.zip
+*.tar.gz
+
+# Electron build outputs
+electron/app
+electron/dist
+electron/build
+electron/node_modules
+
+# Tauri build artifacts (legacy)
+src-tauri/target/
+
+# Operating System files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Editor and IDE configurations
 .vscode/*
 !.vscode/extensions.json
 .idea
-.DS_Store
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
+*.orig
+
+# Environment variables
+.env
+.env.*
+!.env.example

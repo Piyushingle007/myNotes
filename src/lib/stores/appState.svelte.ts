@@ -7,7 +7,7 @@ import { registerPlugin } from '@capacitor/core';
 import MiniSearch from 'minisearch';
 
 interface BrowserChooserPluginApi {
-  openUrlWithChooser(opts: { url: string }): Promise<void>;
+  openUrlWithChooser(opts: { url: string; package?: string }): Promise<void>;
 }
 const BrowserChooserPlugin = registerPlugin<BrowserChooserPluginApi>('BrowserChooser');
 import { createMarkdownConverter } from '../utils/markdownConverter';
@@ -176,6 +176,14 @@ function parseFrontmatter(rawContent: string): { meta: any; content: string } {
   return { meta, content };
 }
 
+export function getInitialActiveTab(): 'home' | 'budget' {
+  if (typeof window === 'undefined') return 'home';
+  const w = window as any;
+  const isNative = !!w.Capacitor?.isNativePlatform?.();
+  const isElectron = !!w.electronGoogleOAuth || w.Capacitor?.getPlatform?.() === 'electron';
+  return (isNative || isElectron) ? 'budget' : 'home';
+}
+
 class AppState {
   private mdConverter = createMarkdownConverter();
 
@@ -199,7 +207,7 @@ class AppState {
   activeNoteContent = $state<string>('');
   activeNoteTitle = $state<string>('');
   activeNotebook = $state<string | null>(null);
-  activeTab = $state<'home' | 'search' | 'library' | 'num' | 'tags' | 'focus' | 'budget' | 'sms'>('budget');
+  activeTab = $state<'home' | 'search' | 'library' | 'num' | 'tags' | 'focus' | 'budget' | 'sms'>(getInitialActiveTab());
   favorites = $state<string[]>(JSON.parse(localStorage.getItem('mynotes_favorites') || '[]'));
   searchQuery = $state<string>('');
   showSettings = $state<boolean>(false);
@@ -974,7 +982,7 @@ class AppState {
   private mobileAuthListenerCleanup: (() => void) | null = null;
 
   /** True when running inside a native Capacitor shell (Android/iOS). */
-  private get isNativePlatform(): boolean {
+  get isNativePlatform(): boolean {
     return typeof window !== 'undefined' && !!(window as any).Capacitor?.isNativePlatform?.();
   }
 
