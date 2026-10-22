@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="public/logo.svg" alt="myNotes Logo" width="240" />
+  <img src="public/app-icon.png" alt="myNotes App Icon" width="150" />
 </p>
 
 <h1 align="center">myNotes</h1>
@@ -361,6 +361,10 @@ npm run mac:make
 ---
 
 ## 🔑 Google Drive Cloud Sync Setup
+
+> [!NOTE]
+> **Why do I need to set up my own Google Cloud app?**  
+> I know it's a headache and annoying, but unfortunately it is the only way to get true cross-platform sync completely for free! Because you connect directly to your own Google Cloud project, there are no monthly subscription paywalls, no third-party database servers, and you retain 100% ownership of your personal data. Once configured (takes ~3 minutes), it's a one-time setup and syncs seamlessly forever.
 
 myNotes connects directly to your own Google Cloud OAuth application—ensuring total ownership of your credentials and files.
 

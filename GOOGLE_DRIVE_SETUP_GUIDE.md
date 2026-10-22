@@ -3,9 +3,12 @@
 Welcome! This step-by-step guide will walk you through setting up **Google Drive Cloud Sync** for **myNotes**, even if you have zero technical knowledge or have never used Google Cloud before.
 
 > [!NOTE]
+> **I know it's a headache and annoying, but unfortunately it is the only way to get true cross-platform sync completely for free!**  
+> Because you create your own private Google Cloud project, there are no subscription paywalls, no third-party database servers, and no middleman holding your personal data. You get 100% data ownership.
+>
 > **Is this safe?** Yes! You are creating your own private Google Cloud project. **myNotes** can only access files that it creates in your Google Drive. None of your data is sent to any third-party server.
 >
-> **Do I have to do this every time?** **No!** This is a **one-time setup**. Once connected, your notes and budget dashboards will automatically sync in the background whenever you make changes.
+> **Do I have to do this every time?** **No!** This is a **one-time setup** (takes ~3–5 minutes). Once connected, your notes and budget dashboards will automatically sync in the background whenever you make changes.
 
 ---
 
