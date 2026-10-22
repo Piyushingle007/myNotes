@@ -1,13 +1,10 @@
 name: Deploy to GitHub Pages
 
 on:
-  # Auto-trigger on a push to ANY branch, but the "gate" job below decides whether
-  # to actually deploy: it only proceeds if the pushed branch is the currently
-  # "active" deployed branch (or main).
+  # Auto-trigger only on pushes to main
   push:
-    branches: ['**']
-  # Manual deploy of a specific branch from the Actions tab. Running this also marks
-  # that branch as the active deployed branch, so future pushes to it auto-deploy.
+    branches: ['main']
+  # Manual deploy of a specific branch from the Actions tab.
   workflow_dispatch:
     inputs:
       branch:

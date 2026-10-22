@@ -8331,28 +8331,6 @@
 					<span>Search Notes</span>
 				</button>
 			</div>
-
-			<div class="shortcuts-card flex-col">
-				<span class="shortcuts-title">Keyboard Shortcuts</span>
-				<div class="shortcuts-list flex-col">
-					<div class="shortcut-row flex-row">
-						<span class="shortcut-label">Create new note</span>
-						<div class="shortcut-keys"><kbd>{modKey}</kbd> + <kbd>N</kbd></div>
-					</div>
-					<div class="shortcut-row flex-row">
-						<span class="shortcut-label">Open search palette</span>
-						<div class="shortcut-keys"><kbd>{modKey}</kbd> + <kbd>P</kbd></div>
-					</div>
-					<div class="shortcut-row flex-row">
-						<span class="shortcut-label">Focus search input</span>
-						<div class="shortcut-keys"><kbd>{modKey}</kbd> + <kbd>K</kbd></div>
-					</div>
-					<div class="shortcut-row flex-row">
-						<span class="shortcut-label">Cycle active panels</span>
-						<div class="shortcut-keys"><kbd>F6</kbd></div>
-					</div>
-				</div>
-			</div>
 		</div>
 	{:else}
 		{#if $viewerNote}
@@ -11736,71 +11714,6 @@
 		z-index: 1;
 	}
 
-	.shortcuts-card {
-		display: flex;
-		flex-direction: column;
-		background: color-mix(in srgb, var(--bg-surface) 60%, transparent);
-		border: 1px solid var(--border-color);
-		backdrop-filter: blur(8px);
-		border-radius: var(--radius-comfortable, 8px);
-		padding: var(--spacing-md);
-		width: 100%;
-		max-width: 320px;
-		margin-top: var(--spacing-lg);
-		gap: var(--spacing-xs);
-		box-shadow: var(--shadow-subtle, 0 4px 12px rgba(0,0,0,0.1));
-		z-index: 1;
-		transition: border-color 0.2s;
-	}
-
-	.shortcuts-card:hover {
-		border-color: color-mix(in srgb, var(--text-primary) 12%, transparent);
-	}
-
-	.shortcuts-title {
-		font-size: var(--font-size-xs);
-		font-weight: 700;
-		color: var(--text-secondary);
-		text-transform: uppercase;
-		letter-spacing: 0.5px;
-		text-align: left;
-	}
-
-	.shortcuts-list {
-		display: flex;
-		flex-direction: column;
-		gap: var(--spacing-xs);
-	}
-
-	.shortcut-row {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		gap: var(--spacing-md);
-	}
-
-	.shortcut-label {
-		font-size: var(--font-size-xs);
-		color: var(--text-tertiary);
-		text-align: left;
-	}
-
-	.shortcut-keys {
-		display: flex;
-		gap: var(--spacing-3xs);
-		align-items: center;
-	}
-
-	.shortcut-keys kbd {
-		background: var(--bg-mid-dark, rgba(255, 255, 255, 0.05));
-		border: 1px solid var(--border-color);
-		border-radius: var(--radius-subtle, 4px);
-		padding: var(--spacing-3xs) var(--spacing-2xs);
-		font-size: 10px;
-		font-family: var(--font-mono, monospace);
-		color: var(--text-secondary);
-		box-shadow: 0 1px 0 var(--border-color);
-	}
 
 	.editor-toolbar {
 		display: flex;
