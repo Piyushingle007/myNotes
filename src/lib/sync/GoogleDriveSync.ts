@@ -9,17 +9,90 @@ export interface DriveFileMeta {
 
 export class GoogleDriveSync {
   private clientId: string;
+  private clientSecret: string | null = null;
   private accessToken: string | null = null;
   private refreshToken: string | null = null;
   private tokenExpiry: number = 0;
   private folderId: string | null = null;
 
-  constructor(clientId: string) {
+  constructor(clientId: string, clientSecret: string | null = null) {
     this.clientId = clientId;
+    this.clientSecret = clientSecret;
   }
 
   setClientId(clientId: string) {
     this.clientId = clientId;
+  }
+
+  // For Google "Desktop app" (installed) OAuth clients, Google requires the
+  // client_secret in the token exchange even though it is explicitly documented
+  // as non-confidential for installed apps.
+  setClientSecret(clientSecret: string | null) {
+    this.clientSecret = clientSecret ? clientSecret.trim() : null;
+  }
+
+  // ─────────────────────────── PKCE helpers ───────────────────────────
+  private static base64UrlEncode(bytes: Uint8Array): string {
+    let str = '';
+    for (let i = 0; i < bytes.length; i++) {
+      str += String.fromCharCode(bytes[i]);
+    }
+    return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+
+  // Generate a PKCE code_verifier and its S256 code_challenge.
+  static async generatePkce(): Promise<{ verifier: string; challenge: string }> {
+    const randomBytes = new Uint8Array(32);
+    crypto.getRandomValues(randomBytes);
+    const verifier = GoogleDriveSync.base64UrlEncode(randomBytes);
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier));
+    const challenge = GoogleDriveSync.base64UrlEncode(new Uint8Array(digest));
+    return { verifier, challenge };
+  }
+
+  // Exchange an authorization code (from the PKCE flow) for access + refresh tokens.
+  async exchangeCodeForTokens(code: string, codeVerifier: string, redirectUri: string): Promise<string> {
+    const body = new URLSearchParams({
+      client_id: this.clientId,
+      grant_type: 'authorization_code',
+      code,
+      code_verifier: codeVerifier,
+      redirect_uri: redirectUri,
+    });
+    if (this.clientSecret) {
+      body.set('client_secret', this.clientSecret);
+    }
+
+    const res = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: body.toString(),
+    });
+
+    if (!res.ok) {
+      const errBody = await res.text().catch(() => '');
+      throw new Error(`Token exchange failed (${res.status}): ${errBody || res.statusText}`);
+    }
+
+    const data = await res.json();
+    if (!data.access_token) {
+      throw new Error('Token exchange did not return an access token.');
+    }
+
+    this.accessToken = data.access_token;
+    this.tokenExpiry = Date.now() + (data.expires_in || 3600) * 1000;
+    localStorage.setItem('mynotes_google_access_token', data.access_token);
+    localStorage.setItem('mynotes_google_token_expiry', String(this.tokenExpiry));
+
+    if (data.refresh_token) {
+      this.refreshToken = data.refresh_token;
+      localStorage.setItem('mynotes_google_refresh_token', data.refresh_token);
+      console.log('[GoogleDriveSync] Refresh token acquired and stored.');
+    } else {
+      console.warn('[GoogleDriveSync] No refresh_token returned. Ensure access_type=offline and prompt=consent were used, and that the OAuth client is a public (Desktop app) client.');
+    }
+
+    return data.access_token;
   }
 
   clearToken() {
@@ -57,6 +130,9 @@ export class GoogleDriveSync {
           grant_type: 'refresh_token',
           refresh_token: this.refreshToken,
         });
+        if (this.clientSecret) {
+          body.set('client_secret', this.clientSecret);
+        }
 
         const res = await fetch('https://oauth2.googleapis.com/token', {
           method: 'POST',
@@ -96,7 +172,7 @@ export class GoogleDriveSync {
       try {
         const client = google.accounts.oauth2.initTokenClient({
           client_id: this.clientId,
-          scope: 'https://www.googleapis.com/auth/drive.file',
+          scope: 'https://www.googleapis.com/auth/drive',
           callback: (response: any) => {
             if (response.access_token) {
               this.accessToken = response.access_token;
@@ -127,7 +203,7 @@ export class GoogleDriveSync {
     try {
       const client = google.accounts.oauth2.initTokenClient({
         client_id: this.clientId,
-        scope: 'https://www.googleapis.com/auth/drive.file',
+        scope: 'https://www.googleapis.com/auth/drive',
         callback: (response: any) => {
           console.log('Google OAuth Response:', response);
           if (response.error) {
@@ -207,12 +283,39 @@ export class GoogleDriveSync {
 
     const query = encodeURIComponent("mimeType = 'application/vnd.google-apps.folder' and name = 'MyNotes' and trashed = false");
     const searchUrl = `https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name)`;
-    
+
     const res = await this.apiCall(searchUrl);
     const data = await res.json();
-    
-    if (data.files && data.files.length > 0) {
-      this.folderId = data.files[0].id;
+    const candidates: Array<{ id: string; name: string }> = data.files || [];
+
+    if (candidates.length === 1) {
+      this.folderId = candidates[0].id;
+      return this.folderId!;
+    }
+
+    if (candidates.length > 1) {
+      // Multiple 'MyNotes' folders can exist (e.g. created by different OAuth
+      // client IDs). Pick the one that actually contains the most items so we
+      // don't sync into an empty duplicate and appear to "lose" the old data.
+      let best = candidates[0];
+      let bestCount = -1;
+      for (const folder of candidates) {
+        const childQuery = encodeURIComponent(`'${folder.id}' in parents and trashed = false`);
+        const childUrl = `https://www.googleapis.com/drive/v3/files?q=${childQuery}&fields=files(id)&pageSize=1000`;
+        try {
+          const childRes = await this.apiCall(childUrl);
+          const childData = await childRes.json();
+          const count = (childData.files || []).length;
+          if (count > bestCount) {
+            bestCount = count;
+            best = folder;
+          }
+        } catch {
+          // Ignore a failed count and keep scanning the remaining candidates.
+        }
+      }
+      console.log(`[GoogleDriveSync] Found ${candidates.length} 'MyNotes' folders; selected the one with the most items (${bestCount}).`);
+      this.folderId = best.id;
       return this.folderId!;
     }
 
@@ -418,7 +521,7 @@ export class GoogleDriveSync {
     });
   }
 
-  // Get user profile email using Drive about endpoint (already authorized by drive.file scope)
+  // Get user profile email using Drive about endpoint (already authorized by the drive scope)
   async getUserEmail(): Promise<string> {
     const url = 'https://www.googleapis.com/drive/v3/about?fields=user';
     const res = await this.apiCall(url);

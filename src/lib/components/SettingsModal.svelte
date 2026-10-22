@@ -210,19 +210,37 @@
           {#if typeof window !== 'undefined' && (window as any).Capacitor}
             <div class="setting-row" style="flex-direction: column; align-items: stretch;">
               <div class="setting-info">
-                <span class="setting-label">OAuth Redirect URI</span>
-                <span class="setting-desc">For mobile authentication</span>
+                <span class="setting-label">Google OAuth Client Secret</span>
+                <span class="setting-desc">From your Desktop app client. Required to stay permanently logged in.</span>
               </div>
               <input
                 type="text"
-                placeholder="e.g. http://localhost"
-                value={appState.googleRedirectUri}
-                oninput={(e) => appState.setRedirectUri(e.currentTarget.value)}
+                placeholder="Paste Client Secret (GOCSPX-...)"
+                value={appState.googleClientSecret}
+                oninput={(e) => appState.setClientSecret(e.currentTarget.value)}
                 disabled={appState.googleConnected}
                 class="setting-input"
                 style="margin-top: var(--spacing-xs);"
               />
             </div>
+
+            {#if !appState.isElectronPlatform}
+              <div class="setting-row" style="flex-direction: column; align-items: stretch;">
+                <div class="setting-info">
+                  <span class="setting-label">OAuth Redirect URI</span>
+                  <span class="setting-desc">For mobile authentication</span>
+                </div>
+                <input
+                  type="text"
+                  placeholder="e.g. http://localhost"
+                  value={appState.googleRedirectUri}
+                  oninput={(e) => appState.setRedirectUri(e.currentTarget.value)}
+                  disabled={appState.googleConnected}
+                  class="setting-input"
+                  style="margin-top: var(--spacing-xs);"
+                />
+              </div>
+            {/if}
           {/if}
         </div>
 
@@ -230,7 +248,31 @@
           <div class="section-group">
             <span class="section-title">Authentication</span>
 
-            {#if typeof window !== 'undefined' && (window as any).Capacitor}
+            {#if appState.isElectronPlatform}
+              <!-- Desktop (Electron) flow: one-click loopback OAuth → refresh token -->
+              <div class="mobile-auth-card">
+                <span class="mobile-auth-title">Desktop Google Sign-In</span>
+                <p class="mobile-auth-desc">Sign in through your system browser. myNotes captures the response automatically and stays permanently logged in.</p>
+
+                {#if appState.mobileAuthStep === 'awaiting' || appState.mobileAuthStep === 'verifying'}
+                  <button class="action-btn primary" disabled>
+                    {appState.mobileAuthStep === 'verifying' ? 'Connecting…' : 'Waiting for browser sign-in…'}
+                  </button>
+                {:else}
+                  <button
+                    class="action-btn primary"
+                    onclick={() => appState.startDesktopGoogleAuth()}
+                    disabled={!appState.googleClientId}
+                  >
+                    Connect with Google
+                  </button>
+                {/if}
+
+                {#if appState.mobileAuthStep === 'error' && appState.mobileAuthError}
+                  <span class="setting-desc" style="color: var(--danger, #ef4444); margin-top: var(--spacing-xs);">{appState.mobileAuthError}</span>
+                {/if}
+              </div>
+            {:else if typeof window !== 'undefined' && (window as any).Capacitor}
               <!-- Mobile flow -->
               <div class="mobile-auth-card">
                 <span class="mobile-auth-title">Mobile Google Sign-In</span>
@@ -238,13 +280,7 @@
 
                 <button
                   class="action-btn primary"
-                  onclick={() => {
-                    const url = "https://accounts.google.com/o/oauth2/v2/auth?client_id=" +
-                      encodeURIComponent(appState.googleClientId) +
-                      "&redirect_uri=" + encodeURIComponent(appState.googleRedirectUri) +
-                      "&response_type=token&scope=" + encodeURIComponent("https://www.googleapis.com/auth/drive.file");
-                    window.open(url, '_system');
-                  }}
+                  onclick={() => appState.startMobileGoogleAuth()}
                   disabled={!appState.googleClientId || !appState.googleRedirectUri}
                 >
                   1. Sign In via Browser
@@ -294,12 +330,16 @@
 
             <div class="helper-card">
               <span class="helper-title">
-                {typeof window !== 'undefined' && (window as any).Capacitor ? 'Mobile Setup Instructions:' : 'Setup Instructions:'}
+                {appState.isElectronPlatform ? 'Desktop Setup Instructions:' : (typeof window !== 'undefined' && (window as any).Capacitor ? 'Mobile Setup Instructions:' : 'Setup Instructions:')}
               </span>
               <ol class="helper-steps">
                 <li>Go to the <a href="https://console.cloud.google.com/" target="_blank" rel="noopener noreferrer" class="link-accent">Google Cloud Console</a>.</li>
-                {#if typeof window !== 'undefined' && (window as any).Capacitor}
-                  <li>Inside your OAuth Client ID, add the Redirect URI (currently <code>{appState.googleRedirectUri || 'http://localhost'}</code>) under <b>Authorized Redirect URIs</b>.</li>
+                {#if appState.isElectronPlatform}
+                  <li>Create an <b>OAuth Client ID</b> with <b>Application Type: Desktop app</b> (no redirect URI setup is needed — myNotes uses a local loopback).</li>
+                  <li>Paste the <b>Client ID</b> and <b>Client Secret</b> into the fields above.</li>
+                  <li>Click <b>Connect with Google</b> and finish signing in — you'll stay permanently logged in.</li>
+                {:else if typeof window !== 'undefined' && (window as any).Capacitor}
+                  <li>Create an <b>OAuth Client ID</b> with <b>Application Type: Desktop app</b> (this lets myNotes stay logged in — no redirect URI setup is needed).</li>
                   <li>Enter your Client ID in the field above.</li>
                   <li>Click <b>Sign In via Browser</b>, sign in, copy the URL, paste it above, and click <b>Verify</b>.</li>
                 {:else}

@@ -21,7 +21,8 @@
     Calendar,
     Edit3,
     RotateCcw,
-    Tag as TagIcon
+    Tag as TagIcon,
+    Pin
   } from 'lucide-svelte';
 
   let activeTab = $state<'pending' | 'inserted' | 'dismissed' | 'all'>('pending');
@@ -32,9 +33,24 @@
   let currencySymbol = $derived(appState.defaultCurrency || '₹');
   let dashboardData = $derived(BudgetAggregator.aggregate(appState.notes, appState.calcTags));
   let availableBoxes = $derived(dashboardData.boxes);
-  let sortedCalcTags = $derived(
-    [...appState.calcTags].sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' }))
-  );
+  let pinnedTags = $state<string[]>(JSON.parse(localStorage.getItem('mynotes_budget_pinned_tags') || '[]'));
+  let sortedCalcTags = $derived.by(() => {
+    return [...appState.calcTags].sort((a, b) => {
+      const pinA = pinnedTags.includes(a.id) ? 1 : 0;
+      const pinB = pinnedTags.includes(b.id) ? 1 : 0;
+      if (pinA !== pinB) return pinB - pinA;
+      return (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' });
+    });
+  });
+
+  function togglePinTag(tagId: string) {
+    if (pinnedTags.includes(tagId)) {
+      pinnedTags = pinnedTags.filter(id => id !== tagId);
+    } else {
+      pinnedTags = [...pinnedTags, tagId];
+    }
+    localStorage.setItem('mynotes_budget_pinned_tags', JSON.stringify(pinnedTags));
+  }
 
   let showDiagnostics = $state(false);
 
@@ -299,7 +315,8 @@
 
       const cleanDesc = buildCleanCalBoxLabel(tx.vendor, tx.rawBody, tx.amount);
       const amountSign = tx.type === 'expense' ? ` -${tx.amount}` : ` ${tx.amount}`;
-      const rowLabel = `${tx.date} ${cleanDesc}${amountSign}`;
+      const timeStr = tx.time || new Date().toTimeString().slice(0, 5);
+      const rowLabel = `${tx.date} ${timeStr} ${cleanDesc}${amountSign}`;
 
       // Multiple tag selection support
       const activeTags = selectedTagIds[tx.id] ?? (tx.suggestedTagId ? [tx.suggestedTagId] : []);
@@ -664,21 +681,36 @@
                     No Tag
                   </button>
 
-                  <!-- Existing Calc Tags Pills (Multiple Selectable, Alphabetical A-Z) -->
+                  <!-- Existing Calc Tags Pills (Pinned first, then Alphabetical A-Z) -->
                   {#each sortedCalcTags as tag (tag.id)}
                     {@const isSelected = activeTags.includes(tag.id)}
-                    <button 
-                      type="button"
-                      class="tag-pill custom-tag-pill" 
-                      class:selected={isSelected}
-                      style="--tag-color: {tag.color || '#3b82f6'};"
-                      onclick={() => handleToggleTag(tx.id, tag.id)}
-                    >
-                      {#if isSelected}
-                        <Check size={11} />
-                      {/if}
-                      {tag.name}
-                    </button>
+                    {@const isPinned = pinnedTags.includes(tag.id)}
+                    <div class="flex-row" style="position: relative; flex-shrink: 0;">
+                      <button 
+                        type="button"
+                        class="tag-pill custom-tag-pill" 
+                        class:selected={isSelected}
+                        style="--tag-color: {tag.color || '#3b82f6'};{isPinned ? ' border-style: solid; border-width: 2px;' : ''}"
+                        onclick={() => handleToggleTag(tx.id, tag.id)}
+                      >
+                        {#if isPinned}
+                          <Pin size={9} style="opacity: 0.7;" />
+                        {/if}
+                        {#if isSelected}
+                          <Check size={11} />
+                        {/if}
+                        {tag.name}
+                      </button>
+                      <button
+                        type="button"
+                        class="tag-pin-btn"
+                        title={isPinned ? 'Unpin tag' : 'Pin tag'}
+                        onclick={(e) => { e.stopPropagation(); togglePinTag(tag.id); }}
+                        style="position: absolute; top: -6px; right: -4px; background: {isPinned ? 'var(--accent)' : 'var(--bg-mid-dark)'}; border: 1px solid var(--border-color); border-radius: 50%; width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; z-index: 1;"
+                      >
+                        <Pin size={8} style="color: {isPinned ? 'white' : 'var(--text-tertiary)'}; {isPinned ? 'fill: white;' : ''}" />
+                      </button>
+                    </div>
                   {/each}
                 </div>
               </div>

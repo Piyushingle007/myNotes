@@ -98,6 +98,24 @@ export function extractRowDate(text: string): string {
 	return '—';
 }
 
+/** Extract HH:MM time from a label string (e.g. "2025-08-03 14:30 Grocery -500") */
+export function extractRowTime(text: string): string {
+	// Match HH:MM that follows a date pattern (YYYY-MM-DD HH:MM or DD-MM-YYYY HH:MM)
+	const dateTimePat = /\b\d{1,4}[-/.]\d{1,2}[-/.]\d{1,4}\s+(\d{1,2}):(\d{2})\b/;
+	let match = dateTimePat.exec(text);
+	if (match) {
+		return `${match[1].padStart(2, '0')}:${match[2]}`;
+	}
+	// Standalone HH:MM at the beginning of a label
+	const standaloneTime = /(?:^|\s)(\d{1,2}):(\d{2})\b/;
+	match = standaloneTime.exec(text);
+	if (match) {
+		return `${match[1].padStart(2, '0')}:${match[2]}`;
+	}
+	return '';
+}
+
+
 export interface MetricsExportRow {
 	label: string;
 	cleanedLabel: string;

@@ -501,7 +501,7 @@ sequenceDiagram
 
 ## Permissions Required
 
-- **Scope**: `https://www.googleapis.com/auth/drive.file`
+- **Scope**: `https://www.googleapis.com/auth/drive`
 - **Access**: Only files created by the app
 - **No access to**: User's other Drive files
 

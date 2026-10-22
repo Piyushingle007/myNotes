@@ -1,6 +1,6 @@
 import type { NoteFile } from '../storage/StorageAdapter';
 import type { CalcTag } from '../storage/CalcTagSchema';
-import { getRowNumbers, extractRowDate } from '../utils/exportMetricsXlsx';
+import { getRowNumbers, extractRowDate, extractRowTime } from '../utils/exportMetricsXlsx';
 
 export interface CalcBoxRow {
   id: string;
@@ -9,6 +9,7 @@ export interface CalcBoxRow {
   tagIds: string[];
   checked: boolean;
   date?: string; // YYYY-MM-DD
+  time?: string; // HH:MM
 }
 
 export interface CalcBoxSnapshot {
@@ -21,6 +22,7 @@ export interface CalcBoxSnapshot {
   currencyCode: string;
   rows: CalcBoxRow[];
   excludeChecked: boolean;
+  hideSummary: boolean;
   tagBudgets?: Record<string, number>;
   stats: {
     net: number;
@@ -77,6 +79,7 @@ export class BudgetAggregator {
           const incomeLabel = block.getAttribute('data-income-label') || 'Income';
           const currencyCode = block.getAttribute('data-currency-code') || defaultCurrency || '₹';
           const excludeChecked = block.getAttribute('data-exclude-checked') === 'true';
+          const hideSummary = block.getAttribute('data-hide-summary') === 'true';
           const metricsDataAttr = block.getAttribute('data-metrics');
           
           if (!metricsDataAttr) return;
@@ -115,6 +118,7 @@ export class BudgetAggregator {
             }
 
             const rowDate = extractRowDate(r.label || '') || undefined;
+            const rowTime = extractRowTime(r.label || '') || undefined;
 
             const row: CalcBoxRow = {
               id: r.id || String(Math.random()),
@@ -122,7 +126,8 @@ export class BudgetAggregator {
               total,
               tagIds,
               checked: rowChecked,
-              date: rowDate
+              date: rowDate,
+              time: rowTime
             };
 
             rows.push(row);
@@ -165,6 +170,7 @@ export class BudgetAggregator {
             incomeLabel,
             currencyCode,
             excludeChecked,
+            hideSummary,
             rows,
             tagBudgets: blockTagBudgets,
             stats: {

@@ -370,6 +370,17 @@ class SmsService {
         }
       });
       this.log('Native SMS listener registered successfully');
+
+      // Auto-scan inbox on app startup if permission is granted
+      if (this.hasPermission) {
+        this.log('Auto-scanning SMS inbox on startup...');
+        try {
+          await this.scanInbox();
+          this.log('Auto-scan completed');
+        } catch (scanErr: any) {
+          this.log(`Auto-scan failed: ${scanErr?.message || String(scanErr)}`);
+        }
+      }
     } catch (e: any) {
       this.log(`Native init error: ${e?.message || String(e)}`);
       this.hasPermission = false;

@@ -86,17 +86,16 @@ Google requires you to set up a basic consent screen before creating credentials
 1. In the left sidebar, click on **Credentials** (under APIs & Services).
 2. At the top of the screen, click **+ CREATE CREDENTIALS** and select **OAuth client ID**.
 3. On the Create OAuth client ID page:
-   - **Application type**: Click the dropdown and select **Web application**.
-   - **Name**: Leave as `Web client 1` (or change it if you like).
-4. Scroll down to the section named **Authorized redirect URIs**.
-5. Click **+ ADD URI** and add both of the following redirect URIs:
-   ```text
-   mynotes://oauth
-   http://localhost
-   ```
-7. Click the blue **CREATE** button at the bottom.
-8. A pop-up titled **OAuth client created** will appear showing your **Client ID**.
-9. Click the **Copy** icon next to your **Client ID** (it looks like `xxxxxxxxxxxx-xxxxxxxxxxxxxxxx.apps.googleusercontent.com`).
+   - **Application type**: Click the dropdown and select **Desktop app**.
+     - ⚠️ **Important:** Choose **Desktop app**, *not* "Web application". The Desktop app type is a "public client" — it lets myNotes securely obtain a **refresh token** (so you stay logged in) without needing a client secret.
+   - **Name**: Leave as `Desktop client 1` (or change it if you like).
+4. Click the blue **CREATE** button at the bottom.
+   - A Desktop app client automatically allows the `http://localhost` redirect used by myNotes — you do **not** need to add any redirect URIs manually.
+5. A pop-up titled **OAuth client created** will appear showing your **Client ID** and **Client secret**.
+6. Click the **Copy** icon next to your **Client ID** (it looks like `xxxxxxxxxxxx-xxxxxxxxxxxxxxxx.apps.googleusercontent.com`).
+7. Also copy your **Client secret** (it looks like `GOCSPX-xxxxxxxxxxxxxxxx`). You'll paste this into myNotes too.
+   > [!NOTE]
+   > For a **Desktop app** client, Google requires this secret during sign-in, but it is officially **not treated as confidential** for installed/desktop apps — so it's safe to store it in the app on your own device.
 
 ---
 
@@ -105,8 +104,9 @@ Google requires you to set up a basic consent screen before creating credentials
 1. Open the **myNotes** app on your phone.
 2. Go to **Settings** (gear icon) ➔ **Cloud Sync**.
 3. In the **Google OAuth Client ID** field, paste your copied Client ID.
-4. Make sure **OAuth Redirect URI** shows `http://localhost`.
-5. Tap the **Connect with Google** button.
+4. In the **Google OAuth Client Secret** field, paste your copied Client secret (`GOCSPX-...`).
+5. Make sure **OAuth Redirect URI** shows `http://localhost`.
+6. Tap the **Connect with Google** button.
 
 ### Finishing the Browser Sign-In:
 1. Your web browser will open showing the Google Sign-In page.
@@ -118,12 +118,12 @@ Google requires you to set up a basic consent screen before creating credentials
 5. Once complete, your browser will attempt to redirect to `http://localhost` and display a page saying **"This site can't be reached" / "ERR_CONNECTION_REFUSED"**.
    - **THIS IS NORMAL AND EXPECTED!** (There is no server running on your phone at localhost).
 6. Tap the **address bar** at the top of your browser.
-7. **Copy the entire full URL** (it starts with `http://localhost/#access_token=...` or `http://localhost/#iss=...`).
+7. **Copy the entire full URL** (it starts with `http://localhost/?code=...`).
 8. Switch back to the **myNotes** app (it will say *"Waiting for browser sign-in..."*).
 9. Tap **"Sign-in didn't return automatically?"** to expand the manual input box.
 10. Paste your copied URL into the text box and tap **Verify & Connect**.
 
-🎉 **Congratulations!** You are now connected. Your notes and budget dashboards are safely synced to your personal Google Drive!
+🎉 **Congratulations!** You are now connected. Because myNotes received a secure **refresh token**, you will **stay signed in** — the app renews access automatically in the background and you should never need to repeat this sign-in.
 
 ---
 
@@ -133,7 +133,10 @@ Google requires you to set up a basic consent screen before creating credentials
 > **Answer**: `http://localhost` is a placeholder address used for mobile security redirect. Google attaches your sign-in key inside the web address bar. When you copy that address bar link and paste it into myNotes, the app extracts the key and connects you immediately.
 
 ### Q: Do I have to repeat this process every time I open the app?
-> **Answer**: **No!** Your connection token is saved securely in your app. It will automatically stay connected in the background.
+> **Answer**: **No!** During sign-in myNotes receives a secure **refresh token** which is saved on your device. The app uses it to automatically renew access in the background, so you stay connected — even after the app is closed and reopened.
+
+### Q: I keep getting logged out / asked to sign in again. Why?
+> **Answer**: This almost always means your OAuth client was created as a **"Web application"** instead of a **"Desktop app"**. Web application clients cannot issue refresh tokens to a client-only app, so access silently expires after ~1 hour. Go back to [Step 5](#step-5-create-your-oauth-client-id-credentials), create a new **Desktop app** OAuth client, paste the new Client ID into myNotes, and reconnect.
 
 ### Q: What if I get an "Access Blocked: App Has Not Completed Google Verification" error?
 > **Answer**: Make sure you added your Gmail address under **Test Users** in [Step 4](#step-4-configure-the-oauth-consent-screen).
