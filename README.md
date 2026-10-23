@@ -12,6 +12,7 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square" alt="License: MIT" /></a>
+  <a href="https://github.com/Piyushingle007/myNotes/releases/latest"><img src="https://img.shields.io/github/v/release/Piyushingle007/myNotes?style=flat-square&color=blue&label=release" alt="Latest Release" /></a>
   <img src="https://img.shields.io/badge/Svelte-5.55+-FF3E00.svg?style=flat-square&logo=svelte&logoColor=white" alt="Svelte 5" />
   <img src="https://img.shields.io/badge/TypeScript-6.0+-3178C6.svg?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript" />
   <img src="https://img.shields.io/badge/Vite-8.0+-646CFF.svg?style=flat-square&logo=vite&logoColor=white" alt="Vite" />
@@ -23,6 +24,7 @@
 
 > [!NOTE]
 > **🌐 Live Website**: **https://piyushingle007.github.io/myNotes**  
+> **📦 Latest Release (v1.0.0)**: **[GitHub Releases](https://github.com/Piyushingle007/myNotes/releases/latest)** — Direct downloads available for **macOS** (`.dmg`) and **Android** (`.apk`)!  
 >
 > **myNotes** was originally designed and built as a personal daily-driver productivity workspace, and is now completely open source for the community! *(so please don't mind the URL!)*
 
@@ -42,6 +44,7 @@
   - [☁️ Local-First Storage & Cloud Synchronization](#7--local-first-storage--cloud-synchronization)
   - [🎭 30+ Curated Themes & Modern UI](#8--30-curated-themes--modern-ui)
 - [📱 Supported Platforms](#-supported-platforms)
+- [📥 Downloads & Releases](#-downloads--releases)
 - [🌐 1. Website (Web / PWA) Setup & Running](#-1-website-web--pwa-setup--running)
 - [📱 2. Android Mobile App Setup & Build](#-2-android-mobile-app-setup--build)
 - [🖥️ 3. macOS Desktop App Setup & Build](#-3-macos-desktop-app-setup--build)
@@ -234,11 +237,28 @@ A tactile approach to daily productivity in the **Focus View** (`#/focus`):
 
 ## 📱 Supported Platforms
 
-| Platform | Technology | Status | Key Features |
-| :--- | :--- | :--- | :--- |
-| **Web Browser (PWA)** | Svelte 5 + Vite | ✅ Production Ready | Offline service worker, File System Access API, IndexedDB sandbox |
-| **Android App** | Capacitor 8 | ✅ Production Ready | Native SMS transaction parser, offline PKCE Google OAuth, hardware back button |
-| **macOS Desktop** | Electron 5 + Capacitor | ✅ Production Ready | Native loopback OAuth server, offline refresh tokens, menu integrations |
+| Platform | Technology | Status | Key Features | Download / Access |
+| :--- | :--- | :--- | :--- | :--- |
+| **Web Browser (PWA)** | Svelte 5 + Vite | ✅ Production Ready | Offline service worker, File System Access API, IndexedDB sandbox | [🌐 Launch Web App](https://piyushingle007.github.io/myNotes) |
+| **Android App** | Capacitor 8 | ✅ Production Ready | Native SMS transaction parser, offline PKCE Google OAuth, hardware back button | [📲 Download APK](https://github.com/Piyushingle007/myNotes/releases/download/1.0.0/myNotes_stable_v1.0.0.apk) |
+| **macOS Desktop** | Electron 5 + Capacitor | ✅ Production Ready | Native loopback OAuth server, offline refresh tokens, menu integrations | [🍎 Download DMG (Apple Silicon)](https://github.com/Piyushingle007/myNotes/releases/download/1.0.0/myNotes_stable_v1.0.0_arm64.dmg) |
+
+---
+
+## 📥 Downloads & Releases
+
+Pre-compiled production releases are available under [GitHub Releases](https://github.com/Piyushingle007/myNotes/releases):
+
+### 🏷️ Latest Release: [v1.0.0](https://github.com/Piyushingle007/myNotes/releases/tag/1.0.0)
+
+| Platform | File | Size | Notes | Direct Download |
+| :--- | :--- | :--- | :--- | :--- |
+| **macOS** | `myNotes_stable_v1.0.0_arm64.dmg` | ~122 MB | Apple Silicon (M1 / M2 / M3 / M4) | [🍎 Download for macOS](https://github.com/Piyushingle007/myNotes/releases/download/1.0.0/myNotes_stable_v1.0.0_arm64.dmg) |
+| **Android** | `myNotes_stable_v1.0.0.apk` | ~10.5 MB | Android 8.0+ (Universal APK) | [📲 Download for Android](https://github.com/Piyushingle007/myNotes/releases/download/1.0.0/myNotes_stable_v1.0.0.apk) |
+| **Web / PWA** | Hosted Deployment | — | Works in Chrome, Edge, Safari, Brave | [🌐 Open Web App](https://piyushingle007.github.io/myNotes) |
+
+> [!TIP]
+> To view release notes, full changelogs, and previous versions, visit the **[GitHub Releases Page](https://github.com/Piyushingle007/myNotes/releases)**.
 
 ---
 
@@ -287,6 +307,10 @@ npm run preview
 
 ## 📱 2. Android Mobile App Setup & Build
 
+> [!TIP]
+> **Looking for the ready-to-install Android app?**  
+> Skip the build process and download the pre-compiled APK directly: **[myNotes_stable_v1.0.0.apk](https://github.com/Piyushingle007/myNotes/releases/download/1.0.0/myNotes_stable_v1.0.0.apk)**.
+
 The Android version wraps the Svelte 5 frontend using [Capacitor 8](https://capacitorjs.com/) and provides native plugins for offline SMS transaction parsing, file saving, and browser-based Google OAuth.
 
 ### Prerequisites
@@ -321,6 +345,10 @@ The compiled APK will be generated at:
 ---
 
 ## 🖥️ 3. macOS Desktop App Setup & Build
+
+> [!TIP]
+> **Looking for the ready-to-install macOS desktop app?**  
+> Skip the build process and download the pre-compiled DMG (Apple Silicon) directly: **[myNotes_stable_v1.0.0_arm64.dmg](https://github.com/Piyushingle007/myNotes/releases/download/1.0.0/myNotes_stable_v1.0.0_arm64.dmg)**.
 
 The desktop version is powered by Electron via **[@capacitor-community/electron](https://github.com/capacitor-community/electron)**, reusing the production Svelte 5 build inside an isolated desktop shell.
 
