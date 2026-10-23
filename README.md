@@ -12,7 +12,7 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square" alt="License: MIT" /></a>
-  <a href="https://github.com/Piyushingle007/myNotes/releases/latest"><img src="https://img.shields.io/github/v/release/Piyushingle007/myNotes?style=flat-square&color=blue&label=release" alt="Latest Release" /></a>
+  <a href="https://github.com/Piyushingle007/myNotes/releases"><img src="https://img.shields.io/github/v/release/Piyushingle007/myNotes?include_prereleases&style=flat-square&color=blue&label=release" alt="Latest Release" /></a>
   <img src="https://img.shields.io/badge/Svelte-5.55+-FF3E00.svg?style=flat-square&logo=svelte&logoColor=white" alt="Svelte 5" />
   <img src="https://img.shields.io/badge/TypeScript-6.0+-3178C6.svg?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript" />
   <img src="https://img.shields.io/badge/Vite-8.0+-646CFF.svg?style=flat-square&logo=vite&logoColor=white" alt="Vite" />
