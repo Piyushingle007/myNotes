@@ -17,6 +17,40 @@
   let showSyncPopover = $state(false);
   let showCreateDropdown = $state(false);
   let dropdownEl = $state<HTMLDivElement | null>(null);
+  let epubFileInputEl = $state<HTMLInputElement | null>(null);
+
+  async function handleEpubFileChange(event: Event) {
+    const input = event.target as HTMLInputElement;
+    if (!input.files || input.files.length === 0) return;
+
+    const filesToImport: Array<{ file: Blob; name: string }> = [];
+    for (let i = 0; i < input.files.length; i++) {
+      const file = input.files[i];
+      if (file.name.toLowerCase().endsWith('.epub') || file.type.includes('epub')) {
+        filesToImport.push({ file, name: file.name });
+      }
+    }
+    input.value = '';
+
+    if (filesToImport.length === 0) {
+      appState.showToast('Please select valid .epub files.', 'warning');
+      return;
+    }
+
+    appState.showToast(`Importing ${filesToImport.length} book(s)...`, 'info', 3000);
+    try {
+      const { EpubManager } = await import('../epub/services/EpubManager');
+      const results = await EpubManager.importEpubFiles(filesToImport);
+      const successCount = results.filter((r) => r.success).length;
+      if (successCount > 0) {
+        appState.showToast(`Added ${successCount} book(s) to library!`, 'success', 3500);
+        appState.activeTab = 'ebooks';
+      }
+    } catch (e: any) {
+      console.error('[AppHeader] Failed to import EPUB:', e);
+      appState.showToast(e?.message || 'Error importing EPUB book.', 'error');
+    }
+  }
 
   function handleDropdownOutsideClick(e: MouseEvent) {
     if (dropdownEl && !dropdownEl.contains(e.target as Node)) {
@@ -432,6 +466,14 @@
         >
           <Calculator size={15} style={appState.activeTab === 'num' ? 'fill: currentColor;' : ''} />
         </button>
+        <button 
+          class="panel-toggle-btn flex-row nav-icon-btn" 
+          class:active={appState.activeTab === 'ebooks'} 
+          onclick={() => { appState.activeTab = appState.activeTab === 'ebooks' ? 'home' : 'ebooks'; activePopover = null; }}
+          title="E-Books"
+        >
+          <BookOpen size={15} style={appState.activeTab === 'ebooks' ? 'fill: currentColor;' : ''} />
+        </button>
       </div>
     </div>
     
@@ -439,7 +481,12 @@
     
     <div class="breadcrumbs flex-row">
       <!-- Active Context -->
-      {#if appState.selectedTag}
+      {#if appState.activeTab === 'ebooks'}
+        <div class="breadcrumb-item flex-row">
+          <BookOpen size={14} class="breadcrumb-icon" />
+          <span class="breadcrumb-label">E-Books</span>
+        </div>
+      {:else if appState.selectedTag}
         <div class="breadcrumb-item flex-row">
           <TagIcon size={14} class="breadcrumb-icon" />
           <span class="breadcrumb-label">#{appState.selectedTag}</span>
@@ -570,8 +617,31 @@
               <span style="font-size: var(--font-size-2xs); color: var(--text-tertiary); white-space: nowrap;">Import MD file or paste Markdown code</span>
             </div>
           </button>
+          <button 
+            class="dropdown-item flex-row"
+            onclick={() => { epubFileInputEl?.click(); showCreateDropdown = false; }}
+            style="width: 100%; text-align: left; padding: var(--spacing-sm) var(--spacing-md); background: none; border: none; font-family: inherit; font-size: var(--font-size-sm); color: var(--text-primary); cursor: pointer; gap: var(--spacing-sm); align-items: center; border-top: 1px solid var(--border-color);"
+            onmouseover={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-mid-dark)'}
+            onmouseout={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+          >
+            <BookOpen size={16} style="color: var(--accent); flex-shrink: 0;" />
+            <div class="flex-col" style="align-items: flex-start; gap: 2px;">
+              <span style="font-weight: 600;">Add EPUB Book</span>
+              <span style="font-size: var(--font-size-2xs); color: var(--text-tertiary); white-space: nowrap;">Import offline EPUB into reading library</span>
+            </div>
+          </button>
         </div>
       {/if}
+
+      <!-- Hidden EPUB File Input Trigger -->
+      <input
+        bind:this={epubFileInputEl}
+        type="file"
+        accept=".epub,application/epub+zip"
+        multiple
+        style="display: none;"
+        onchange={handleEpubFileChange}
+      />
     </div>
 
     <div class="right-divider"></div>

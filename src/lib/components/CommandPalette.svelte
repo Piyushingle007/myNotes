@@ -2,7 +2,8 @@
   import { onMount } from 'svelte';
   import { appState, parseHtmlMetadata } from '../stores/appState.svelte';
   import Modal from './Modal.svelte';
-  import { Search, FileText, Folder, Tag, Sparkles } from 'lucide-svelte';
+  import { Search, FileText, Folder, Tag, Sparkles, BookOpen, BookPlus } from 'lucide-svelte';
+  import { EpubManager } from '../epub/services/EpubManager';
 
   let localQuery = $state('');
   let selectedIndex = $state(0);
@@ -79,6 +80,39 @@
 
   function selectNote(path: string) {
     appState.selectNote(path);
+    appState.showCommandPalette = false;
+  }
+
+  let epubFileInput: HTMLInputElement | null = $state(null);
+
+  function triggerAddEpub() {
+    epubFileInput?.click();
+    appState.showCommandPalette = false;
+  }
+
+  async function handleEpubFileChange(event: Event) {
+    const input = event.target as HTMLInputElement;
+    if (!input.files || input.files.length === 0) return;
+    const filesToImport: Array<{ file: Blob; name: string }> = [];
+    for (let i = 0; i < input.files.length; i++) {
+      const file = input.files[i];
+      if (file.name.toLowerCase().endsWith('.epub') || file.type.includes('epub')) {
+        filesToImport.push({ file, name: file.name });
+      }
+    }
+    input.value = '';
+    if (filesToImport.length > 0) {
+      const res = await EpubManager.importEpubFiles(filesToImport, appState.activeNotebook);
+      const successCount = res.filter(r => r.success).length;
+      if (successCount > 0) {
+        appState.showToast(`Imported ${successCount} book${successCount > 1 ? 's' : ''}!`, 'success');
+      }
+    }
+  }
+
+  function goToEbooks() {
+    appState.activeTab = 'ebooks';
+    appState.activeEpubId = null;
     appState.showCommandPalette = false;
   }
 
@@ -228,6 +262,28 @@
       </div>
     {/if}
 
+    <input
+      bind:this={epubFileInput}
+      type="file"
+      accept=".epub,application/epub+zip"
+      multiple
+      style="display: none;"
+      onchange={handleEpubFileChange}
+    />
+
+    {#if !localQuery || localQuery.includes('epub') || localQuery.includes('book')}
+      <div class="palette-quick-actions flex-row" style="padding: 6px var(--spacing-md); gap: var(--spacing-xs); border-bottom: 1px solid var(--border-color); background: var(--bg-surface);">
+        <button type="button" class="btn-pill btn-pill-outline flex-row" style="font-size: 11px; padding: 4px 8px; height: 24px; gap: 4px;" onclick={triggerAddEpub}>
+          <BookPlus size={12} />
+          <span>Add EPUB Book</span>
+        </button>
+        <button type="button" class="btn-pill btn-pill-outline flex-row" style="font-size: 11px; padding: 4px 8px; height: 24px; gap: 4px;" onclick={goToEbooks}>
+          <BookOpen size={12} />
+          <span>Ebooks Library</span>
+        </button>
+      </div>
+    {/if}
+
     <!-- Search Results Feed -->
     <div 
       bind:this={listEl} 
@@ -248,7 +304,11 @@
           onkeydown={(e) => e.key === 'Enter' && selectNote(note.path)}
         >
           <div class="result-icon flex-row select-none">
-            <FileText size={16} />
+            {#if note.path.endsWith('.epub')}
+              <BookOpen size={16} style="color: var(--accent);" />
+            {:else}
+              <FileText size={16} />
+            {/if}
           </div>
 
           <div class="result-details flex-col">

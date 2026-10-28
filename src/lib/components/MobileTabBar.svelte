@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Home, Tag as TagIcon, Library, Calculator, Target, Wallet, MessageSquare } from 'lucide-svelte';
+  import { Home, Tag as TagIcon, Library, Calculator, Target, Wallet, MessageSquare, BookOpen } from 'lucide-svelte';
   import { appState } from '../stores/appState.svelte';
   import { mobileNav } from '../stores/mobileNav.svelte';
 
@@ -14,6 +14,7 @@
     { id: 'home', label: 'Home', icon: Home },
     { id: 'budget', label: 'Dashboard', icon: Wallet },
     { id: 'sms', label: 'Inbox', icon: MessageSquare },
+    { id: 'ebooks', label: 'Ebooks', icon: BookOpen },
     { id: 'library', label: 'Library', icon: Library },
     { id: 'num', label: 'CalBox', icon: Calculator },
   ] as const;

@@ -36,7 +36,7 @@ export class IndexedDBAdapter implements StorageAdapter {
   private ensureDb(): Promise<IDBDatabase> {
     return new Promise((resolve, reject) => {
       if (this.db) return resolve(this.db);
-      const request = indexedDB.open(this.dbName, 2);
+      const request = indexedDB.open(this.dbName, 3);
       request.onupgradeneeded = (e) => {
         const db = request.result;
         if (!db.objectStoreNames.contains(this.storeName)) {
@@ -44,6 +44,17 @@ export class IndexedDBAdapter implements StorageAdapter {
         }
         if (!db.objectStoreNames.contains('attachments')) {
           db.createObjectStore('attachments', { keyPath: 'path' });
+        }
+        if (!db.objectStoreNames.contains('epub_library')) {
+          const store = db.createObjectStore('epub_library', { keyPath: 'bookId' });
+          store.createIndex('title', 'title', { unique: false });
+          store.createIndex('addedAt', 'addedAt', { unique: false });
+          store.createIndex('filePath', 'filePath', { unique: false });
+        }
+        if (!db.objectStoreNames.contains('reading_progress')) {
+          const progressStore = db.createObjectStore('reading_progress', { keyPath: 'bookId' });
+          progressStore.createIndex('updatedAt', 'updatedAt', { unique: false });
+          progressStore.createIndex('lastReadAt', 'lastReadAt', { unique: false });
         }
       };
       request.onsuccess = () => {
@@ -74,7 +85,7 @@ export class IndexedDBAdapter implements StorageAdapter {
     const now = Date.now();
     const note: NoteFile = {
       path,
-      name: path.split('/').pop()?.replace(/\.(md|html|notebook\.json)$/, '') || 'Untitled',
+      name: path.split('/').pop()?.replace(/\.(md|html|notebook\.json|epub)$/, '') || 'Untitled',
       content,
       modified: now,
       created: existing ? existing.created : now
@@ -251,13 +262,14 @@ export class FileSystemAccessAdapter implements StorageAdapter {
     for await (const entry of dirHandle.values()) {
       const relativePath = currentPath ? `${currentPath}/${entry.name}` : entry.name;
       
-      if (entry.kind === 'file' && (entry.name.endsWith('.html') || entry.name.endsWith('.notebook.json'))) {
+      if (entry.kind === 'file' && (entry.name.endsWith('.html') || entry.name.endsWith('.notebook.json') || entry.name.endsWith('.epub'))) {
         const file = await entry.getFile();
-        const content = await file.text();
+        const isEpub = entry.name.endsWith('.epub');
         const isNotebook = entry.name.endsWith('.notebook.json');
+        const content = isEpub ? '' : await file.text();
         results.push({
           path: relativePath,
-          name: isNotebook ? entry.name.replace(/\.notebook\.json$/, '') : entry.name.replace(/\.html$/, ''),
+          name: isEpub ? entry.name.replace(/\.epub$/, '') : (isNotebook ? entry.name.replace(/\.notebook\.json$/, '') : entry.name.replace(/\.html$/, '')),
           content,
           modified: file.lastModified,
           created: file.lastModified // File System Access API does not expose file creation date easily

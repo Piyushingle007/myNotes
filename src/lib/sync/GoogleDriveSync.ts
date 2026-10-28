@@ -441,10 +441,22 @@ export class GoogleDriveSync {
       return parentPath ? `${parentPath}/${item.name}` : item.name;
     };
 
-    // Filter only markdown files that belong to our root folder tree
+    // Filter files that belong to our root folder tree
     const driveFiles: DriveFileMeta[] = [];
     for (const item of allItems) {
-      if (item.mimeType !== 'application/vnd.google-apps.folder' && (item.name.toLowerCase().endsWith('.html') || item.name.toLowerCase().endsWith('.md') || item.name.toLowerCase().endsWith('.notebook.json'))) {
+      const lower = item.name.toLowerCase();
+      // Never treat reading-progress.json or internal book thumbnails as general notes
+      if (item.name === 'reading-progress.json' || item.name.endsWith('.webp')) {
+        continue;
+      }
+
+      const isRecognized = 
+        lower.endsWith('.html') || 
+        lower.endsWith('.md') || 
+        lower.endsWith('.notebook.json') || 
+        lower.endsWith('.epub');
+
+      if (item.mimeType !== 'application/vnd.google-apps.folder' && isRecognized) {
         const relativePath = resolvePath(item.id);
         if (relativePath !== null) {
           driveFiles.push({
@@ -459,11 +471,71 @@ export class GoogleDriveSync {
     return driveFiles;
   }
 
+  // Find a specific file in a folder by exact name
+  async findFile(name: string, parentFolderId?: string): Promise<DriveFileMeta | null> {
+    const rootFolderId = await this.getOrCreateSyncFolder();
+    const folderId = parentFolderId || rootFolderId;
+    const query = encodeURIComponent(`name = '${name.replace(/'/g, "\\'")}' and '${folderId}' in parents and trashed = false`);
+    const url = `https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name,modifiedTime)`;
+    const res = await this.apiCall(url);
+    const data = await res.json();
+    if (data.files && data.files.length > 0) {
+      return data.files[0];
+    }
+    return null;
+  }
+
   // Download a file's raw content
   async downloadFile(fileId: string): Promise<string> {
     const url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`;
     const res = await this.apiCall(url);
     return res.text();
+  }
+
+  // Download raw binary Blob
+  async downloadBinary(fileId: string): Promise<Blob> {
+    const url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`;
+    const res = await this.apiCall(url);
+    return res.blob();
+  }
+
+  // Upload/Update raw binary Blob with multipart streaming
+  async uploadBinary(filename: string, blob: Blob, fileId?: string, parentFolderId?: string): Promise<{ id: string; modifiedTime: string }> {
+    const rootFolderId = await this.getOrCreateSyncFolder();
+    const folderId = parentFolderId || rootFolderId;
+    
+    const metadata: any = { name: filename };
+    if (!fileId) metadata.parents = [folderId];
+
+    const url = fileId
+      ? `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=multipart&fields=id,modifiedTime`
+      : 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,modifiedTime';
+
+    const boundary = 'mynotes_multipart_boundary';
+    const delimiter = `\r\n--${boundary}\r\n`;
+    const closeDelimiter = `\r\n--${boundary}--`;
+
+    const metadataPart = new Blob([
+      delimiter +
+      'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
+      JSON.stringify(metadata) +
+      delimiter +
+      `Content-Type: ${blob.type || 'application/octet-stream'}\r\n\r\n`
+    ], { type: 'text/plain' });
+
+    const closePart = new Blob([closeDelimiter], { type: 'text/plain' });
+    const fullBody = new Blob([metadataPart, blob, closePart]);
+
+    const res = await this.apiCall(url, {
+      method: fileId ? 'PATCH' : 'POST',
+      headers: {
+        'Content-Type': `multipart/related; boundary=${boundary}`
+      },
+      body: fullBody
+    });
+
+    const file = await res.json();
+    return { id: file.id, modifiedTime: file.modifiedTime };
   }
 
   // Upload/Update file (Multipart upload for metadata + content)
@@ -489,7 +561,7 @@ export class GoogleDriveSync {
     let contentType = 'text/markdown';
     if (filename.toLowerCase().endsWith('.html')) {
       contentType = 'text/html';
-    } else if (filename.toLowerCase().endsWith('.notebook.json')) {
+    } else if (filename.toLowerCase().endsWith('.notebook.json') || filename.toLowerCase().endsWith('.json')) {
       contentType = 'application/json';
     }
     const multipartBody = 

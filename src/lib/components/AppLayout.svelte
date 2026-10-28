@@ -30,6 +30,8 @@
   import NumbatView from './NumbatView.svelte';
   import TldrawView from './TldrawView.svelte';
   import SmsTransactionsView from './SmsTransactionsView.svelte';
+  import EpubLibraryView from '../epub/components/EpubLibraryView.svelte';
+  import EpubReader from '../epub/components/EpubReader.svelte';
   import { mobileNav } from '../stores/mobileNav.svelte';
   import { LONG_PRESS_MS, TOUCH_MOVE_TOLERANCE, edgeSwipeBack } from '../actions/touch';
 
@@ -2070,6 +2072,12 @@
             <SmsTransactionsView />
           </div>
 
+        <!-- 9. EBOOKS TAB -->
+        {:else if appState.activeTab === 'ebooks'}
+          <div class="mobile-tab-view flex-col">
+            <EpubLibraryView />
+          </div>
+
         {/if}
       </div>
 
@@ -2506,6 +2514,10 @@
         <div class="editor-panel flex-row" style="min-width: 0;">
           <TldrawView />
         </div>
+      {:else if appState.activeTab === 'ebooks'}
+        <div class="editor-panel flex-row" style="min-width: 0;">
+          <EpubLibraryView />
+        </div>
       {:else}
         <!-- Right Panel (Editor) -->
         <div class="editor-panel flex-row" style="display: {appState.editorCollapsed ? 'none' : 'flex'}; min-width: 0;">
@@ -2779,6 +2791,10 @@
 
 <!-- Sync Conflict Resolution Modal -->
 <ConflictResolver />
+
+{#if appState.activeEpubId}
+  <EpubReader bookId={appState.activeEpubId} />
+{/if}
 
 <style>
   .flex-col {

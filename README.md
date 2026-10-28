@@ -43,6 +43,7 @@
   - [🎯 Swipe Planner & Daily Focus Cards](#6--swipe-planner--daily-focus-cards)
   - [☁️ Local-First Storage & Cloud Synchronization](#7--local-first-storage--cloud-synchronization)
   - [🎭 30+ Curated Themes & Modern UI](#8--30-curated-themes--modern-ui)
+  - [📚 EPUB Reader & Book Library](#9--epub-reader--book-library)
 - [📱 Supported Platforms](#-supported-platforms)
 - [📥 Downloads & Releases](#-downloads--releases)
 - [🌐 1. Website (Web / PWA) Setup & Running](#-1-website-web--pwa-setup--running)
@@ -232,6 +233,29 @@ A tactile approach to daily productivity in the **Focus View** (`#/focus`):
 - **30+ Curated Color Themes**: Includes *Steel Minimalist*, *Dracula*, *Cyberpunk*, *Nord*, *Emerald*, *Solarized*, *Monokai*, and high-contrast modes.
 - **Command Palette (`Ctrl+K` / `Cmd+K`)**: Fast fuzzy search across notes, notebooks, commands, and settings powered by MiniSearch.
 - **Mobile First Navigation**: Adaptive bottom navigation bar, touch-friendly swipe drawers, and Android hardware back-button integration.
+
+---
+
+### 9. 📚 EPUB Reader & Book Library
+
+- **Strictly Read-Only & Untouched Binaries**: EPUB files are preserved untouched on disk or in IndexedDB storage. Zero telemetry, zero external network requests from book content, and no contenteditable / TipTap interference.
+- **Dedicated Library View (`#/ebooks`)**:
+  - **Continue Reading Row**: Highlights recently read books with current progress and estimated time left.
+  - **Cover Grid & Compact List**: Fast switching between visual cover grid and compact list with reading progress bars.
+  - **Filter & Sort**: Filter by All, Reading, Unread, and Finished; sort by Recently read, Title, Author, Date added, and Progress.
+  - **Instant Search**: Search library metadata by title and author without opening EPUB files.
+  - **Multi-File & Drag-and-Drop Import**: Add multiple `.epub` books at once via file picker or drag-and-drop. Content-derived SHA-256 book identity detects duplicates.
+- **Modern Foliate-js Core & Reading Comfort**:
+  - **Paginated & Continuous Scroll Modes**: Clean CSS multi-column layout with smooth page-turn and optional two-page spread on desktop.
+  - **Typography Controls**: Font families (Publisher default, Serif, Sans, Monospace, Dyslexic-friendly), fine font size adjustments, line height, paragraph spacing, margins, hyphenation, and text justification.
+  - **Full Theme Adaptation**: Directly inherits your active theme from all 30+ vault themes, plus dedicated Paper, Sepia, Dark, and OLED Black modes with optional image toning in dark themes.
+  - **Navigation & TOC**: Nested chapter tree drawer with active chapter indicator, scrubbable progress bar with time estimates, and jump-back safety chip.
+  - **Footnote Popovers & In-Book Search**: Read footnotes in non-intrusive floating cards without losing your place; fast incremental in-book text search.
+- **Bulletproof Progress & Cloud Sync**:
+  - **Automatic Tracking**: Debounced progress saves (~1s) with guaranteed flush on visibility change, pagehide, route exit, and Android hardware back button.
+  - **Exact Position Restoration**: Restores exact CFI locations on reopen with graceful chapter/percentage fallback.
+  - **Google Drive Sync**: `reading-progress.json` syncs separately from book binaries with newest-write-wins merge. Shows a non-intrusive "Continue from other device" toast when remote progress moves ahead.
+  - **Mobile Polish**: Integrated with Screen Wake Lock API and Android hardware back navigation via `mobileNav.svelte.ts`.
 
 ---
 

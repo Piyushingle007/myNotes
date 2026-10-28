@@ -5,6 +5,7 @@ import { FocusCardStore, type FocusCard, type CardStatus, createBlankCard } from
 import { GoogleDriveSync } from '../sync/GoogleDriveSync';
 import { registerPlugin } from '@capacitor/core';
 import MiniSearch from 'minisearch';
+import { EpubManager } from '../epub/services/EpubManager';
 
 interface BrowserChooserPluginApi {
   openUrlWithChooser(opts: { url: string; package?: string }): Promise<void>;
@@ -207,7 +208,8 @@ class AppState {
   activeNoteContent = $state<string>('');
   activeNoteTitle = $state<string>('');
   activeNotebook = $state<string | null>(null);
-  activeTab = $state<'home' | 'search' | 'library' | 'num' | 'tags' | 'focus' | 'budget' | 'sms'>(getInitialActiveTab());
+  activeTab = $state<'home' | 'search' | 'library' | 'num' | 'tags' | 'focus' | 'budget' | 'sms' | 'draw' | 'ebooks'>(getInitialActiveTab());
+  activeEpubId = $state<string | null>(null);
   favorites = $state<string[]>(JSON.parse(localStorage.getItem('mynotes_favorites') || '[]'));
   searchQuery = $state<string>('');
   showSettings = $state<boolean>(false);
@@ -1357,6 +1359,84 @@ class AppState {
         }
 
         console.log(`Sync check for: ${note.path}`);
+
+        const isEpub = note.path.toLowerCase().endsWith('.epub');
+        if (isEpub) {
+          const filename = note.path.split('/').pop() || `${note.name}.epub`;
+          const parts = note.path.split('/');
+          let parentFolderId = folderId;
+          if (parts.length > 1) {
+            parentFolderId = await this.syncService.getOrCreateSubfolders(folderId, parts.slice(0, -1));
+          }
+
+          if (driveFile) {
+            const remoteTime = new Date(driveFile.modifiedTime).getTime();
+            const localChanged = note.modified > lastSyncLocalTime + 2000;
+            const remoteChanged = remoteTime > lastSyncRemoteTime + 2000;
+
+            if (remoteChanged && !localChanged) {
+              console.log(`  Downloading updated remote EPUB: ${note.path}`);
+              try {
+                const blob = await this.syncService!.downloadBinary(driveFile.id);
+                if (this.storage.writeBlob) {
+                  await this.storage.writeBlob(note.path, blob);
+                }
+                try {
+                  const { epubManager } = await import('../epub/services/EpubManager');
+                  await epubManager.registerExistingEpub(note.path, blob, note.name);
+                } catch (e) {
+                  console.warn('  Failed to index updated EPUB:', e);
+                }
+                activeMappings[note.path] = {
+                  id: driveFile.id,
+                  lastSyncLocalTime: Date.now(),
+                  lastSyncRemoteTime: remoteTime
+                };
+              } catch (err) {
+                console.warn('  Failed to download remote EPUB:', err);
+              }
+            } else if (localChanged || !mapEntry) {
+              console.log(`  Uploading local EPUB: ${note.path}`);
+              try {
+                if (this.storage.readBlob) {
+                  const blob = await this.storage.readBlob(note.path);
+                  const uploadRes = await this.syncService!.uploadBinary(filename, blob, driveFile.id, parentFolderId);
+                  const updatedRemoteTime = new Date(uploadRes.modifiedTime).getTime();
+                  activeMappings[note.path] = {
+                    id: uploadRes.id,
+                    lastSyncLocalTime: note.modified,
+                    lastSyncRemoteTime: updatedRemoteTime
+                  };
+                }
+              } catch (readErr) {
+                console.warn('  Failed to read local EPUB blob for sync:', readErr);
+              }
+            } else {
+              activeMappings[note.path] = {
+                id: driveFile.id,
+                lastSyncLocalTime: lastSyncLocalTime || note.modified,
+                lastSyncRemoteTime: lastSyncRemoteTime || remoteTime
+              };
+            }
+          } else {
+            console.log(`  Uploading new local EPUB to Drive: ${note.path}`);
+            try {
+              if (this.storage.readBlob) {
+                const blob = await this.storage.readBlob(note.path);
+                const uploadRes = await this.syncService!.uploadBinary(filename, blob, undefined, parentFolderId);
+                const updatedRemoteTime = new Date(uploadRes.modifiedTime).getTime();
+                activeMappings[note.path] = {
+                  id: uploadRes.id,
+                  lastSyncLocalTime: note.modified,
+                  lastSyncRemoteTime: updatedRemoteTime
+                };
+              }
+            } catch (readErr) {
+              console.warn('  Failed to read local EPUB blob for new upload:', readErr);
+            }
+          }
+          continue; // Handled EPUB note
+        }
         if (driveFile) {
           const remoteTime = new Date(driveFile.modifiedTime).getTime();
           console.log(`  Remote file found: ${driveFile.name} (ID: ${driveFile.id})`);
@@ -1571,6 +1651,36 @@ class AppState {
           continue; // Already synced/updated in Step 1
         }
 
+        // Special handling for binary EPUB files
+        if (remote.name.toLowerCase().endsWith('.epub')) {
+          console.log(`New remote EPUB found: ${remote.path} (ID: ${remote.id}). Downloading binary...`);
+          try {
+            const blob = await this.syncService!.downloadBinary(remote.id);
+            if (this.storage.writeBlob) {
+              await this.storage.writeBlob(remote.path, blob);
+            }
+            if (this.storage instanceof IndexedDBAdapter) {
+              await this.storage.writeNote(remote.path, '');
+            }
+            // Auto index in EpubLibraryStore so it shows up in E-Books library
+            try {
+              const { epubManager } = await import('../epub/services/EpubManager');
+              await epubManager.registerExistingEpub(remote.path, blob, remote.name);
+            } catch (idxErr) {
+              console.warn('Failed to index downloaded EPUB in library store:', idxErr);
+            }
+            const remoteTime = new Date(remote.modifiedTime).getTime();
+            activeMappings[remote.path] = {
+              id: remote.id,
+              lastSyncLocalTime: Date.now(),
+              lastSyncRemoteTime: remoteTime
+            };
+          } catch (dlErr) {
+            console.error('Failed to download remote EPUB:', dlErr);
+          }
+          continue;
+        }
+
         // Check if there was an old mapping for this remote file
         const oldLocalPath = Object.keys(mappings).find(key => {
           const mapVal = mappings[key];
@@ -1683,6 +1793,19 @@ class AppState {
       this.driveMappings = activeMappings;
       console.log('Mappings updated:', activeMappings);
       
+      // Sync EPUB reading progress
+      try {
+        const { syncReadingProgressWithDrive } = await import('../epub/sync/epubProgressSync');
+        const { remoteAdvanced } = await syncReadingProgressWithDrive(this.syncService);
+        const openId = this.activeEpubId;
+        if (openId && remoteAdvanced[openId]) {
+          const { epubReader } = await import('../epub/stores/epubReader.svelte');
+          epubReader.checkRemoteProgressUpdate(remoteAdvanced[openId]);
+        }
+      } catch (err) {
+        console.warn('[Sync] Failed to sync EPUB reading progress:', err);
+      }
+
       await this.refreshNotes();
       this.lastSyncedTime = Date.now();
       localStorage.setItem('mynotes_last_synced', String(this.lastSyncedTime));
@@ -1743,6 +1866,7 @@ class AppState {
       this.tagDb = new TagDatabase(name);
       this.calcTagDb = new CalcTagDatabase(name);
       this.focusCardStore = new FocusCardStore(name);
+      EpubManager.init(name);
       
       // Perform migration of markdown notes to html notes
       await this.migrateOldNotes();
@@ -1796,6 +1920,7 @@ class AppState {
       this.tagDb = new TagDatabase(name);
       this.calcTagDb = new CalcTagDatabase(name);
       this.focusCardStore = new FocusCardStore(name);
+      EpubManager.init(name);
       // Perform migration of markdown notes to html notes
       await this.migrateOldNotes();
       await this.refreshNotes();
@@ -2514,6 +2639,23 @@ class AppState {
     if (this.editorDirty && this.activeNotePath) {
       await this.saveActiveNote(true);
     }
+    if (path.endsWith('.epub')) {
+      const libStore = EpubManager.getLibraryStore();
+      let book = await libStore.findBookByPath(path);
+      if (!book && this.storage.readBlob) {
+        try {
+          const blob = await this.storage.readBlob(path);
+          const name = path.split('/').pop() || 'Book.epub';
+          book = await EpubManager.registerExistingEpub(path, blob, name);
+        } catch (e) {
+          console.warn('[AppState] Failed to auto-index epub on select:', e);
+        }
+      }
+      if (book) {
+        this.openEpubReader(book.bookId);
+      }
+      return;
+    }
     const note = this.notes.find(n => n.path === path);
     if (note) {
       this.activeNotePath = path;
@@ -2530,6 +2672,16 @@ class AppState {
         this.activeTab = 'home';
       }
     }
+  }
+
+  openEpubReader(bookId: string) {
+    this.activeTab = 'ebooks';
+    this.activeEpubId = bookId;
+    this.activeNotePath = null;
+  }
+
+  closeEpubReader() {
+    this.activeEpubId = null;
   }
 
   resizeSidebar(delta: number) {
@@ -2865,7 +3017,21 @@ class AppState {
   }
 
   async deleteNote(path: string) {
-    const noteName = path.split('/').pop()?.replace(/\.(md|html|notebook\.json)$/, '') || path;
+    const noteName = path.split('/').pop()?.replace(/\.(md|html|notebook\.json|epub)$/, '') || path;
+    
+    if (path.endsWith('.epub')) {
+      try {
+        const libStore = EpubManager.getLibraryStore();
+        const book = await libStore.findBookByPath(path);
+        if (book) {
+          await EpubManager.deleteBook(book.bookId, false);
+          this.showToast(`Removed book "${book.title}".`, 'success', 3000);
+          return;
+        }
+      } catch (e) {
+        console.warn('[AppState] Failed to delete epub via manager:', e);
+      }
+    }
     
     // Read mapping before deleting note to enable deleting on Drive
     const mappings = JSON.parse(localStorage.getItem('mynotes_drive_mappings') || '{}');

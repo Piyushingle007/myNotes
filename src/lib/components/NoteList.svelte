@@ -4,6 +4,7 @@
   import { fly } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
   import ErrorBanner from './ErrorBanner.svelte';
+  import EpubImportButton from '../epub/components/EpubImportButton.svelte';
 
   let { 
     isPopover = false, 
@@ -330,6 +331,8 @@
             <FolderInput size={13} />
           </button>
 
+          <EpubImportButton variant="icon" />
+
           <button 
             class="header-icon-action-btn primary-accent"
             onclick={handleCreateNote}
@@ -409,6 +412,7 @@
             <FolderInput size={14} />
             <span>Import MD</span>
           </button>
+          <EpubImportButton variant="button" label="Add Book" />
           <button class="btn-pill btn-pill-primary add-note-btn" onclick={handleCreateNote}>
             <Plus size={16} />
             <span>Add Note</span>
@@ -666,6 +670,8 @@
                 {/if}
               {:else if note.path.endsWith('.notebook.json')}
                 <BookOpen size={20} style="color: var(--accent);" />
+              {:else if note.path.endsWith('.epub')}
+                <BookOpen size={20} style="color: var(--accent);" />
               {:else}
                 <FileText size={20} />
               {/if}
@@ -697,6 +703,9 @@
                 {#if note.path.endsWith('.notebook.json')}
                   <span style="opacity: 0.5;">•</span>
                   <span class="note-pages" style="color: var(--accent); font-weight: 500; flex-shrink: 0;">📓 {getPageCount(note)} pgs</span>
+                {:else if note.path.endsWith('.epub')}
+                  <span style="opacity: 0.5;">•</span>
+                  <span class="note-pages" style="color: var(--accent); font-weight: 500; flex-shrink: 0;">📖 EPUB Book</span>
                 {/if}
               </div>
             </div>

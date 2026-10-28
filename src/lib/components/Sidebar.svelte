@@ -1,8 +1,9 @@
 <script lang="ts">
   import { appState, generateHtmlNote, parseHtmlMetadata } from '../stores/appState.svelte';
   import type { Tag } from '../storage/TagSchema';
-  import { Home, Folder, Plus, Trash2, Calendar, Settings, Library, Palette, FolderOpen, X, ChevronRight, FileText, Download, Cloud, RefreshCw, CloudOff, Tag as TagIcon, Edit2, Star, Target, Wallet, Calculator, PenTool, MessageSquare } from 'lucide-svelte';
+  import { Home, Folder, Plus, Trash2, Calendar, Settings, Library, Palette, FolderOpen, X, ChevronRight, FileText, Download, Cloud, RefreshCw, CloudOff, Tag as TagIcon, Edit2, Star, Target, Wallet, Calculator, PenTool, MessageSquare, BookOpen } from 'lucide-svelte';
   import GoogleLogo from './GoogleLogo.svelte';
+  import EpubImportButton from '../epub/components/EpubImportButton.svelte';
 
   let newNotebookName = $state('');
   let showCreateInput = $state(false);
@@ -681,6 +682,21 @@
         <MessageSquare size={18} class="sec-icon" />
         <span class="section-title">Inbox</span>
       </button>
+    </div>
+  </div>
+
+  <!-- Ebooks Section -->
+  <div class="section-container flex-col" class:active={appState.activeTab === 'ebooks'}>
+    <div class="section-header flex-row" style="justify-content: space-between; width: 100%;">
+      <button
+        class="flex-row"
+        style="flex-grow: 1; cursor: pointer; background: none; border: none; color: inherit; padding: 0; align-items: center; gap: var(--spacing-xs);"
+        onclick={() => { appState.activeTab = 'ebooks'; appState.activeEpubId = null; selectNotebook(null); }}
+      >
+        <BookOpen size={18} class="sec-icon" style={appState.activeTab === 'ebooks' ? 'color: var(--accent);' : ''} />
+        <span class="section-title">Ebooks</span>
+      </button>
+      <EpubImportButton variant="icon" />
     </div>
   </div>
 
