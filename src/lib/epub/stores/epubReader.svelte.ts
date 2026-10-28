@@ -311,6 +311,9 @@ class EpubReaderStore {
   }
 
   private handleSectionLoaded(doc: Document): void {
+    // Re-apply active theme and font typography to newly loaded section
+    this.applyThemeStyles();
+
     // Listen to touch/pointer on iframe document to record user activity
     doc.addEventListener('pointerdown', () => {
       this.recordUserActivity();

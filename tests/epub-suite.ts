@@ -45,8 +45,15 @@ export async function runSuite() {
   assert.ok(css.includes('font-size: 20px !important;'), 'Should inject 20px font size');
   assert.ok(css.includes('line-height: 1.7 !important;'), 'Should inject 1.7 line height');
   assert.ok(css.includes('OpenDyslexic'), 'Should inject OpenDyslexic');
+  assert.ok(css.includes('div, p, span'), 'Should inject font family override for paragraphs, divs, and spans');
   assert.ok(css.includes('text-align: justify !important;'), 'Should inject justify');
   assert.ok(css.includes('filter: brightness(0.8)'), 'Should dim images in dark mode');
+
+  const publisherCss = generateReaderCSS({
+    ...DEFAULT_READER_SETTINGS,
+    fontFamily: 'publisher',
+  });
+  assert.ok(!publisherCss.includes('div, p, span'), 'Publisher mode should not force font-family on text elements');
   console.log('✓ PASS: readerTheme generates accurate CSS tokens, dark OLED colors, and dyslexia fonts.');
 
   console.log('--- TEST 3: EPUB Parser & ZIP Extraction ---');

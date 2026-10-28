@@ -38,6 +38,7 @@ export class EpubEngine {
   private pendingSpread?: boolean;
   private pendingMargin?: number;
   private pendingAnimation?: boolean;
+  private pendingStyles?: string;
 
   async initEngine(container: HTMLElement): Promise<void> {
     await ensureFoliateLoaded();
@@ -59,11 +60,12 @@ export class EpubEngine {
     this.book = this.viewEl.book;
     this.isFixedLayout = this.viewEl.isFixedLayout || false;
 
-    // Apply any layout and animation settings configured before open
+    // Apply any layout, animation, and theme style settings configured before open
     if (this.pendingFlow) this.setFlow(this.pendingFlow);
     if (this.pendingSpread !== undefined) this.setSpread(this.pendingSpread);
     if (this.pendingMargin !== undefined) this.setMargin(this.pendingMargin);
     if (this.pendingAnimation !== undefined) this.setAnimation(this.pendingAnimation);
+    if (this.pendingStyles) this.setStyles(this.pendingStyles);
   }
 
   async renderLocation(options: { lastLocation?: any; showTextStart?: boolean } = {}): Promise<void> {
@@ -113,6 +115,7 @@ export class EpubEngine {
   }
 
   setStyles(css: string): void {
+    this.pendingStyles = css;
     if (this.viewEl?.renderer?.setStyles) {
       this.viewEl.renderer.setStyles(css);
     }

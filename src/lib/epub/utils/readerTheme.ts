@@ -74,13 +74,13 @@ export function generateReaderCSS(settings: ReaderSettings): string {
 
   let fontStack = 'inherit';
   if (settings.fontFamily === 'serif') {
-    fontStack = 'Georgia, "Times New Roman", Cambria, serif';
+    fontStack = 'Georgia, "Times New Roman", "Source Serif Pro", Cambria, serif';
   } else if (settings.fontFamily === 'sans') {
     fontStack = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
   } else if (settings.fontFamily === 'mono') {
     fontStack = '"SF Mono", Menlo, Monaco, Consolas, "Courier New", monospace';
   } else if (settings.fontFamily === 'dyslexic') {
-    fontStack = '"OpenDyslexic", "Comic Sans MS", sans-serif';
+    fontStack = '"OpenDyslexic", "Comic Sans MS", "Chalkboard SE", sans-serif';
   }
 
   const textAlignRule = settings.textAlign === 'publisher'
@@ -95,6 +95,16 @@ export function generateReaderCSS(settings: ReaderSettings): string {
     ? 'filter: brightness(0.8) contrast(1.05);'
     : '';
 
+  // Explicit font override for all text elements to override publisher/embedded EPUB stylesheet rules
+  const fontOverrideRule = settings.fontFamily !== 'publisher'
+    ? `
+      :root, html, body, div, p, span, a, em, strong, b, i, blockquote, li, dd, dt, h1, h2, h3, h4, h5, h6, table, td, th, article, section, header, footer, main, aside, figcaption, small, cite, q,
+      body *:not(pre):not(code):not(kbd):not(samp):not(pre *):not(code *):not(svg *):not([class*="icon"]) {
+        font-family: ${fontStack} !important;
+      }
+    `
+    : '';
+
   return `
     :root, html, body {
       background-color: ${bg} !important;
@@ -106,6 +116,8 @@ export function generateReaderCSS(settings: ReaderSettings): string {
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
     }
+
+    ${fontOverrideRule}
 
     body {
       margin: 0 !important;
@@ -151,8 +163,8 @@ export function generateReaderCSS(settings: ReaderSettings): string {
       overflow-x: auto;
     }
 
-    pre, code {
-      font-family: "SF Mono", Menlo, Monaco, Consolas, monospace !important;
+    pre, code, kbd, samp {
+      font-family: ${settings.fontFamily === 'mono' ? fontStack : '"SF Mono", Menlo, Monaco, Consolas, monospace'} !important;
       font-size: 0.9em !important;
     }
   `;
