@@ -15,7 +15,11 @@
     if (ignoreHashSync) return;
 
     let newHash = '';
-    if (appState.activeNotePath) {
+    if (appState.activeEpubId) {
+      newHash = `#/read/${encodeURIComponent(appState.activeEpubId)}`;
+    } else if (appState.activeTab === 'ebooks') {
+      newHash = `#/ebooks`;
+    } else if (appState.activeNotePath) {
       newHash = `#/note/${encodeURIComponent(appState.activeNotePath)}`;
       if (__FEATURE_CANVAS__ && appState.editorMode === 'canvas') {
         newHash += '?mode=canvas';
@@ -65,7 +69,12 @@
     try {
       const hash = window.location.hash;
 
-      if (hash.startsWith('#/note/')) {
+      if (hash.startsWith('#/read/')) {
+        const bookId = decodeURIComponent(hash.slice('#/read/'.length));
+        appState.activeTab = 'ebooks';
+        appState.activeEpubId = bookId;
+        appState.activeNotePath = null;
+      } else if (hash.startsWith('#/note/')) {
         const queryIdx = hash.indexOf('?');
         let notePathPart = hash;
         let modeParam = 'text';
@@ -90,6 +99,7 @@
           appState.editorMode = modeParam as 'text' | 'canvas' | 'notebook';
         }
       } else {
+        appState.activeEpubId = null;
         if (appState.activeNotePath !== null) {
           // Leaving an open note via browser/gesture back — persist edits first
           // so unsaved changes are never lost (UI-M-001).
@@ -97,7 +107,11 @@
           appState.activeNotePath = null;
         }
 
-        if (hash.startsWith('#/library/')) {
+        if (hash === '#/ebooks') {
+          appState.activeTab = 'ebooks';
+          appState.activeNotebook = null;
+          appState.selectedTag = null;
+        } else if (hash.startsWith('#/library/')) {
           const notebook = decodeURIComponent(hash.slice('#/library/'.length));
           appState.activeTab = 'library';
           appState.activeNotebook = notebook;
@@ -176,6 +190,7 @@
       const _notebook = appState.activeNotebook;
       const _tag = appState.selectedTag;
       const _editorMode = appState.editorMode;
+      const _epubId = appState.activeEpubId;
 
       if (!ignoreHashSync) {
         untrack(() => {

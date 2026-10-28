@@ -1,6 +1,6 @@
 import { appState } from './appState.svelte';
 
-export type MobileTab = 'home' | 'tags' | 'library' | 'num' | 'focus' | 'budget' | 'sms';
+export type MobileTab = 'home' | 'tags' | 'library' | 'num' | 'focus' | 'budget' | 'sms' | 'ebooks';
 
 /**
  * MobileNav — centralized mobile navigation model (UI-M-001).
@@ -27,6 +27,7 @@ class MobileNav {
 
   /** Current navigation depth within the active tab's stack (0–2). */
   get depth(): number {
+    if (appState.activeEpubId) return 2;
     if (appState.activeNotePath) return 2;
     if (appState.activeTab === 'library' && appState.activeNotebook) return 1;
     if (appState.activeTab === 'tags' && appState.selectedTag) return 1;
@@ -45,6 +46,7 @@ class MobileNav {
   /** Switch to a top-level tab, resetting transient view + selection state. */
   goToTab(tab: MobileTab) {
     appState.activeNotePath = null;
+    appState.activeEpubId = null;
     appState.activeTab = tab;
     appState.activeNotebook = null;
     appState.selectedTag = null;
@@ -138,6 +140,17 @@ class MobileNav {
     // 3 → dismiss the topmost open overlay before any navigation.
     if (this.overlays.length > 0) {
       return this.dismissTopOverlay();
+    }
+    // Reader overlay
+    if (appState.activeEpubId) {
+      try {
+        const { epubReader } = await import('../epub/stores/epubReader.svelte');
+        await epubReader.closeReader();
+      } catch (e) {
+        console.warn('[MobileNav] Error closing epub reader on back:', e);
+      }
+      appState.closeEpubReader();
+      return true;
     }
     // Switch from canvas mode to text mode before closing the editor
     if (__FEATURE_CANVAS__ && appState.activeNotePath && appState.editorMode === 'canvas') {

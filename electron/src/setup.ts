@@ -227,8 +227,8 @@ export function setupContentSecurityPolicy(customScheme: string): void {
         ...details.responseHeaders,
         'Content-Security-Policy': [
           electronIsDev
-            ? `default-src ${customScheme}://* 'unsafe-inline' devtools://* 'unsafe-eval' 'wasm-unsafe-eval' data:; connect-src ${customScheme}://* ${googleConnect} data:; img-src ${customScheme}://* data: blob: https:`
-            : `default-src ${customScheme}://* 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' data:; connect-src ${customScheme}://* ${googleConnect} data:; img-src ${customScheme}://* data: blob: https:`,
+            ? `default-src ${customScheme}://* 'unsafe-inline' devtools://* 'unsafe-eval' 'wasm-unsafe-eval' data: blob:; connect-src ${customScheme}://* ${googleConnect} data: blob:; img-src ${customScheme}://* data: blob: https:; frame-src ${customScheme}://* data: blob:; child-src ${customScheme}://* data: blob:; worker-src ${customScheme}://* 'unsafe-inline' data: blob:;`
+            : `default-src ${customScheme}://* 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' data: blob:; connect-src ${customScheme}://* ${googleConnect} data: blob:; img-src ${customScheme}://* data: blob: https:; frame-src ${customScheme}://* data: blob:; child-src ${customScheme}://* data: blob:; worker-src ${customScheme}://* 'unsafe-inline' data: blob:;`,
         ],
       },
     });
